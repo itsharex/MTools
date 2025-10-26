@@ -63,10 +63,11 @@ class AudioView(ft.Container):
                     gradient_colors=("#30CFD0", "#330867"),
                 ),
             ],
-            wrap=True,
+            wrap=True,  # 自动换行
             spacing=PADDING_LARGE,
             run_spacing=PADDING_LARGE,
-            alignment=ft.MainAxisAlignment.CENTER,
+            alignment=ft.MainAxisAlignment.START,  # 从左开始排列
+            vertical_alignment=ft.CrossAxisAlignment.START,  # 从上开始排列
         )
         
         # 组装视图
@@ -75,6 +76,7 @@ class AudioView(ft.Container):
                 feature_cards,
             ],
             spacing=PADDING_MEDIUM,
-            scroll=ft.ScrollMode.AUTO,
-            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            scroll=ft.ScrollMode.HIDDEN,  # 隐藏滚动条
+            horizontal_alignment=ft.CrossAxisAlignment.START,  # 从左对齐
+            alignment=ft.MainAxisAlignment.START,  # 从上对齐
         )

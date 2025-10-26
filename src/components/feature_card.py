@@ -100,7 +100,7 @@ class FeatureCard(ft.Container):
             overflow=ft.TextOverflow.ELLIPSIS,
         )
         
-        # 卡片内容
+        # 卡片内容 - 左对齐布局
         card_content: ft.Column = ft.Column(
             controls=[
                 icon_container,
@@ -109,7 +109,7 @@ class FeatureCard(ft.Container):
                 ft.Container(height=PADDING_MEDIUM // 2),
                 description_text,
             ],
-            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            horizontal_alignment=ft.CrossAxisAlignment.START,  # 改为左对齐
             spacing=0,
         )
         

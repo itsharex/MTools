@@ -8,7 +8,7 @@ from typing import Optional
 import flet as ft
 
 from components import CustomTitleBar
-from services import ConfigService, ImageService
+from services import ConfigService, EncodingService, ImageService
 from views.audio_view import AudioView
 from views.code_format_view import CodeFormatView
 from views.encoding_view import EncodingView
@@ -41,6 +41,7 @@ class MainView(ft.Column):
         # 创建服务
         self.config_service: ConfigService = ConfigService()
         self.image_service: ImageService = ImageService()
+        self.encoding_service: EncodingService = EncodingService()
         
         # 创建自定义标题栏（传递配置服务以保存窗口状态）
         self.title_bar: CustomTitleBar = CustomTitleBar(page, self.config_service)
@@ -50,9 +51,9 @@ class MainView(ft.Column):
         
         # 创建各功能视图
         self.image_view: Optional[ImageView] = None
+        self.encoding_view: Optional[EncodingView] = None
         self.audio_view: AudioView = AudioView(page)
         self.video_view: VideoView = VideoView(page)
-        self.encoding_view: EncodingView = EncodingView(page)
         self.code_format_view: CodeFormatView = CodeFormatView(page)
         self.settings_view: SettingsView = SettingsView(page, self.config_service)
         
@@ -134,14 +135,14 @@ class MainView(ft.Column):
             ),
         )
         
-        # 创建图片视图（需要在创建容器之前，以便传递容器引用）
-        # 但实际上我们先创建一个占位容器，然后再创建图片视图
+        # 创建内容容器（先创建占位容器）
         self.content_container = ft.Container(
             expand=True,
         )
         
-        # 现在创建图片视图，并传递容器引用
+        # 创建图片视图和编码视图，并传递容器引用
         self.image_view = ImageView(self.page, self.config_service, self.image_service, self.content_container)
+        self.encoding_view = EncodingView(self.page, self.config_service, self.encoding_service, self.content_container)
         
         # 设置初始内容
         self.content_container.content = self.image_view
@@ -192,8 +193,14 @@ class MainView(ft.Column):
             self.content_container.update()
         elif selected_index == 3:
             view = self.encoding_view
-            self.content_container.content = view
-            self.content_container.update()
+            # 尝试恢复编码转换页面的状态
+            restored = False
+            if hasattr(view, 'restore_state'):
+                restored = view.restore_state()
+            
+            if not restored:
+                self.content_container.content = view
+                self.content_container.update()
         elif selected_index == 4:
             view = self.code_format_view
             self.content_container.content = view

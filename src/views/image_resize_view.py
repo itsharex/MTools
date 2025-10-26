@@ -319,13 +319,14 @@ class ImageResizeView(ft.Container):
             expand=True,
         )
         
-        # 组装主界面 - 标题固定，内容可滚动
+        # 组装主界面 - 标题固定，分隔线固定，内容可滚动
         self.content = ft.Column(
             controls=[
                 header,  # 固定在顶部
+                ft.Divider(),  # 固定的分隔线
                 scrollable_content,  # 可滚动内容
             ],
-            spacing=PADDING_LARGE,
+            spacing=0,  # 取消间距，让布局更紧凑
         )
         
         # 初始化文件列表
