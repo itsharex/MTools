@@ -15,6 +15,7 @@ from constants import (
 )
 from services import ConfigService, ImageService
 from views.image_compress_view import ImageCompressView
+from views.image_resize_view import ImageResizeView
 
 
 class ImageView(ft.Container):
@@ -50,8 +51,9 @@ class ImageView(ft.Container):
             bottom=PADDING_XLARGE
         )
         
-        # 创建压缩视图（延迟创建）
+        # 创建子视图（延迟创建）
         self.compress_view: Optional[ImageCompressView] = None
+        self.resize_view: Optional[ImageResizeView] = None
         
         # 记录当前显示的视图（用于状态恢复）
         self.current_sub_view: Optional[ft.Container] = None
@@ -76,6 +78,7 @@ class ImageView(ft.Container):
                     title="尺寸调整",
                     description="批量调整图片尺寸和分辨率",
                     gradient_colors=("#F093FB", "#F5576C"),
+                    on_click=self._open_resize_dialog,
                 ),
                 FeatureCard(
                     icon=ft.Icons.TRANSFORM_ROUNDED,
@@ -124,6 +127,32 @@ class ImageView(ft.Container):
         
         # 切换到压缩视图
         self.parent_container.content = self.compress_view
+        self.parent_container.update()
+    
+    def _open_resize_dialog(self, e: ft.ControlEvent) -> None:
+        """切换到图片尺寸调整工具界面。
+        
+        Args:
+            e: 控件事件对象
+        """
+        if not self.parent_container:
+            print("错误: 未设置父容器")
+            return
+        
+        # 创建尺寸调整视图（如果还没创建）
+        if not self.resize_view:
+            self.resize_view = ImageResizeView(
+                self.page,
+                self.config_service,
+                self.image_service,
+                on_back=self._back_to_main
+            )
+        
+        # 记录当前子视图
+        self.current_sub_view = self.resize_view
+        
+        # 切换到尺寸调整视图
+        self.parent_container.content = self.resize_view
         self.parent_container.update()
     
     def _back_to_main(self) -> None:

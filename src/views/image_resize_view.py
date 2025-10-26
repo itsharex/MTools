@@ -1,6 +1,6 @@
-"""图片压缩视图模块。
+"""图片尺寸调整视图模块。
 
-提供图片压缩功能的用户界面。
+提供图片尺寸调整功能的用户界面。
 """
 
 from pathlib import Path
@@ -20,14 +20,14 @@ from services import ConfigService, ImageService
 from utils import format_file_size
 
 
-class ImageCompressView(ft.Container):
-    """图片压缩视图类。
+class ImageResizeView(ft.Container):
+    """图片尺寸调整视图类。
     
-    提供图片压缩功能，包括：
-    - 单文件和批量压缩
-    - 压缩模式选择
-    - 质量调整
-    - 实时预览
+    提供图片尺寸调整功能，包括：
+    - 按百分比缩放
+    - 按固定宽度/高度调整
+    - 保持宽高比
+    - 批量处理
     """
 
     def __init__(
@@ -37,7 +37,7 @@ class ImageCompressView(ft.Container):
         image_service: ImageService,
         on_back: Optional[callable] = None
     ) -> None:
-        """初始化图片压缩视图。
+        """初始化图片尺寸调整视图。
         
         Args:
             page: Flet页面对象
@@ -57,7 +57,7 @@ class ImageCompressView(ft.Container):
         # 右侧多留一些空间给滚动条
         self.padding: ft.padding = ft.padding.only(
             left=PADDING_XLARGE,
-            right=PADDING_XLARGE + 16,  # 右侧多留16px给滚动条
+            right=PADDING_XLARGE + 16,
             top=PADDING_XLARGE,
             bottom=PADDING_XLARGE
         )
@@ -75,7 +75,7 @@ class ImageCompressView(ft.Container):
                     tooltip="返回",
                     on_click=self._on_back_click,
                 ),
-                ft.Text("图片压缩", size=28, weight=ft.FontWeight.BOLD, color=TEXT_PRIMARY),
+                ft.Text("尺寸调整", size=28, weight=ft.FontWeight.BOLD, color=TEXT_PRIMARY),
             ],
             spacing=PADDING_MEDIUM,
         )
@@ -126,134 +126,166 @@ class ImageCompressView(ft.Container):
                 ),
                 ft.Container(
                     content=self.file_list_view,
-                    height=380,  # 文件列表高度
+                    height=280,  # 文件列表高度
                     border=ft.border.all(1, ft.Colors.OUTLINE),
                     border_radius=BORDER_RADIUS_MEDIUM,
                     padding=PADDING_MEDIUM,
                 ),
             ],
             spacing=PADDING_MEDIUM,
-            horizontal_alignment=ft.CrossAxisAlignment.STRETCH,  # 让子元素水平拉伸填充
+            horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
         )
         
-        # 压缩选项
-        self.mode_radio = ft.RadioGroup(
+        # 调整模式选项
+        self.resize_mode = ft.RadioGroup(
             content=ft.Column(
                 controls=[
-                    ft.Radio(value="fast", label="快速模式 (Pillow)"),
-                    ft.Radio(value="balanced", label="标准模式 (mozjpeg/pngquant) - 推荐"),
-                    ft.Radio(value="max", label="极限模式 (最高压缩率)"),
+                    ft.Radio(value="percentage", label="按百分比缩放"),
+                    ft.Radio(value="width", label="按宽度调整（保持宽高比）"),
+                    ft.Radio(value="height", label="按高度调整（保持宽高比）"),
+                    ft.Radio(value="custom", label="自定义宽度和高度"),
                 ],
                 spacing=PADDING_MEDIUM // 2,
             ),
-            value="balanced",
+            value="percentage",
+            on_change=self._on_resize_mode_change,
         )
         
-        self.quality_slider = ft.Slider(
-            min=50,
-            max=100,
-            value=85,
-            divisions=50,
-            label="{value}",
-            on_change=self._on_quality_change,
+        # 百分比输入
+        self.percentage_slider = ft.Slider(
+            min=10,
+            max=200,
+            value=100,
+            divisions=19,
+            label="{value}%",
+            on_change=self._on_percentage_change,
         )
         
-        self.quality_text = ft.Text("质量: 85", size=14)
+        self.percentage_text = ft.Text("缩放比例: 100%", size=14)
         
-        self.compress_options = ft.Container(
+        # 宽度输入
+        self.width_field = ft.TextField(
+            label="宽度 (px)",
+            hint_text="例如: 1920",
+            keyboard_type=ft.KeyboardType.NUMBER,
+            visible=False,
+            width=200,
+        )
+        
+        # 高度输入
+        self.height_field = ft.TextField(
+            label="高度 (px)",
+            hint_text="例如: 1080",
+            keyboard_type=ft.KeyboardType.NUMBER,
+            visible=False,
+            width=200,
+        )
+        
+        # 保持宽高比选项
+        self.keep_aspect_checkbox = ft.Checkbox(
+            label="保持宽高比",
+            value=True,
+            visible=False,
+        )
+        
+        self.resize_options = ft.Container(
             content=ft.Column(
                 controls=[
-                    ft.Text("压缩模式:", size=14, weight=ft.FontWeight.W_500),
-                    self.mode_radio,
+                    ft.Text("调整模式:", size=14, weight=ft.FontWeight.W_500),
+                    self.resize_mode,
                     ft.Container(height=PADDING_MEDIUM),
-                    self.quality_text,
-                    self.quality_slider,
+                    self.percentage_text,
+                    self.percentage_slider,
+                    ft.Row(
+                        controls=[
+                            self.width_field,
+                            self.height_field,
+                        ],
+                        spacing=PADDING_MEDIUM,
+                    ),
+                    self.keep_aspect_checkbox,
                 ],
                 spacing=PADDING_MEDIUM // 2,
             ),
-            padding=PADDING_MEDIUM,
-            border=ft.border.all(1, ft.Colors.OUTLINE_VARIANT),
+            border=ft.border.all(1, ft.Colors.OUTLINE),
             border_radius=BORDER_RADIUS_MEDIUM,
+            padding=PADDING_MEDIUM,
             expand=1,  # 平分宽度
-            height=280,  # 固定高度
+            height=320,  # 固定高度
         )
         
         # 输出选项
-        self.output_mode_radio = ft.RadioGroup(
+        self.output_mode = ft.RadioGroup(
             content=ft.Column(
                 controls=[
                     ft.Radio(value="overwrite", label="覆盖原文件"),
-                    ft.Radio(value="new", label="保存为新文件（自定义后缀）"),
-                    ft.Radio(value="custom", label="自定义输出目录"),
+                    ft.Radio(value="new_file", label="保存为新文件"),
+                    ft.Radio(value="custom_dir", label="保存到指定目录"),
                 ],
                 spacing=PADDING_MEDIUM // 2,
             ),
-            value="new",
+            value="new_file",
             on_change=self._on_output_mode_change,
         )
         
-        # 文件后缀输入框
         self.file_suffix = ft.TextField(
             label="文件后缀",
-            value="_compressed",
-            hint_text="例如: _compressed, _optimized, _small",
-            disabled=False,
-            width=300,
+            hint_text="例如: _resized",
+            value="_resized",
+            width=200,
         )
         
         self.custom_output_dir = ft.TextField(
             label="输出目录",
+            hint_text="选择输出目录",
             value=str(self.config_service.get_output_dir()),
-            disabled=True,
+            read_only=True,
             expand=True,
+            visible=False,
         )
         
-        self.browse_output_button = ft.IconButton(
+        self.browse_button = ft.IconButton(
             icon=ft.Icons.FOLDER_OPEN,
             tooltip="浏览",
             on_click=self._on_browse_output,
-            disabled=True,
+            visible=False,
         )
         
         self.output_options = ft.Container(
             content=ft.Column(
                 controls=[
                     ft.Text("输出选项:", size=14, weight=ft.FontWeight.W_500),
-                    self.output_mode_radio,
+                    self.output_mode,
                     self.file_suffix,
                     ft.Row(
                         controls=[
                             self.custom_output_dir,
-                            self.browse_output_button,
+                            self.browse_button,
                         ],
-                        spacing=PADDING_MEDIUM // 2,
+                        spacing=PADDING_MEDIUM,
                     ),
                 ],
                 spacing=PADDING_MEDIUM // 2,
             ),
-            padding=PADDING_MEDIUM,
-            border=ft.border.all(1, ft.Colors.OUTLINE_VARIANT),
+            border=ft.border.all(1, ft.Colors.OUTLINE),
             border_radius=BORDER_RADIUS_MEDIUM,
+            padding=PADDING_MEDIUM,
             expand=1,  # 平分宽度
-            height=280,  # 固定高度
+            height=320,  # 固定高度
         )
         
-        # 进度显示
-        self.progress_bar = ft.ProgressBar(visible=False)
-        self.progress_text = ft.Text("", size=12, color=TEXT_SECONDARY)
-        
         # 底部按钮 - 大号主按钮
-        self.compress_button = ft.Container(
+        self.resize_button = ft.Container(
             content=ft.ElevatedButton(
                 content=ft.Row(
                     controls=[
-                        ft.Icon(ft.Icons.COMPRESS, size=24),
-                        ft.Text("开始压缩", size=18, weight=ft.FontWeight.W_600),
+                        ft.Icon(ft.Icons.PHOTO_SIZE_SELECT_LARGE, size=24),
+                        ft.Text("开始调整", size=18, weight=ft.FontWeight.W_600),
                     ],
                     alignment=ft.MainAxisAlignment.CENTER,
                     spacing=PADDING_MEDIUM,
                 ),
-                on_click=self._on_compress,
+                on_click=self._on_resize,
                 style=ft.ButtonStyle(
                     padding=ft.padding.symmetric(horizontal=PADDING_LARGE * 2, vertical=PADDING_LARGE),
                     shape=ft.RoundedRectangleBorder(radius=BORDER_RADIUS_MEDIUM),
@@ -262,25 +294,28 @@ class ImageCompressView(ft.Container):
             alignment=ft.alignment.center,
         )
         
-        # 主内容 - 隐藏滚动条
+        # 进度显示
+        self.progress_bar = ft.ProgressBar(visible=False)
+        self.progress_text = ft.Text("", size=12, color=TEXT_SECONDARY)
+        
         # 可滚动内容区域
         scrollable_content = ft.Column(
             controls=[
-                ft.Divider(),
                 file_select_area,
                 ft.Row(
                     controls=[
-                        self.compress_options,
+                        self.resize_options,
                         self.output_options,
                     ],
                     spacing=PADDING_LARGE,
+                    alignment=ft.MainAxisAlignment.CENTER,
                 ),
                 self.progress_bar,
                 self.progress_text,
-                self.compress_button,
+                self.resize_button,
             ],
             spacing=PADDING_LARGE,
-            scroll=ft.ScrollMode.HIDDEN,  # 隐藏滚动条，但仍可滚动
+            scroll=ft.ScrollMode.HIDDEN,
             expand=True,
         )
         
@@ -293,7 +328,7 @@ class ImageCompressView(ft.Container):
             spacing=PADDING_LARGE,
         )
         
-        # 初始化文件列表（显示空状态）- 直接添加控件，不调用update
+        # 初始化文件列表
         self._init_empty_state()
     
     def _init_empty_state(self) -> None:
@@ -307,15 +342,20 @@ class ImageCompressView(ft.Container):
                         ft.Text("点击此处选择图片", color=TEXT_SECONDARY, size=12),
                     ],
                     horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                    alignment=ft.MainAxisAlignment.CENTER,  # 垂直居中
+                    alignment=ft.MainAxisAlignment.CENTER,
                     spacing=PADDING_MEDIUM // 2,
                 ),
-                height=332,  # 380 - 2*24(padding) = 332
+                height=232,  # 280 - 2*24(padding) = 232
                 alignment=ft.alignment.center,
                 on_click=self._on_empty_area_click,
-                ink=True,  # 添加水波纹效果
+                ink=True,
             )
         )
+    
+    def _on_back_click(self, e: ft.ControlEvent) -> None:
+        """返回按钮点击事件。"""
+        if self.on_back:
+            self.on_back()
     
     def _on_empty_area_click(self, e: ft.ControlEvent) -> None:
         """点击空白区域，触发选择文件。"""
@@ -325,10 +365,9 @@ class ImageCompressView(ft.Container):
         """选择文件按钮点击事件。"""
         def on_result(result: ft.FilePickerResultEvent) -> None:
             if result.files:
-                # 追加新文件，而不是替换
+                # 追加新文件
                 new_files = [Path(f.path) for f in result.files]
                 for new_file in new_files:
-                    # 避免重复添加
                     if new_file not in self.selected_files:
                         self.selected_files.append(new_file)
                 self._update_file_list()
@@ -347,7 +386,6 @@ class ImageCompressView(ft.Container):
         def on_result(result: ft.FilePickerResultEvent) -> None:
             if result.path:
                 folder = Path(result.path)
-                # 获取文件夹中的所有图片
                 extensions = [".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif", ".tiff", ".tif", ".ico", ".avif", ".heic", ".heif"]
                 self.selected_files = []
                 for ext in extensions:
@@ -360,12 +398,16 @@ class ImageCompressView(ft.Container):
         self.page.update()
         picker.get_directory_path(dialog_title="选择图片文件夹")
     
+    def _on_clear_files(self, e: ft.ControlEvent) -> None:
+        """清空文件列表。"""
+        self.selected_files.clear()
+        self._update_file_list()
+    
     def _update_file_list(self) -> None:
         """更新文件列表显示。"""
         self.file_list_view.controls.clear()
         
         if not self.selected_files:
-            # 空状态 - 使用和文件列表相同的Container结构，确保宽度一致
             self.file_list_view.controls.append(
                 ft.Container(
                     content=ft.Column(
@@ -375,25 +417,22 @@ class ImageCompressView(ft.Container):
                             ft.Text("点击此处选择图片", color=TEXT_SECONDARY, size=12),
                         ],
                         horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                        alignment=ft.MainAxisAlignment.CENTER,  # 垂直居中
+                        alignment=ft.MainAxisAlignment.CENTER,
                         spacing=PADDING_MEDIUM // 2,
                     ),
-                    height=332,  # 380 - 2*24(padding) = 332
+                    height=232,
                     alignment=ft.alignment.center,
                     on_click=self._on_empty_area_click,
-                    ink=True,  # 添加水波纹效果
+                    ink=True,
                 )
             )
         else:
             for idx, file_path in enumerate(self.selected_files):
-                # 获取文件信息
                 file_size = file_path.stat().st_size
                 size_str = format_file_size(file_size)
                 
-                # 获取图片信息
                 img_info = self.image_service.get_image_info(file_path)
                 
-                # 构建详细信息
                 if 'error' not in img_info:
                     format_str = img_info.get('format', '未知')
                     width = img_info.get('width', 0)
@@ -450,55 +489,80 @@ class ImageCompressView(ft.Container):
                                     icon=ft.Icons.CLOSE,
                                     icon_size=18,
                                     tooltip="移除",
-                                    on_click=lambda e, i=idx: self._on_remove_file(i),
+                                    on_click=lambda e, path=file_path: self._remove_file(path),
                                 ),
                             ],
                             spacing=PADDING_MEDIUM // 2,
-                            vertical_alignment=ft.CrossAxisAlignment.CENTER,
                         ),
-                        padding=PADDING_MEDIUM,
+                        padding=ft.padding.symmetric(vertical=8, horizontal=PADDING_MEDIUM),
                         border_radius=BORDER_RADIUS_MEDIUM,
-                        bgcolor=ft.Colors.with_opacity(0.05, ft.Colors.ON_SURFACE) if idx % 2 == 0 else None,
-                        border=ft.border.all(1, ft.Colors.with_opacity(0.1, ft.Colors.OUTLINE)),
+                        ink=True,
                     )
                 )
         
         self.file_list_view.update()
     
-    def _on_remove_file(self, index: int) -> None:
-        """移除单个文件。
-        
-        Args:
-            index: 文件索引
-        """
-        if 0 <= index < len(self.selected_files):
-            self.selected_files.pop(index)
+    def _remove_file(self, file_path: Path) -> None:
+        """移除单个文件。"""
+        if file_path in self.selected_files:
+            self.selected_files.remove(file_path)
             self._update_file_list()
     
-    def _on_clear_files(self, e: ft.ControlEvent) -> None:
-        """清空文件列表。"""
-        self.selected_files.clear()
-        self._update_file_list()
+    def _on_resize_mode_change(self, e: ft.ControlEvent) -> None:
+        """调整模式变化事件。"""
+        mode = self.resize_mode.value
+        
+        # 显示/隐藏相应的控件
+        if mode == "percentage":
+            self.percentage_text.visible = True
+            self.percentage_slider.visible = True
+            self.width_field.visible = False
+            self.height_field.visible = False
+            self.keep_aspect_checkbox.visible = False
+        elif mode == "width":
+            self.percentage_text.visible = False
+            self.percentage_slider.visible = False
+            self.width_field.visible = True
+            self.height_field.visible = False
+            self.keep_aspect_checkbox.visible = False
+        elif mode == "height":
+            self.percentage_text.visible = False
+            self.percentage_slider.visible = False
+            self.width_field.visible = False
+            self.height_field.visible = True
+            self.keep_aspect_checkbox.visible = False
+        elif mode == "custom":
+            self.percentage_text.visible = False
+            self.percentage_slider.visible = False
+            self.width_field.visible = True
+            self.height_field.visible = True
+            self.keep_aspect_checkbox.visible = True
+        
+        self.resize_options.update()
     
-    def _on_quality_change(self, e: ft.ControlEvent) -> None:
-        """质量滑块变化事件。"""
-        quality = int(e.control.value)
-        self.quality_text.value = f"质量: {quality}"
-        self.quality_text.update()
+    def _on_percentage_change(self, e: ft.ControlEvent) -> None:
+        """百分比滑块变化事件。"""
+        self.percentage_text.value = f"缩放比例: {int(self.percentage_slider.value)}%"
+        self.percentage_text.update()
     
     def _on_output_mode_change(self, e: ft.ControlEvent) -> None:
         """输出模式变化事件。"""
-        mode = e.control.value
-        is_custom = mode == "custom"
-        is_new = mode == "new"
+        mode = self.output_mode.value
         
-        self.file_suffix.disabled = not is_new
-        self.custom_output_dir.disabled = not is_custom
-        self.browse_output_button.disabled = not is_custom
+        if mode == "new_file":
+            self.file_suffix.visible = True
+            self.custom_output_dir.visible = False
+            self.browse_button.visible = False
+        elif mode == "custom_dir":
+            self.file_suffix.visible = False
+            self.custom_output_dir.visible = True
+            self.browse_button.visible = True
+        else:  # overwrite
+            self.file_suffix.visible = False
+            self.custom_output_dir.visible = False
+            self.browse_button.visible = False
         
-        self.file_suffix.update()
-        self.custom_output_dir.update()
-        self.browse_output_button.update()
+        self.output_options.update()
     
     def _on_browse_output(self, e: ft.ControlEvent) -> None:
         """浏览输出目录按钮点击事件。"""
@@ -512,95 +576,111 @@ class ImageCompressView(ft.Container):
         self.page.update()
         picker.get_directory_path(dialog_title="选择输出目录")
     
-    def _on_compress(self, e: ft.ControlEvent) -> None:
-        """开始压缩按钮点击事件。"""
+    def _on_resize(self, e: ft.ControlEvent) -> None:
+        """开始调整按钮点击事件。"""
         if not self.selected_files:
-            self._show_message("请先选择要压缩的图片", ft.Colors.ORANGE)
+            self.progress_text.value = "❌ 请先选择图片文件"
+            self.progress_text.update()
             return
         
-        # 显示进度
+        # 获取调整参数
+        mode = self.resize_mode.value
+        width = None
+        height = None
+        keep_aspect = True
+        
+        try:
+            if mode == "percentage":
+                # 百分比模式将在处理时针对每个文件计算
+                pass
+            elif mode == "width":
+                width = int(self.width_field.value) if self.width_field.value else None
+                if not width:
+                    raise ValueError("请输入宽度")
+            elif mode == "height":
+                height = int(self.height_field.value) if self.height_field.value else None
+                if not height:
+                    raise ValueError("请输入高度")
+            elif mode == "custom":
+                width = int(self.width_field.value) if self.width_field.value else None
+                height = int(self.height_field.value) if self.height_field.value else None
+                keep_aspect = self.keep_aspect_checkbox.value
+                if not width and not height:
+                    raise ValueError("请至少输入宽度或高度")
+        except ValueError as e:
+            self.progress_text.value = f"❌ {str(e)}"
+            self.progress_text.update()
+            return
+        
+        # 显示进度条
         self.progress_bar.visible = True
         self.progress_bar.value = 0
-        self.progress_text.value = "准备压缩..."
-        self.progress_bar.update()
-        self.progress_text.update()
+        self.resize_button.visible = False
+        self.progress_text.value = "开始处理..."
+        self.update()
         
-        # 获取参数
-        mode = self.mode_radio.value
-        quality = int(self.quality_slider.value)
-        output_mode = self.output_mode_radio.value
-        
-        # 压缩文件
-        total = len(self.selected_files)
+        # 处理文件
         success_count = 0
-        total_original = 0
-        total_compressed = 0
+        fail_count = 0
+        total = len(self.selected_files)
         
-        for i, input_path in enumerate(self.selected_files):
+        for idx, file_path in enumerate(self.selected_files):
+            try:
+                # 确定输出路径
+                output_mode = self.output_mode.value
+                if output_mode == "overwrite":
+                    output_path = file_path
+                elif output_mode == "new_file":
+                    suffix = self.file_suffix.value or "_resized"
+                    output_path = file_path.parent / f"{file_path.stem}{suffix}{file_path.suffix}"
+                else:  # custom_dir
+                    output_dir = Path(self.custom_output_dir.value) if self.custom_output_dir.value else file_path.parent
+                    output_path = output_dir / file_path.name
+                
+                # 如果是百分比模式，计算实际尺寸
+                if mode == "percentage":
+                    img_info = self.image_service.get_image_info(file_path)
+                    if 'error' not in img_info:
+                        original_width = img_info['width']
+                        original_height = img_info['height']
+                        percentage = self.percentage_slider.value / 100
+                        width = int(original_width * percentage)
+                        height = int(original_height * percentage)
+                        keep_aspect = False  # 已经计算好了宽高
+                
+                # 调整尺寸
+                result = self.image_service.resize_image(
+                    file_path,
+                    output_path,
+                    width=width,
+                    height=height,
+                    keep_aspect=keep_aspect
+                )
+                
+                if result:
+                    success_count += 1
+                else:
+                    fail_count += 1
+                
+            except Exception as e:
+                print(f"处理失败: {file_path.name}, 错误: {e}")
+                fail_count += 1
+            
             # 更新进度
-            self.progress_text.value = f"正在压缩 ({i+1}/{total}): {input_path.name}"
-            self.progress_bar.value = (i + 1) / total
-            self.progress_text.update()
-            self.progress_bar.update()
-            
-            # 确定输出路径
-            if output_mode == "overwrite":
-                output_path = input_path
-            elif output_mode == "new":
-                suffix = self.file_suffix.value if self.file_suffix.value else "_compressed"
-                output_path = input_path.parent / f"{input_path.stem}{suffix}{input_path.suffix}"
-            else:  # custom
-                output_dir = Path(self.custom_output_dir.value)
-                output_path = output_dir / input_path.name
-            
-            # 执行压缩
-            success, message = self.image_service.compress_image(
-                input_path,
-                output_path,
-                mode=mode,
-                quality=quality
-            )
-            
-            if success:
-                success_count += 1
-                total_original += input_path.stat().st_size
-                if output_path.exists():
-                    total_compressed += output_path.stat().st_size
+            progress = (idx + 1) / total
+            self.progress_bar.value = progress
+            self.progress_text.value = f"处理中... {idx + 1}/{total}"
+            self.update()
         
-        # 显示结果
+        # 完成
         self.progress_bar.visible = False
-        self.progress_bar.update()
+        self.resize_button.visible = True
+        self.progress_text.value = f"✅ 完成！成功: {success_count}, 失败: {fail_count}"
+        self.update()
         
-        if total_original > 0:
-            total_ratio = (1 - total_compressed / total_original) * 100
-            result_message = (
-                f"压缩完成！\n"
-                f"成功: {success_count}/{total}\n"
-                f"原始大小: {format_file_size(total_original)}\n"
-                f"压缩后: {format_file_size(total_compressed)}\n"
-                f"减小: {total_ratio:.1f}%"
-            )
-        else:
-            result_message = f"压缩完成！成功: {success_count}/{total}"
-        
-        self.progress_text.value = result_message
-        self.progress_text.update()
-        
-        self._show_message("压缩完成！", ft.Colors.GREEN)
-    
-    def _on_back_click(self, e: ft.ControlEvent) -> None:
-        """返回按钮点击事件。"""
-        if self.on_back:
-            self.on_back()
-    
-    def _show_message(self, message: str, color: str) -> None:
-        """显示消息提示。"""
-        snackbar = ft.SnackBar(
-            content=ft.Text(message),
-            bgcolor=color,
-            duration=2000,
-        )
-        self.page.overlay.append(snackbar)
-        snackbar.open = True
-        self.page.update()
+        # 3秒后清除消息
+        import time
+        time.sleep(3)
+        self.progress_text.value = ""
+        self.update()
 
