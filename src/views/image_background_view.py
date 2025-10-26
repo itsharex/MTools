@@ -3,6 +3,7 @@
 提供图片背景移除功能的用户界面。
 """
 
+import gc
 import threading
 import webbrowser
 from pathlib import Path
@@ -152,7 +153,7 @@ class ImageBackgroundView(ft.Container):
                 ),
                 ft.Container(
                     content=self.file_list_view,
-                    height=280,
+                    expand=True,
                     border=ft.border.all(1, ft.Colors.OUTLINE),
                     border_radius=BORDER_RADIUS_MEDIUM,
                     padding=PADDING_MEDIUM,
@@ -183,13 +184,50 @@ class ImageBackgroundView(ft.Container):
             visible=False,
         )
         
+        # 加载模型按钮（初始隐藏）
+        self.load_model_button: ft.ElevatedButton = ft.ElevatedButton(
+            text="加载模型",
+            icon=ft.Icons.PLAY_ARROW,
+            on_click=self._on_load_model,
+            visible=False,
+        )
+        
+        # 卸载模型按钮（初始隐藏）
+        self.unload_model_button: ft.IconButton = ft.IconButton(
+            icon=ft.Icons.POWER_SETTINGS_NEW,
+            icon_color=ft.Colors.ORANGE,
+            tooltip="卸载模型（释放内存）",
+            on_click=self._on_unload_model,
+            visible=False,
+        )
+        
+        # 删除模型按钮（初始隐藏）
+        self.delete_model_button: ft.IconButton = ft.IconButton(
+            icon=ft.Icons.DELETE_OUTLINE,
+            icon_color=ft.Colors.ERROR,
+            tooltip="删除模型文件",
+            on_click=self._on_delete_model,
+            visible=False,
+        )
+        
         model_status_row: ft.Row = ft.Row(
             controls=[
                 self.model_status_icon,
                 self.model_status_text,
                 self.download_model_button,
+                self.load_model_button,
+                self.unload_model_button,
+                self.delete_model_button,
             ],
             spacing=PADDING_MEDIUM // 2,
+        )
+        
+        # 自动加载模型设置
+        auto_load_model = self.config_service.get_config_value("background_auto_load_model", True)
+        self.auto_load_checkbox: ft.Checkbox = ft.Checkbox(
+            label="自动加载模型",
+            value=auto_load_model,
+            on_change=self._on_auto_load_change,
         )
         
         # 处理选项（右侧区域）
@@ -224,6 +262,7 @@ class ImageBackgroundView(ft.Container):
                 controls=[
                     ft.Text("处理选项:", size=14, weight=ft.FontWeight.W_500),
                     model_status_row,
+                    self.auto_load_checkbox,
                     ft.Container(height=PADDING_MEDIUM),
                     ft.Text("输出设置:", size=14, weight=ft.FontWeight.W_500),
                     self.output_mode_radio,
@@ -240,7 +279,6 @@ class ImageBackgroundView(ft.Container):
             padding=PADDING_MEDIUM,
             border=ft.border.all(1, ft.Colors.OUTLINE_VARIANT),
             border_radius=BORDER_RADIUS_MEDIUM,
-            height=280,
         )
         
         # 左右分栏布局
@@ -249,10 +287,12 @@ class ImageBackgroundView(ft.Container):
                 ft.Container(
                     content=file_select_area,
                     expand=3,
+                    height=380,
                 ),
                 ft.Container(
                     content=process_options,
                     expand=2,
+                    height=380,
                 ),
             ],
             spacing=PADDING_LARGE,
@@ -311,10 +351,17 @@ class ImageBackgroundView(ft.Container):
     
     def _check_model_status(self) -> None:
         """检查模型状态。"""
+        auto_load = self.config_service.get_config_value("background_auto_load_model", True)
+        
         if self.model_path.exists():
-            # 模型存在，加载模型
-            self._update_model_status("loading", "正在加载模型...")
-            threading.Thread(target=self._load_model_async, daemon=True).start()
+            # 模型存在
+            if auto_load:
+                # 自动加载模型
+                self._update_model_status("loading", "正在加载模型...")
+                threading.Thread(target=self._load_model_async, daemon=True).start()
+            else:
+                # 不自动加载，显示模型已存在但未加载
+                self._update_model_status("unloaded", "模型已下载，未加载")
         else:
             # 模型不存在，显示下载按钮
             self._update_model_status("need_download", "需要下载模型才能使用")
@@ -438,29 +485,52 @@ class ImageBackgroundView(ft.Container):
         """更新模型状态显示。
         
         Args:
-            status: 状态 ("loading", "downloading", "ready", "error", "need_download")
+            status: 状态 ("loading", "downloading", "ready", "unloaded", "error", "need_download")
             message: 状态消息
         """
         if status == "loading":
             self.model_status_icon.name = ft.Icons.HOURGLASS_EMPTY
             self.model_status_icon.color = ft.Colors.BLUE
             self.download_model_button.visible = False
+            self.load_model_button.visible = False
+            self.unload_model_button.visible = False
+            self.delete_model_button.visible = False
         elif status == "downloading":
             self.model_status_icon.name = ft.Icons.DOWNLOAD
             self.model_status_icon.color = ft.Colors.BLUE
             self.download_model_button.visible = False
+            self.load_model_button.visible = False
+            self.unload_model_button.visible = False
+            self.delete_model_button.visible = False
         elif status == "ready":
             self.model_status_icon.name = ft.Icons.CHECK_CIRCLE
             self.model_status_icon.color = ft.Colors.GREEN
             self.download_model_button.visible = False
+            self.load_model_button.visible = False
+            self.unload_model_button.visible = True  # 模型就绪时显示卸载按钮
+            self.delete_model_button.visible = True  # 模型就绪时显示删除按钮
+        elif status == "unloaded":
+            # 模型文件存在但未加载到内存
+            self.model_status_icon.name = ft.Icons.DOWNLOAD_DONE
+            self.model_status_icon.color = ft.Colors.GREY
+            self.download_model_button.visible = False
+            self.load_model_button.visible = True   # 显示加载按钮
+            self.unload_model_button.visible = False
+            self.delete_model_button.visible = True  # 显示删除按钮
         elif status == "error":
             self.model_status_icon.name = ft.Icons.ERROR
             self.model_status_icon.color = ft.Colors.RED
             self.download_model_button.visible = False
+            self.load_model_button.visible = False
+            self.unload_model_button.visible = False
+            self.delete_model_button.visible = False
         elif status == "need_download":
             self.model_status_icon.name = ft.Icons.WARNING
             self.model_status_icon.color = ft.Colors.ORANGE
             self.download_model_button.visible = True
+            self.load_model_button.visible = False
+            self.unload_model_button.visible = False
+            self.delete_model_button.visible = False
         
         self.model_status_text.value = message
         
@@ -469,6 +539,9 @@ class ImageBackgroundView(ft.Container):
             self.model_status_icon.update()
             self.model_status_text.update()
             self.download_model_button.update()
+            self.load_model_button.update()
+            self.unload_model_button.update()
+            self.delete_model_button.update()
         except:
             pass  # 控件还未添加到页面，忽略
     
@@ -533,6 +606,160 @@ class ImageBackgroundView(ft.Container):
         """
         if self.on_back:
             self.on_back()
+    
+    def _on_auto_load_change(self, e: ft.ControlEvent) -> None:
+        """自动加载模型复选框变化事件。
+        
+        Args:
+            e: 控件事件对象
+        """
+        auto_load = self.auto_load_checkbox.value
+        self.config_service.set_config_value("background_auto_load_model", auto_load)
+        
+        # 如果启用自动加载且模型文件存在但未加载，则加载模型
+        if auto_load and self.model_path.exists() and not self.bg_remover:
+            self._update_model_status("loading", "正在加载模型...")
+            threading.Thread(target=self._load_model_async, daemon=True).start()
+    
+    def _on_load_model(self, e: ft.ControlEvent) -> None:
+        """加载模型按钮点击事件。
+        
+        Args:
+            e: 控件事件对象
+        """
+        if self.model_path.exists() and not self.bg_remover:
+            self._update_model_status("loading", "正在加载模型...")
+            threading.Thread(target=self._load_model_async, daemon=True).start()
+        elif self.bg_remover:
+            self._show_snackbar("模型已加载", ft.Colors.ORANGE)
+        else:
+            self._show_snackbar("模型文件不存在", ft.Colors.RED)
+    
+    def _on_unload_model(self, e: ft.ControlEvent) -> None:
+        """卸载模型按钮点击事件。
+        
+        Args:
+            e: 控件事件对象
+        """
+        def confirm_unload(confirm_e: ft.ControlEvent) -> None:
+            """确认卸载。"""
+            dialog.open = False
+            self.page.update()
+            
+            # 卸载模型（释放内存）
+            if self.bg_remover:
+                self.bg_remover = None
+                gc.collect()
+                self._show_snackbar("模型已卸载", ft.Colors.GREEN)
+                
+                # 更新状态为已下载但未加载
+                self._update_model_status("unloaded", "模型已下载，未加载")
+                self._update_process_button()
+            else:
+                self._show_snackbar("模型未加载", ft.Colors.ORANGE)
+        
+        def cancel_unload(cancel_e: ft.ControlEvent) -> None:
+            """取消卸载。"""
+            dialog.open = False
+            self.page.update()
+        
+        # 显示确认对话框
+        dialog = ft.AlertDialog(
+            modal=True,
+            title=ft.Text("确认卸载模型"),
+            content=ft.Column(
+                controls=[
+                    ft.Text("确定要卸载背景移除模型吗？", size=14),
+                    ft.Container(height=PADDING_MEDIUM // 2),
+                    ft.Text("此操作将释放约400MB内存，不会删除模型文件。", size=12, color=TEXT_SECONDARY),
+                    ft.Text("需要时可以重新加载。", size=12, color=TEXT_SECONDARY),
+                ],
+                tight=True,
+                spacing=PADDING_MEDIUM // 2,
+            ),
+            actions=[
+                ft.TextButton("取消", on_click=cancel_unload),
+                ft.ElevatedButton(
+                    "卸载",
+                    icon=ft.Icons.POWER_SETTINGS_NEW,
+                    on_click=confirm_unload,
+                ),
+            ],
+            actions_alignment=ft.MainAxisAlignment.END,
+        )
+        
+        self.page.overlay.append(dialog)
+        dialog.open = True
+        self.page.update()
+    
+    def _on_delete_model(self, e: ft.ControlEvent) -> None:
+        """删除模型按钮点击事件。
+        
+        Args:
+            e: 控件事件对象
+        """
+        def confirm_delete(confirm_e: ft.ControlEvent) -> None:
+            """确认删除。"""
+            dialog.open = False
+            self.page.update()
+            
+            # 如果模型已加载，先卸载
+            if self.bg_remover:
+                self.bg_remover = None
+                gc.collect()
+            
+            # 删除模型文件
+            try:
+                if self.model_path.exists():
+                    self.model_path.unlink()
+                    self._show_snackbar("模型文件已删除", ft.Colors.GREEN)
+                    
+                    # 更新状态为需要下载
+                    self._update_model_status("need_download", "需要下载模型才能使用")
+                    self._update_process_button()
+                else:
+                    self._show_snackbar("模型文件不存在", ft.Colors.ORANGE)
+            except Exception as ex:
+                self._show_snackbar(f"删除模型失败: {ex}", ft.Colors.RED)
+        
+        def cancel_delete(cancel_e: ft.ControlEvent) -> None:
+            """取消删除。"""
+            dialog.open = False
+            self.page.update()
+        
+        # 显示确认对话框
+        dialog = ft.AlertDialog(
+            modal=True,
+            title=ft.Text("确认删除模型文件"),
+            content=ft.Column(
+                controls=[
+                    ft.Text("确定要删除背景移除模型文件吗？", size=14),
+                    ft.Container(height=PADDING_MEDIUM // 2),
+                    ft.Text("此操作将：", size=13, weight=ft.FontWeight.W_500),
+                    ft.Text("• 删除模型文件（约350MB）", size=12, color=TEXT_SECONDARY),
+                    ft.Text("• 如果模型已加载，将先卸载", size=12, color=TEXT_SECONDARY),
+                    ft.Container(height=PADDING_MEDIUM // 2),
+                    ft.Text("删除后需要重新下载才能使用。", size=12, color=ft.Colors.ERROR),
+                ],
+                tight=True,
+                spacing=PADDING_MEDIUM // 2,
+            ),
+            actions=[
+                ft.TextButton("取消", on_click=cancel_delete),
+                ft.ElevatedButton(
+                    "删除",
+                    icon=ft.Icons.DELETE,
+                    bgcolor=ft.Colors.ERROR,
+                    color=ft.Colors.ON_ERROR,
+                    on_click=confirm_delete,
+                ),
+            ],
+            actions_alignment=ft.MainAxisAlignment.END,
+        )
+        
+        self.page.overlay.append(dialog)
+        dialog.open = True
+        self.page.update()
     
     def _on_select_files(self, e: ft.ControlEvent) -> None:
         """选择文件按钮点击事件。

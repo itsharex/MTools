@@ -503,12 +503,16 @@ class BackgroundRemover:
         if not model_path.exists():
             raise FileNotFoundError(f"模型文件不存在: {model_path}")
         
+        # 设置日志级别为 ERROR，抑制警告信息
+        ort.set_default_logger_severity(3)  # 0=Verbose, 1=Info, 2=Warning, 3=Error, 4=Fatal
+        
         # 配置会话选项，启用内存优化
         sess_options = ort.SessionOptions()
         sess_options.enable_mem_pattern = True   # 启用内存模式优化
         sess_options.enable_mem_reuse = True     # 启用内存重用
         sess_options.enable_cpu_mem_arena = True # 启用CPU内存池
         sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+        sess_options.log_severity_level = 3      # 设置会话日志级别为 ERROR
         
         try:
             self.sess = ort.InferenceSession(
