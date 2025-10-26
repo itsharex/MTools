@@ -109,9 +109,24 @@ class ImageCompressView(ft.Container):
                     ],
                     spacing=PADDING_MEDIUM,
                 ),
+                # 支持格式说明
+                ft.Container(
+                    content=ft.Row(
+                        controls=[
+                            ft.Icon(ft.Icons.INFO_OUTLINE, size=16, color=TEXT_SECONDARY),
+                            ft.Text(
+                                "支持格式: JPG, PNG, WebP, GIF, TIFF, BMP, ICO, AVIF, HEIC 等",
+                                size=12,
+                                color=TEXT_SECONDARY,
+                            ),
+                        ],
+                        spacing=8,
+                    ),
+                    margin=ft.margin.only(left=4, bottom=4),
+                ),
                 ft.Container(
                     content=self.file_list_view,
-                    height=280,  # 增加高度以显示更多文件
+                    height=380,  # 文件列表高度
                     border=ft.border.all(1, ft.Colors.OUTLINE),
                     border_radius=BORDER_RADIUS_MEDIUM,
                     padding=PADDING_MEDIUM,
@@ -268,24 +283,35 @@ class ImageCompressView(ft.Container):
             ft.Container(
                 content=ft.Column(
                     controls=[
-                        ft.Container(height=40),  # 上方留白
                         ft.Icon(ft.Icons.IMAGE_OUTLINED, size=48, color=TEXT_SECONDARY),
                         ft.Text("未选择文件", color=TEXT_SECONDARY, size=14),
-                        ft.Text("点击上方按钮选择图片", color=TEXT_SECONDARY, size=12),
+                        ft.Text("点击此处选择图片", color=TEXT_SECONDARY, size=12),
                     ],
                     horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                    alignment=ft.MainAxisAlignment.CENTER,  # 垂直居中
                     spacing=PADDING_MEDIUM // 2,
                 ),
-                padding=PADDING_MEDIUM,
-                alignment=ft.alignment.top_center,
+                height=332,  # 380 - 2*24(padding) = 332
+                alignment=ft.alignment.center,
+                on_click=self._on_empty_area_click,
+                ink=True,  # 添加水波纹效果
             )
         )
+    
+    def _on_empty_area_click(self, e: ft.ControlEvent) -> None:
+        """点击空白区域，触发选择文件。"""
+        self._on_select_files(e)
     
     def _on_select_files(self, e: ft.ControlEvent) -> None:
         """选择文件按钮点击事件。"""
         def on_result(result: ft.FilePickerResultEvent) -> None:
             if result.files:
-                self.selected_files = [Path(f.path) for f in result.files]
+                # 追加新文件，而不是替换
+                new_files = [Path(f.path) for f in result.files]
+                for new_file in new_files:
+                    # 避免重复添加
+                    if new_file not in self.selected_files:
+                        self.selected_files.append(new_file)
                 self._update_file_list()
         
         picker = ft.FilePicker(on_result=on_result)
@@ -293,7 +319,7 @@ class ImageCompressView(ft.Container):
         self.page.update()
         picker.pick_files(
             dialog_title="选择图片文件",
-            allowed_extensions=["jpg", "jpeg", "png", "webp", "bmp"],
+            allowed_extensions=["jpg", "jpeg", "png", "webp", "bmp", "gif", "tiff", "tif", "ico", "avif", "heic", "heif"],
             allow_multiple=True,
         )
     
@@ -303,7 +329,7 @@ class ImageCompressView(ft.Container):
             if result.path:
                 folder = Path(result.path)
                 # 获取文件夹中的所有图片
-                extensions = [".jpg", ".jpeg", ".png", ".webp", ".bmp"]
+                extensions = [".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif", ".tiff", ".tif", ".ico", ".avif", ".heic", ".heif"]
                 self.selected_files = []
                 for ext in extensions:
                     self.selected_files.extend(folder.glob(f"*{ext}"))
@@ -325,16 +351,18 @@ class ImageCompressView(ft.Container):
                 ft.Container(
                     content=ft.Column(
                         controls=[
-                            ft.Container(height=40),  # 上方留白
                             ft.Icon(ft.Icons.IMAGE_OUTLINED, size=48, color=TEXT_SECONDARY),
                             ft.Text("未选择文件", color=TEXT_SECONDARY, size=14),
-                            ft.Text("点击上方按钮选择图片", color=TEXT_SECONDARY, size=12),
+                            ft.Text("点击此处选择图片", color=TEXT_SECONDARY, size=12),
                         ],
                         horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                        alignment=ft.MainAxisAlignment.CENTER,  # 垂直居中
                         spacing=PADDING_MEDIUM // 2,
                     ),
-                    padding=PADDING_MEDIUM,
-                    alignment=ft.alignment.top_center,
+                    height=332,  # 380 - 2*24(padding) = 332
+                    alignment=ft.alignment.center,
+                    on_click=self._on_empty_area_click,
+                    ink=True,  # 添加水波纹效果
                 )
             )
         else:
@@ -360,18 +388,19 @@ class ImageCompressView(ft.Container):
                     ft.Container(
                         content=ft.Row(
                             controls=[
-                                # 文件图标和序号
+                                # 序号
                                 ft.Container(
-                                    content=ft.Column(
-                                        controls=[
-                                            ft.Icon(ft.Icons.IMAGE, size=20, color=ft.Colors.PRIMARY),
-                                            ft.Text(str(idx + 1), size=10, color=TEXT_SECONDARY),
-                                        ],
-                                        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                                        spacing=2,
+                                    content=ft.Text(
+                                        str(idx + 1),
+                                        size=14,
+                                        weight=ft.FontWeight.W_500,
+                                        color=TEXT_SECONDARY,
                                     ),
-                                    width=40,
+                                    width=30,
+                                    alignment=ft.alignment.center,
                                 ),
+                                # 文件图标
+                                ft.Icon(ft.Icons.IMAGE, size=20, color=ft.Colors.PRIMARY),
                                 # 文件详细信息
                                 ft.Column(
                                     controls=[

@@ -113,23 +113,47 @@ class ImageService:
         """
         try:
             with Image.open(input_path) as img:
-                # 转换为 RGB（如果输出格式不支持透明度）
-                if output_path.suffix.lower() in ['.jpg', '.jpeg']:
+                ext = output_path.suffix.lower()
+                save_kwargs = {}
+                
+                # 根据目标格式处理图片模式和参数
+                if ext in ['.jpg', '.jpeg']:
+                    # JPEG 不支持透明通道
                     if img.mode in ('RGBA', 'LA', 'P'):
-                        # 创建白色背景
                         background = Image.new('RGB', img.size, (255, 255, 255))
                         if img.mode == 'P':
                             img = img.convert('RGBA')
-                        background.paste(img, mask=img.split()[-1] if img.mode == 'RGBA' else None)
+                        background.paste(img, mask=img.split()[-1] if img.mode in ('RGBA', 'LA') else None)
                         img = background
+                    save_kwargs = {'quality': quality, 'optimize': True, 'progressive': True}
                 
-                # 保存图片
-                save_kwargs = {'quality': quality, 'optimize': True}
+                elif ext == '.png':
+                    save_kwargs = {'optimize': True, 'compress_level': 9}
                 
-                if output_path.suffix.lower() == '.png':
-                    save_kwargs['compress_level'] = 9
-                elif output_path.suffix.lower() == '.webp':
-                    save_kwargs['method'] = 6
+                elif ext == '.webp':
+                    save_kwargs = {'quality': quality, 'method': 6, 'optimize': True}
+                
+                elif ext == '.gif':
+                    # GIF 需要调色板模式
+                    if img.mode != 'P':
+                        img = img.convert('P', palette=Image.Palette.ADAPTIVE, colors=256)
+                    save_kwargs = {'optimize': True, 'save_all': True}
+                
+                elif ext in ['.tiff', '.tif']:
+                    save_kwargs = {'quality': quality, 'compression': 'tiff_lzw', 'optimize': True}
+                
+                elif ext == '.bmp':
+                    # BMP 通常不支持压缩
+                    save_kwargs = {}
+                
+                elif ext == '.ico':
+                    save_kwargs = {}
+                
+                elif ext in ['.avif', '.heic', '.heif']:
+                    save_kwargs = {'quality': quality, 'optimize': True}
+                
+                else:
+                    save_kwargs = {'quality': quality, 'optimize': True}
                 
                 img.save(output_path, **save_kwargs)
             
@@ -213,10 +237,63 @@ class ImageService:
         """
         try:
             with Image.open(input_path) as img:
-                save_kwargs = {'quality': quality, 'optimize': True}
+                ext = output_path.suffix.lower()
+                save_kwargs = {}
                 
-                if output_path.suffix.lower() == '.png':
-                    save_kwargs['compress_level'] = 9
+                # 根据不同格式设置压缩参数
+                if ext == '.png':
+                    save_kwargs = {
+                        'optimize': True,
+                        'compress_level': 9
+                    }
+                elif ext in ['.jpg', '.jpeg']:
+                    save_kwargs = {
+                        'quality': quality,
+                        'optimize': True,
+                        'progressive': True
+                    }
+                    # JPEG 不支持透明通道，需要转换
+                    if img.mode in ('RGBA', 'LA', 'P'):
+                        background = Image.new('RGB', img.size, (255, 255, 255))
+                        if img.mode == 'P':
+                            img = img.convert('RGBA')
+                        background.paste(img, mask=img.split()[-1] if img.mode in ('RGBA', 'LA') else None)
+                        img = background
+                elif ext == '.webp':
+                    save_kwargs = {
+                        'quality': quality,
+                        'method': 6,  # 最慢但最好的压缩
+                        'optimize': True
+                    }
+                elif ext == '.gif':
+                    # GIF 需要保持调色板模式
+                    if img.mode != 'P':
+                        img = img.convert('P', palette=Image.Palette.ADAPTIVE, colors=256)
+                    save_kwargs = {
+                        'optimize': True,
+                        'save_all': True,  # 保存所有帧（动图）
+                    }
+                elif ext in ['.tiff', '.tif']:
+                    save_kwargs = {
+                        'quality': quality,
+                        'compression': 'tiff_lzw',  # 使用 LZW 压缩
+                        'optimize': True
+                    }
+                elif ext == '.ico':
+                    # ICO 格式通常用于小图标
+                    save_kwargs = {}
+                elif ext in ['.avif', '.heic', '.heif']:
+                    # 现代格式，高效压缩
+                    save_kwargs = {
+                        'quality': quality,
+                        'optimize': True
+                    }
+                else:
+                    # 默认设置
+                    save_kwargs = {
+                        'quality': quality,
+                        'optimize': True
+                    }
                 
                 img.save(output_path, **save_kwargs)
             
