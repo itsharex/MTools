@@ -76,7 +76,7 @@ class VideoView(ft.Container):
                 feature_cards,
             ],
             spacing=PADDING_MEDIUM,
-            scroll=ft.ScrollMode.HIDDEN,  # 隐藏滚动条
+            scroll=ft.ScrollMode.AUTO,  # 允许滚动
             horizontal_alignment=ft.CrossAxisAlignment.START,  # 从左对齐
             alignment=ft.MainAxisAlignment.START,  # 从上对齐
         )

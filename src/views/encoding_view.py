@@ -104,10 +104,9 @@ class EncodingView(ft.Container):
                 feature_cards,
             ],
             spacing=PADDING_MEDIUM,
-            scroll=ft.ScrollMode.HIDDEN,  # 隐藏滚动条
+            scroll=ft.ScrollMode.AUTO,  # 允许滚动
             horizontal_alignment=ft.CrossAxisAlignment.START,  # 从左对齐
             alignment=ft.MainAxisAlignment.START,  # 从上对齐
-            expand=True,  # 占满容器高度
         )
     
     def _open_convert_dialog(self, e: ft.ControlEvent) -> None:

@@ -138,6 +138,7 @@ class MainView(ft.Column):
         # 创建内容容器（先创建占位容器）
         self.content_container = ft.Container(
             expand=True,
+            alignment=ft.alignment.top_left,  # 内容从左上角开始
         )
         
         # 创建图片视图和编码视图，并传递容器引用
