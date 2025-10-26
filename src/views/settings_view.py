@@ -286,11 +286,11 @@ class SettingsView(ft.Container):
                 controls=[
                     ft.Radio(
                         value="default",
-                        label="使用默认目录（遵循系统规范）",
+                        label="默认路径",
                     ),
                     ft.Radio(
                         value="custom",
-                        label="使用自定义目录",
+                        label="自定义路径",
                     ),
                 ],
                 spacing=PADDING_MEDIUM,

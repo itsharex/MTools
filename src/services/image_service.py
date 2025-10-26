@@ -3,6 +3,7 @@
 提供图片格式转换、压缩、尺寸调整等功能。
 """
 
+import gc
 import os
 import platform
 import subprocess
@@ -10,6 +11,8 @@ import sys
 from pathlib import Path
 from typing import Optional, Tuple
 
+import cv2
+import numpy as np
 from PIL import Image
 
 
@@ -478,4 +481,191 @@ class ImageService:
                 }
         except Exception as e:
             return {'error': str(e)}
+
+
+class BackgroundRemover:
+    """背景移除器类。
+    
+    使用ONNX模型进行图像背景移除。
+    """
+    
+    def __init__(self, model_path: Path) -> None:
+        """初始化背景移除器。
+        
+        Args:
+            model_path: ONNX模型路径
+        """
+        try:
+            import onnxruntime as ort
+        except ImportError:
+            raise ImportError("需要安装 onnxruntime 库。请运行: pip install onnxruntime")
+        
+        if not model_path.exists():
+            raise FileNotFoundError(f"模型文件不存在: {model_path}")
+        
+        # 配置会话选项，启用内存优化
+        sess_options = ort.SessionOptions()
+        sess_options.enable_mem_pattern = True   # 启用内存模式优化
+        sess_options.enable_mem_reuse = True     # 启用内存重用
+        sess_options.enable_cpu_mem_arena = True # 启用CPU内存池
+        sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+        
+        try:
+            self.sess = ort.InferenceSession(
+                str(model_path),
+                sess_options=sess_options,
+                providers=['CPUExecutionProvider']  # 只使用CPU
+            )
+        except Exception as e:
+            raise RuntimeError(f"加载ONNX模型失败: {e}")
+        
+        self.input_name: str = self.sess.get_inputs()[0].name
+        self.output_name: str = self.sess.get_outputs()[0].name
+        self.model_input_size: Tuple[int, int] = (1024, 1024)
+    
+    def _preprocess_image(self, im: np.ndarray, model_input_size: Tuple[int, int]) -> np.ndarray:
+        """预处理图像，优化内存使用和性能。
+        
+        Args:
+            im: 输入图像数组
+            model_input_size: 模型输入尺寸
+        
+        Returns:
+            预处理后的图像张量
+        """
+        if len(im.shape) < 3:
+            im = im[:, :, np.newaxis]
+        
+        # 直接使用 cv2.resize，避免多次转换
+        resized_im = cv2.resize(im, (model_input_size[1], model_input_size[0]))
+        
+        # 一次性完成类型转换、归一化和维度变换
+        im_tensor = resized_im.astype(np.float32).transpose(2, 0, 1) / 255.0
+        
+        # 归一化
+        im_tensor = (im_tensor - 0.5) / 0.5
+        
+        # 添加批次维度
+        return np.expand_dims(im_tensor, axis=0)
+    
+    def _postprocess_image(self, result: np.ndarray, im_size: Tuple[int, int]) -> np.ndarray:
+        """后处理图像，优化性能。
+        
+        Args:
+            result: 模型输出结果
+            im_size: 原始图像尺寸
+        
+        Returns:
+            处理后的掩码图像
+        """
+        # 如果是3维或4维，取第一个通道作为掩码
+        if len(result.shape) > 2:
+            if len(result.shape) == 4:  # [B, C, H, W]
+                result = result[0, 0]  # 取第一个批次的第一个通道
+            elif len(result.shape) == 3:  # [C, H, W]
+                result = result[0]  # 取第一个通道
+        
+        # 确保结果在有效范围内并转换类型
+        result_image = np.clip(result * 255, 0, 255).astype(np.uint8)
+        
+        # 调整图像大小 - 掩码应该是2D的
+        if result_image.shape != im_size:
+            result_image = cv2.resize(result_image, (im_size[1], im_size[0]))
+        
+        return result_image
+    
+    def _clear_memory(self) -> None:
+        """清理内存。"""
+        try:
+            # 强制垃圾回收
+            gc.collect()
+        except Exception:
+            pass  # 静默处理清理异常
+    
+    def remove_background(self, image: Image.Image) -> Image.Image:
+        """处理图像并去除背景，返回RGBA格式的PIL图像。
+        
+        Args:
+            image: 输入的PIL图像
+        
+        Returns:
+            去除背景后的RGBA图像
+        """
+        try:
+            if image.mode != "RGB":
+                orig_im = image.convert("RGB")
+            else:
+                orig_im = image
+            
+            orig_im_size = orig_im.size[::-1]  # PIL size 是 (width, height)，需要反转为 (height, width)
+            
+            # 将 PIL 图像转换为 numpy 数组
+            image_np = np.array(orig_im)
+            
+            # 预处理图像
+            image_tensor = self._preprocess_image(image_np, self.model_input_size)
+            
+            # 模型推理
+            try:
+                result = self.sess.run([self.output_name], {self.input_name: image_tensor})[0]
+            except Exception as e:
+                raise RuntimeError(f"模型推理失败: {e}")
+            
+            # 后处理图像
+            mask = self._postprocess_image(result, orig_im_size)
+            
+            # 创建RGBA图像
+            rgba_image = Image.new("RGBA", orig_im.size)
+            rgba_image.paste(orig_im, (0, 0))
+            
+            # 应用掩码
+            mask_pil = Image.fromarray(mask, mode='L')
+            rgba_image.putalpha(mask_pil)
+            
+            return rgba_image
+        finally:
+            # 确保每次处理后都清理内存
+            self._clear_memory()
+    
+    def remove_background_batch(self, images: list[Image.Image]) -> list[Image.Image]:
+        """批量处理多个图像。
+        
+        Args:
+            images: 输入的PIL图像列表
+        
+        Returns:
+            去除背景后的RGBA图像列表
+        """
+        results = []
+        try:
+            for img in images:
+                # 单独处理每张图片
+                if img.mode != "RGB":
+                    orig_im = img.convert("RGB")
+                else:
+                    orig_im = img
+                
+                orig_im_size = orig_im.size[::-1]
+                image_np = np.array(orig_im)
+                image_tensor = self._preprocess_image(image_np, self.model_input_size)
+                
+                try:
+                    result = self.sess.run([self.output_name], {self.input_name: image_tensor})[0]
+                except Exception as e:
+                    raise RuntimeError(f"模型推理失败: {e}")
+                
+                mask = self._postprocess_image(result, orig_im_size)
+                rgba_image = Image.new("RGBA", orig_im.size)
+                rgba_image.paste(orig_im, (0, 0))
+                mask_pil = Image.fromarray(mask, mode='L')
+                rgba_image.putalpha(mask_pil)
+                results.append(rgba_image)
+                
+                # 每处理一张图片后进行一次轻量级清理
+                gc.collect()
+        finally:
+            # 批量处理完成后进行完整的内存清理
+            self._clear_memory()
+        
+        return results
 

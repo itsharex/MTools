@@ -14,6 +14,7 @@ from constants import (
     PADDING_XLARGE,
 )
 from services import ConfigService, ImageService
+from views.image_background_view import ImageBackgroundView
 from views.image_compress_view import ImageCompressView
 from views.image_format_view import ImageFormatView
 from views.image_resize_view import ImageResizeView
@@ -56,6 +57,7 @@ class ImageView(ft.Container):
         self.compress_view: Optional[ImageCompressView] = None
         self.resize_view: Optional[ImageResizeView] = None
         self.format_view: Optional[ImageFormatView] = None
+        self.background_view: Optional[ImageBackgroundView] = None
         
         # 记录当前显示的视图（用于状态恢复）
         self.current_sub_view: Optional[ft.Container] = None
@@ -88,6 +90,13 @@ class ImageView(ft.Container):
                     description="支持JPG、PNG、WebP等格式互转",
                     gradient_colors=("#4FACFE", "#00F2FE"),
                     on_click=self._open_format_dialog,
+                ),
+                FeatureCard(
+                    icon=ft.Icons.AUTO_FIX_HIGH,
+                    title="背景移除",
+                    description="AI智能抠图，一键去除背景",
+                    gradient_colors=("#FA709A", "#FEE140"),
+                    on_click=self._open_background_dialog,
                 ),
             ],
             wrap=True,  # 自动换行
@@ -184,6 +193,32 @@ class ImageView(ft.Container):
         
         # 切换到格式转换视图
         self.parent_container.content = self.format_view
+        self.parent_container.update()
+    
+    def _open_background_dialog(self, e: ft.ControlEvent) -> None:
+        """切换到背景移除工具界面。
+        
+        Args:
+            e: 控件事件对象
+        """
+        if not self.parent_container:
+            print("错误: 未设置父容器")
+            return
+        
+        # 创建背景移除视图（如果还没创建）
+        if not self.background_view:
+            self.background_view = ImageBackgroundView(
+                self.page,
+                self.config_service,
+                self.image_service,
+                on_back=self._back_to_main
+            )
+        
+        # 记录当前子视图
+        self.current_sub_view = self.background_view
+        
+        # 切换到背景移除视图
+        self.parent_container.content = self.background_view
         self.parent_container.update()
     
     def _back_to_main(self) -> None:
