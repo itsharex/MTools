@@ -4,7 +4,7 @@
 """
 
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Dict
 
 import flet as ft
 
@@ -12,12 +12,13 @@ from constants import (
     BORDER_RADIUS_MEDIUM,
     PADDING_LARGE,
     PADDING_MEDIUM,
+    PADDING_SMALL,
     PADDING_XLARGE,
     TEXT_PRIMARY,
     TEXT_SECONDARY,
 )
 from services import ConfigService, ImageService
-from utils import format_file_size
+from utils import format_file_size, GifUtils
 
 
 class ImageCompressView(ft.Container):
@@ -52,6 +53,8 @@ class ImageCompressView(ft.Container):
         self.on_back: Optional[callable] = on_back
         
         self.selected_files: List[Path] = []
+        # GIF 文件集合
+        self.gif_files: set = set()
         
         self.expand: bool = True
         # 右侧多留一些空间给滚动条
@@ -363,6 +366,7 @@ class ImageCompressView(ft.Container):
     def _update_file_list(self) -> None:
         """更新文件列表显示。"""
         self.file_list_view.controls.clear()
+        self.gif_files.clear()  # 清除 GIF 文件记录
         
         if not self.selected_files:
             # 空状态 - 使用和文件列表相同的Container结构，确保宽度一致
@@ -536,12 +540,18 @@ class ImageCompressView(ft.Container):
         total_original = 0
         total_compressed = 0
         
+        skipped_gifs = 0
         for i, input_path in enumerate(self.selected_files):
             # 更新进度
             self.progress_text.value = f"正在压缩 ({i+1}/{total}): {input_path.name}"
             self.progress_bar.value = (i + 1) / total
             self.progress_text.update()
             self.progress_bar.update()
+            
+            # 检查是否为 GIF，跳过
+            if GifUtils.is_animated_gif(input_path):
+                skipped_gifs += 1
+                continue
             
             # 确定输出路径
             if output_mode == "overwrite":
@@ -580,8 +590,12 @@ class ImageCompressView(ft.Container):
                 f"压缩后: {format_file_size(total_compressed)}\n"
                 f"减小: {total_ratio:.1f}%"
             )
+            if skipped_gifs > 0:
+                result_message += f"\n跳过 GIF: {skipped_gifs}个"
         else:
             result_message = f"压缩完成！成功: {success_count}/{total}"
+            if skipped_gifs > 0:
+                result_message += f" (跳过 GIF: {skipped_gifs}个)"
         
         self.progress_text.value = result_message
         self.progress_text.update()

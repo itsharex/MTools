@@ -4,20 +4,22 @@
 """
 
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Dict
 
 import flet as ft
+from PIL import Image
 
 from constants import (
     BORDER_RADIUS_MEDIUM,
     PADDING_LARGE,
     PADDING_MEDIUM,
+    PADDING_SMALL,
     PADDING_XLARGE,
     TEXT_PRIMARY,
     TEXT_SECONDARY,
 )
 from services import ConfigService, ImageService
-from utils import format_file_size
+from utils import format_file_size, GifUtils
 
 
 class ImageResizeView(ft.Container):
@@ -52,6 +54,8 @@ class ImageResizeView(ft.Container):
         self.on_back: Optional[callable] = on_back
         
         self.selected_files: List[Path] = []
+        # GIF 文件映射：{文件路径: (是否GIF, 帧数)}
+        self.gif_info: Dict[str, tuple] = {}
         
         self.expand: bool = True
         # 右侧多留一些空间给滚动条
@@ -274,6 +278,26 @@ class ImageResizeView(ft.Container):
             height=320,  # 固定高度
         )
         
+        # GIF 信息提示（初始隐藏）
+        self.gif_info_banner = ft.Container(
+            content=ft.Row(
+                controls=[
+                    ft.Icon(ft.Icons.GIF_BOX, size=20, color=ft.Colors.PRIMARY),
+                    ft.Text(
+                        "检测到 GIF 文件，将自动调整所有帧的尺寸",
+                        size=13,
+                        color=TEXT_PRIMARY,
+                    ),
+                ],
+                spacing=8,
+            ),
+            padding=PADDING_MEDIUM,
+            border=ft.border.all(1, ft.Colors.PRIMARY),
+            border_radius=BORDER_RADIUS_MEDIUM,
+            bgcolor=ft.Colors.with_opacity(0.05, ft.Colors.PRIMARY),
+            visible=False,
+        )
+        
         # 底部按钮 - 大号主按钮
         self.resize_button = ft.Container(
             content=ft.ElevatedButton(
@@ -302,6 +326,7 @@ class ImageResizeView(ft.Container):
         scrollable_content = ft.Column(
             controls=[
                 file_select_area,
+                self.gif_info_banner,
                 ft.Row(
                     controls=[
                         self.resize_options,
@@ -352,6 +377,77 @@ class ImageResizeView(ft.Container):
                 ink=True,
             )
         )
+    
+    def _resize_gif(self, input_path: Path, output_path: Path, width: Optional[int], height: Optional[int], keep_aspect: bool) -> bool:
+        """调整 GIF 所有帧的尺寸。
+        
+        Args:
+            input_path: 输入 GIF 路径
+            output_path: 输出 GIF 路径
+            width: 目标宽度
+            height: 目标高度
+            keep_aspect: 是否保持宽高比
+            
+        Returns:
+            是否成功
+        """
+        try:
+            with Image.open(input_path) as gif:
+                # 获取 GIF 参数
+                duration = gif.info.get('duration', 100)
+                loop = gif.info.get('loop', 0)
+                
+                # 获取所有帧
+                frames = GifUtils.extract_all_frames(input_path)
+                if not frames:
+                    return False
+                
+                # 计算目标尺寸
+                first_frame = frames[0]
+                orig_width, orig_height = first_frame.size
+                
+                if width and height:
+                    if keep_aspect:
+                        # 保持宽高比，以最小的缩放比例为准
+                        ratio = min(width / orig_width, height / orig_height)
+                        target_width = int(orig_width * ratio)
+                        target_height = int(orig_height * ratio)
+                    else:
+                        target_width = width
+                        target_height = height
+                elif width:
+                    ratio = width / orig_width
+                    target_width = width
+                    target_height = int(orig_height * ratio)
+                elif height:
+                    ratio = height / orig_height
+                    target_width = int(orig_width * ratio)
+                    target_height = height
+                else:
+                    return False
+                
+                # 调整所有帧的尺寸
+                resized_frames = []
+                for frame in frames:
+                    resized = frame.resize((target_width, target_height), Image.Resampling.LANCZOS)
+                    resized_frames.append(resized)
+                
+                # 保存为 GIF
+                if resized_frames:
+                    resized_frames[0].save(
+                        output_path,
+                        save_all=True,
+                        append_images=resized_frames[1:],
+                        duration=duration,
+                        loop=loop,
+                        optimize=False,
+                    )
+                    return True
+                
+                return False
+        except Exception as e:
+            print(f"调整 GIF 尺寸失败: {e}")
+            return False
     
     def _on_back_click(self, e: ft.ControlEvent) -> None:
         """返回按钮点击事件。"""
@@ -407,6 +503,7 @@ class ImageResizeView(ft.Container):
     def _update_file_list(self) -> None:
         """更新文件列表显示。"""
         self.file_list_view.controls.clear()
+        self.gif_info.clear()  # 清除 GIF 信息
         
         if not self.selected_files:
             self.file_list_view.controls.append(
@@ -434,11 +531,20 @@ class ImageResizeView(ft.Container):
                 
                 img_info = self.image_service.get_image_info(file_path)
                 
+                # 检测是否为 GIF
+                is_gif = GifUtils.is_animated_gif(file_path)
+                if is_gif:
+                    frame_count = GifUtils.get_frame_count(file_path)
+                    self.gif_info[str(file_path)] = (True, frame_count)
+                
                 if 'error' not in img_info:
                     format_str = img_info.get('format', '未知')
                     width = img_info.get('width', 0)
                     height = img_info.get('height', 0)
-                    dimension_str = f"{width} × {height}"
+                    if is_gif:
+                        dimension_str = f"{width} × {height} · {frame_count}帧"
+                    else:
+                        dimension_str = f"{width} × {height}"
                 else:
                     format_str = file_path.suffix.upper().lstrip('.')
                     dimension_str = "无法读取"
@@ -502,6 +608,22 @@ class ImageResizeView(ft.Container):
                 )
         
         self.file_list_view.update()
+        
+        # 更新 GIF 提示横幅
+        if self.gif_info:
+            gif_count = len(self.gif_info)
+            total_frames = sum(info[1] for info in self.gif_info.values())
+            self.gif_info_banner.content.controls[1].value = (
+                f"检测到 {gif_count} 个 GIF 文件（共 {total_frames} 帧），将自动调整所有帧的尺寸"
+            )
+            self.gif_info_banner.visible = True
+        else:
+            self.gif_info_banner.visible = False
+        
+        try:
+            self.gif_info_banner.update()
+        except:
+            pass
     
     def _remove_file(self, file_path: Path) -> None:
         """移除单个文件。"""
@@ -638,6 +760,9 @@ class ImageResizeView(ft.Container):
                     output_dir = Path(self.custom_output_dir.value) if self.custom_output_dir.value else file_path.parent
                     output_path = output_dir / file_path.name
                 
+                # 检查是否为 GIF
+                is_gif = str(file_path) in self.gif_info
+                
                 # 如果是百分比模式，计算实际尺寸
                 if mode == "percentage":
                     img_info = self.image_service.get_image_info(file_path)
@@ -650,13 +775,18 @@ class ImageResizeView(ft.Container):
                         keep_aspect = False  # 已经计算好了宽高
                 
                 # 调整尺寸
-                result = self.image_service.resize_image(
-                    file_path,
-                    output_path,
-                    width=width,
-                    height=height,
-                    keep_aspect=keep_aspect
-                )
+                if is_gif:
+                    # GIF 处理：调整所有帧
+                    result = self._resize_gif(file_path, output_path, width, height, keep_aspect)
+                else:
+                    # 普通图片处理
+                    result = self.image_service.resize_image(
+                        file_path,
+                        output_path,
+                        width=width,
+                        height=height,
+                        keep_aspect=keep_aspect
+                    )
                 
                 if result:
                     success_count += 1
