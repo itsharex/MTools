@@ -145,13 +145,13 @@ class ImagePuzzleMergeView(ft.Container):
         
         # 中间：合并选项
         self.merge_direction: ft.RadioGroup = ft.RadioGroup(
-            content=ft.Column(
+            content=ft.Row(
                 controls=[
                     ft.Radio(value="horizontal", label="横向排列"),
                     ft.Radio(value="vertical", label="纵向排列"),
                     ft.Radio(value="grid", label="网格排列"),
                 ],
-                spacing=PADDING_MEDIUM // 2,
+                spacing=PADDING_MEDIUM,
             ),
             value="horizontal",
             on_change=self._on_option_change,
@@ -223,14 +223,16 @@ class ImagePuzzleMergeView(ft.Container):
             on_change=self._on_option_change,
         )
         
-        # 参数区域：自动换行
+        # 参数区域：横向排列
         options_area: ft.Column = ft.Column(
             controls=[
                 ft.Row(
                     controls=[
+                        ft.Text("排列方式:", size=14, weight=ft.FontWeight.W_500),
                         self.merge_direction,
-                        self.merge_cols,
+                        ft.VerticalDivider(width=1),
                         self.merge_spacing_input,
+                        self.merge_cols,
                         self.merge_bg_color,
                         self.custom_color_r,
                         self.custom_color_g,
@@ -239,6 +241,7 @@ class ImagePuzzleMergeView(ft.Container):
                     wrap=True,
                     spacing=PADDING_MEDIUM,
                     run_spacing=PADDING_MEDIUM,
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
                 ),
                 ft.Container(height=PADDING_SMALL),
                 ft.Row(
