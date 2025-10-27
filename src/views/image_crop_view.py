@@ -949,6 +949,9 @@ class ImageCropView(ft.Container):
             return
         
         try:
+            # 显示处理进度
+            self._show_message(f"正在处理 {self.gif_frame_count} 帧...", ft.Colors.BLUE)
+            
             # 打开原始 GIF
             with Image.open(self.selected_file) as gif:
                 # 获取 GIF 参数

@@ -1213,16 +1213,22 @@ class ImageBackgroundView(ft.Container):
             
             for i, file_path in enumerate(self.selected_files):
                 try:
-                    # 更新进度
-                    progress = i / total_files
-                    self._update_progress(progress, f"正在处理: {file_path.name} ({i+1}/{total_files})")
+                    # 检查是否是 GIF，如果是则显示帧信息
+                    is_gif = GifUtils.is_animated_gif(file_path)
+                    if is_gif:
+                        frame_index = self.gif_frame_selection.get(str(file_path), 0)
+                        progress = i / total_files
+                        self._update_progress(progress, f"正在处理 GIF (帧 {frame_index + 1}): {file_path.name} ({i+1}/{total_files})")
+                    else:
+                        # 更新进度
+                        progress = i / total_files
+                        self._update_progress(progress, f"正在处理: {file_path.name} ({i+1}/{total_files})")
                     
                     # 读取图片
                     from PIL import Image
                     
                     # 检查是否是 GIF，如果是则提取指定帧
-                    if GifUtils.is_animated_gif(file_path):
-                        frame_index = self.gif_frame_selection.get(str(file_path), 0)
+                    if is_gif:
                         image = GifUtils.extract_frame(file_path, frame_index)
                         if image is None:
                             print(f"提取 GIF 帧失败: {file_path.name}")

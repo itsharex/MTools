@@ -778,6 +778,11 @@ class ImageResizeView(ft.Container):
                 # 调整尺寸
                 if is_gif:
                     # GIF 处理：调整所有帧
+                    gif_data = self.gif_info.get(str(file_path))
+                    frame_count = gif_data[1] if gif_data else 0
+                    if frame_count > 0:
+                        self.progress_text.value = f"正在处理 GIF ({frame_count} 帧)..."
+                        self.progress_text.update()
                     result = self._resize_gif(file_path, output_path, width, height, keep_aspect)
                 else:
                     # 普通图片处理

@@ -803,8 +803,17 @@ class ImageFormatView(ft.Container):
         success_count: int = 0
         
         for i, input_path in enumerate(self.selected_files):
-            # 更新进度
-            self.progress_text.value = f"正在转换 ({i+1}/{total}): {input_path.name}"
+            # 检查是否是 GIF → 静态格式的转换
+            is_gif = GifUtils.is_animated_gif(input_path)
+            is_target_static = target_format != ".gif"
+            
+            # 更新进度（如果是 GIF 转换则显示帧信息）
+            if is_gif and is_target_static:
+                frame_index = self.gif_frame_selection.get(str(input_path), 0)
+                self.progress_text.value = f"正在转换 GIF (帧 {frame_index + 1}) ({i+1}/{total}): {input_path.name}"
+            else:
+                self.progress_text.value = f"正在转换 ({i+1}/{total}): {input_path.name}"
+            
             self.progress_bar.value = (i + 1) / total
             self.progress_text.update()
             self.progress_bar.update()
@@ -818,10 +827,6 @@ class ImageFormatView(ft.Container):
             # 如果目标格式和源格式相同，跳过
             if input_path.suffix.lower() == target_format.lower():
                 continue
-            
-            # 检查是否是 GIF → 静态格式的转换
-            is_gif = GifUtils.is_animated_gif(input_path)
-            is_target_static = target_format != ".gif"
             
             if is_gif and is_target_static:
                 # GIF → 静态格式：提取指定帧后转换

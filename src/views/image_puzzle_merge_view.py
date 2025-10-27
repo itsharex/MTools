@@ -746,6 +746,10 @@ class ImagePuzzleMergeView(ft.Container):
                 keep_animation = self.keep_gif_animation.value
                 
                 if keep_animation and self.gif_info:
+                    # 获取总帧数（以最长的GIF为准）
+                    max_frames = max(info[1] for info in self.gif_info.values())
+                    self._show_snackbar(f"正在生成 GIF 动画 ({max_frames} 帧)...", ft.Colors.BLUE)
+                    
                     # 生成GIF动画
                     result_frames, duration = self._merge_as_gif(direction, spacing, grid_cols, bg_color, custom_rgb)
                     if result_frames:
@@ -1119,6 +1123,11 @@ class ImagePuzzleMergeView(ft.Container):
                 b = int(self.custom_color_b.value or 255)
                 r, g, b = max(0, min(255, r)), max(0, min(255, g)), max(0, min(255, b))
                 custom_rgb = (r, g, b)
+            
+            # 显示处理进度
+            if self.gif_info:
+                max_frames = max(info[1] for info in self.gif_info.values())
+                self._show_snackbar(f"正在保存 GIF ({max_frames} 帧)...", ft.Colors.BLUE)
             
             # 重新生成 GIF 帧
             result_frames, duration = self._merge_as_gif(direction, spacing, grid_cols, bg_color, custom_rgb)
