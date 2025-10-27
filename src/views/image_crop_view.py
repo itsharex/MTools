@@ -46,6 +46,9 @@ class ImageCropView(ft.Container):
         self.selected_file: Optional[Path] = None
         self.original_image: Optional[Image.Image] = None
         
+        # 预览文件路径（用于清理）
+        self._last_preview_path: Optional[str] = None
+        
         # 裁剪参数（像素值）
         self.crop_x: int = 0
         self.crop_y: int = 0
@@ -69,6 +72,8 @@ class ImageCropView(ft.Container):
         
         # 调整大小状态
         self.resize_mode: Optional[str] = None  # 'se', 'sw', 'ne', 'nw'
+        self.crop_start_width: int = 0
+        self.crop_start_height: int = 0
         
         # 创建UI组件
         self._build_ui()
@@ -470,12 +475,14 @@ class ImageCropView(ft.Container):
         self.crop_x = new_x
         self.crop_y = new_y
         
+        # 拖动时只更新裁剪框位置，不更新预览（避免CPU飙升）
         self._update_crop_box_position()
-        self._update_preview()
     
     def _on_crop_pan_end(self, e: ft.DragEndEvent) -> None:
         """拖动结束。"""
         self.is_dragging = False
+        # 拖动结束后更新预览
+        self._update_preview()
     
     def _on_resize_start(self, e: ft.DragStartEvent, mode: str) -> None:
         """开始调整大小。"""
@@ -484,6 +491,9 @@ class ImageCropView(ft.Container):
         self.drag_start_y = e.global_y
         self.crop_start_x = self.crop_x
         self.crop_start_y = self.crop_y
+        # 记录初始宽高（用于计算调整量）
+        self.crop_start_width = self.crop_width
+        self.crop_start_height = self.crop_height
     
     def _on_resize_update(self, e: ft.DragUpdateEvent, mode: str) -> None:
         """调整大小中。"""
@@ -507,10 +517,10 @@ class ImageCropView(ft.Container):
         dx_img = int(dx / scale_x)
         dy_img = int(dy / scale_y)
         
-        # 右下角：调整宽高
+        # 右下角：调整宽高（基于初始值计算，避免累积误差）
         if mode == 'se':
-            new_w = self.crop_width + dx_img
-            new_h = self.crop_height + dy_img
+            new_w = self.crop_start_width + dx_img
+            new_h = self.crop_start_height + dy_img
             
             # 边界检查（确保不超出图片）
             new_w = max(50, min(new_w, img_w - self.crop_x))
@@ -519,12 +529,14 @@ class ImageCropView(ft.Container):
             self.crop_width = new_w
             self.crop_height = new_h
         
+        # 调整大小时只更新裁剪框位置，不更新预览（避免CPU飙升）
         self._update_crop_box_position()
-        self._update_preview()
     
     def _on_resize_end(self, e: ft.DragEndEvent) -> None:
         """调整大小结束。"""
         self.resize_mode = None
+        # 调整大小结束后更新预览
+        self._update_preview()
     
     def _update_preview(self) -> None:
         """更新预览。"""
@@ -543,13 +555,19 @@ class ImageCropView(ft.Container):
             preview_path = Path("storage/temp") / f"crop_preview_{timestamp}.png"
             preview_path.parent.mkdir(parents=True, exist_ok=True)
             
-            for old_file in preview_path.parent.glob("crop_preview_*.png"):
+            # 删除当前预览的旧文件（如果存在）
+            if hasattr(self, '_last_preview_path') and self._last_preview_path:
                 try:
-                    old_file.unlink()
+                    old_path = Path(self._last_preview_path)
+                    if old_path.exists():
+                        old_path.unlink()
                 except:
                     pass
             
+            # 保存新预览
             cropped.save(preview_path)
+            self._last_preview_path = str(preview_path)
+            
             self.preview_image_widget.src = str(preview_path)
             self.preview_image_widget.visible = True
             self.preview_info_text.value = f"裁剪尺寸: {self.crop_width} × {self.crop_height} 像素"
