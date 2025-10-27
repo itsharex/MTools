@@ -22,6 +22,7 @@ from constants import (
     TEXT_SECONDARY,
 )
 from services import ConfigService, ImageService
+from utils import GifUtils
 
 # 屏蔽 libpng 的 iCCP 警告
 warnings.filterwarnings("ignore", message=".*iCCP.*", category=UserWarning)
@@ -60,6 +61,11 @@ class ImageCropView(ft.Container):
         
         # 预览文件路径（用于清理）
         self._last_preview_path: Optional[str] = None
+        
+        # GIF 相关
+        self.is_animated_gif: bool = False
+        self.gif_frame_count: int = 1
+        self.current_frame_index: int = 0
         
         # 裁剪参数（像素值）
         self.crop_x: int = 0
@@ -345,6 +351,79 @@ class ImageCropView(ft.Container):
             border_radius=BORDER_RADIUS_MEDIUM,
         )
         
+        # GIF 帧选择器（初始隐藏）
+        self.gif_frame_input: ft.TextField = ft.TextField(
+            value="1",
+            width=60,
+            text_align=ft.TextAlign.CENTER,
+            on_submit=self._on_frame_input_submit,
+            dense=True,
+        )
+        
+        self.gif_total_frames_text: ft.Text = ft.Text("/ 1", size=14)
+        
+        self.gif_frame_selector: ft.Container = ft.Container(
+            content=ft.Column(
+                controls=[
+                    ft.Text("GIF 帧选择", size=14, weight=ft.FontWeight.W_500),
+                    ft.Container(height=PADDING_SMALL),
+                    ft.Row(
+                        controls=[
+                            ft.IconButton(
+                                icon=ft.Icons.SKIP_PREVIOUS,
+                                on_click=self._on_prev_frame,
+                                tooltip="上一帧",
+                            ),
+                            ft.Text("帧:", size=14),
+                            self.gif_frame_input,
+                            self.gif_total_frames_text,
+                            ft.IconButton(
+                                icon=ft.Icons.SKIP_NEXT,
+                                on_click=self._on_next_frame,
+                                tooltip="下一帧",
+                            ),
+                        ],
+                        alignment=ft.MainAxisAlignment.CENTER,
+                        spacing=4,
+                    ),
+                ],
+                horizontal_alignment=ft.CrossAxisAlignment.START,
+                spacing=0,
+            ),
+            padding=PADDING_MEDIUM,
+            border=ft.border.all(1, ft.Colors.OUTLINE_VARIANT),
+            border_radius=BORDER_RADIUS_MEDIUM,
+            visible=False,
+        )
+        
+        # GIF 导出选项（初始隐藏）
+        self.gif_export_mode: ft.RadioGroup = ft.RadioGroup(
+            content=ft.Column(
+                controls=[
+                    ft.Radio(value="current_frame", label="当前帧（静态图片）"),
+                    ft.Radio(value="all_frames", label="所有帧（保留动画）"),
+                ],
+                spacing=PADDING_SMALL,
+            ),
+            value="current_frame",
+        )
+        
+        self.gif_export_options: ft.Container = ft.Container(
+            content=ft.Column(
+                controls=[
+                    ft.Text("导出选项", size=14, weight=ft.FontWeight.W_500),
+                    ft.Container(height=PADDING_SMALL),
+                    self.gif_export_mode,
+                ],
+                horizontal_alignment=ft.CrossAxisAlignment.START,
+                spacing=0,
+            ),
+            padding=PADDING_MEDIUM,
+            border=ft.border.all(1, ft.Colors.OUTLINE_VARIANT),
+            border_radius=BORDER_RADIUS_MEDIUM,
+            visible=False,
+        )
+        
         # 控制按钮（垂直排列，更紧凑）
         select_button = ft.ElevatedButton(
             text="选择图片",
@@ -377,16 +456,18 @@ class ImageCropView(ft.Container):
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
         )
         
-        # 右侧区域（预览 + 按钮）
+        # 右侧区域（GIF帧选择 + GIF导出选项 + 预览 + 按钮）
         right_side = ft.Container(
             content=ft.Column(
                 controls=[
+                    self.gif_frame_selector,
+                    self.gif_export_options,
                     preview_area,
                     ft.Container(height=PADDING_MEDIUM),
                     button_area,
                 ],
                 horizontal_alignment=ft.CrossAxisAlignment.START,
-                spacing=0,
+                spacing=PADDING_MEDIUM,
             ),
             width=380,
             padding=ft.padding.only(right=PADDING_LARGE),
@@ -447,7 +528,7 @@ class ImageCropView(ft.Container):
         self.page.update()
         file_picker.pick_files(
             dialog_title="选择图片",
-            allowed_extensions=["jpg", "jpeg", "png", "bmp", "webp"],
+            allowed_extensions=["jpg", "jpeg", "png", "bmp", "webp", "gif"],
             allow_multiple=False,
         )
     
@@ -459,7 +540,24 @@ class ImageCropView(ft.Container):
         try:
             file_path = Path(e.files[0].path)
             self.selected_file = file_path
-            self.original_image = Image.open(file_path)
+            
+            # 检测是否为动态 GIF
+            self.is_animated_gif = GifUtils.is_animated_gif(file_path)
+            if self.is_animated_gif:
+                self.gif_frame_count = GifUtils.get_frame_count(file_path)
+                self.current_frame_index = 0
+                # 提取第一帧
+                self.original_image = GifUtils.extract_frame(file_path, 0)
+                # 显示 GIF 帧选择器和导出选项
+                self.gif_frame_selector.visible = True
+                self.gif_export_options.visible = True
+                self.gif_frame_input.value = "1"
+                self.gif_total_frames_text.value = f"/ {self.gif_frame_count}"
+            else:
+                self.original_image = Image.open(file_path)
+                # 隐藏 GIF 帧选择器和导出选项
+                self.gif_frame_selector.visible = False
+                self.gif_export_options.visible = False
             
             # 获取图片尺寸
             img_w, img_h = self.original_image.width, self.original_image.height
@@ -473,8 +571,15 @@ class ImageCropView(ft.Container):
             self.crop_canvas.width = self.canvas_width
             self.crop_canvas.height = self.canvas_height
             
-            # 显示原图
-            self.original_image_widget.src = str(file_path)
+            # 显示原图（GIF 需要保存临时帧）
+            if self.is_animated_gif:
+                # 保存当前帧为临时文件
+                temp_frame_path = self.config_service.get_temp_dir() / f"gif_frame_{self.current_frame_index}.png"
+                self.original_image.save(temp_frame_path)
+                self.original_image_widget.src = str(temp_frame_path)
+            else:
+                self.original_image_widget.src = str(file_path)
+            
             self.original_image_widget.visible = True
             self.empty_state_widget.visible = False
             
@@ -775,14 +880,21 @@ class ImageCropView(ft.Container):
             return
         
         try:
-            default_filename = f"{self.selected_file.stem}_cropped.png"
+            # 根据 GIF 导出模式决定默认文件名和扩展名
+            if self.is_animated_gif and self.gif_export_mode.value == "all_frames":
+                default_filename = f"{self.selected_file.stem}_cropped.gif"
+                allowed_extensions = ["gif"]
+            else:
+                default_filename = f"{self.selected_file.stem}_cropped.png"
+                allowed_extensions = ["png", "jpg", "jpeg", "webp"]
+            
             file_picker = ft.FilePicker(on_result=self._on_save_file_selected)
             self.page.overlay.append(file_picker)
             self.page.update()
             file_picker.save_file(
                 dialog_title="保存裁剪结果",
                 file_name=default_filename,
-                allowed_extensions=["png", "jpg", "jpeg", "webp"],
+                allowed_extensions=allowed_extensions,
             )
         except Exception as ex:
             print(f"保存失败: {ex}")
@@ -793,13 +905,19 @@ class ImageCropView(ft.Container):
             return
         
         try:
-            cropped = self.original_image.crop((
-                self.crop_x, self.crop_y,
-                self.crop_x + self.crop_width,
-                self.crop_y + self.crop_height,
-            ))
             output_path = Path(e.path)
-            cropped.save(output_path)
+            
+            # 如果是 GIF 且选择导出所有帧
+            if self.is_animated_gif and self.gif_export_mode.value == "all_frames":
+                self._save_as_gif(output_path)
+            else:
+                # 保存当前帧（或静态图片）
+                cropped = self.original_image.crop((
+                    self.crop_x, self.crop_y,
+                    self.crop_x + self.crop_width,
+                    self.crop_y + self.crop_height,
+                ))
+                cropped.save(output_path)
             
             if hasattr(self.page, 'snack_bar'):
                 self.page.snack_bar = ft.SnackBar(content=ft.Text(f"已保存: {output_path.name}"))
@@ -807,6 +925,116 @@ class ImageCropView(ft.Container):
                 self.page.update()
         except Exception as ex:
             print(f"保存失败: {ex}")
+            self._show_message(f"保存失败: {str(ex)}", ft.Colors.RED)
+    
+    def _save_as_gif(self, output_path: Path) -> None:
+        """保存为 GIF 动画（裁剪所有帧）。
+        
+        Args:
+            output_path: 输出路径
+        """
+        if not self.selected_file or not self.is_animated_gif:
+            return
+        
+        try:
+            # 打开原始 GIF
+            with Image.open(self.selected_file) as gif:
+                # 获取 GIF 参数
+                duration = gif.info.get('duration', 100)
+                loop = gif.info.get('loop', 0)
+                
+                # 裁剪所有帧
+                cropped_frames = []
+                for frame_idx in range(self.gif_frame_count):
+                    # 提取帧
+                    frame = GifUtils.extract_frame(self.selected_file, frame_idx)
+                    if frame is None:
+                        continue
+                    
+                    # 裁剪
+                    cropped = frame.crop((
+                        self.crop_x, self.crop_y,
+                        self.crop_x + self.crop_width,
+                        self.crop_y + self.crop_height,
+                    ))
+                    cropped_frames.append(cropped)
+                
+                # 保存为 GIF
+                if cropped_frames:
+                    cropped_frames[0].save(
+                        output_path,
+                        save_all=True,
+                        append_images=cropped_frames[1:],
+                        duration=duration,
+                        loop=loop,
+                        optimize=False,
+                    )
+        except Exception as ex:
+            raise Exception(f"导出 GIF 失败: {str(ex)}")
+    
+    def _on_prev_frame(self, e: ft.ControlEvent) -> None:
+        """切换到上一帧。"""
+        if not self.is_animated_gif or not self.selected_file:
+            return
+        
+        # 切换帧索引
+        self.current_frame_index = (self.current_frame_index - 1) % self.gif_frame_count
+        self._load_gif_frame()
+    
+    def _on_next_frame(self, e: ft.ControlEvent) -> None:
+        """切换到下一帧。"""
+        if not self.is_animated_gif or not self.selected_file:
+            return
+        
+        # 切换帧索引
+        self.current_frame_index = (self.current_frame_index + 1) % self.gif_frame_count
+        self._load_gif_frame()
+    
+    def _on_frame_input_submit(self, e: ft.ControlEvent) -> None:
+        """手动输入帧号并回车时的事件。"""
+        if not self.is_animated_gif or self.gif_frame_count <= 1:
+            return
+        
+        try:
+            frame_num = int(self.gif_frame_input.value)
+            if 1 <= frame_num <= self.gif_frame_count:
+                self.current_frame_index = frame_num - 1
+                self._load_gif_frame()
+            else:
+                self._show_message(f"帧号必须在 1 到 {self.gif_frame_count} 之间", ft.Colors.ORANGE)
+                self.gif_frame_input.value = str(self.current_frame_index + 1)
+                self.page.update()
+        except ValueError:
+            self._show_message("请输入有效的数字", ft.Colors.ORANGE)
+            self.gif_frame_input.value = str(self.current_frame_index + 1)
+            self.page.update()
+    
+    def _load_gif_frame(self) -> None:
+        """加载指定帧。"""
+        if not self.selected_file or not self.is_animated_gif:
+            return
+        
+        try:
+            # 提取指定帧
+            self.original_image = GifUtils.extract_frame(self.selected_file, self.current_frame_index)
+            if self.original_image is None:
+                return
+            
+            # 保存当前帧为临时文件
+            temp_frame_path = self.config_service.get_temp_dir() / f"gif_frame_{self.current_frame_index}.png"
+            self.original_image.save(temp_frame_path)
+            self.original_image_widget.src = str(temp_frame_path)
+            
+            # 更新帧输入框
+            self.gif_frame_input.value = str(self.current_frame_index + 1)
+            
+            # 更新裁剪框和预览
+            self._update_crop_box_position()
+            self._update_preview()
+            
+            self.page.update()
+        except Exception as ex:
+            print(f"加载帧失败: {ex}")
     
     def _on_keyboard(self, e: ft.KeyboardEvent) -> None:
         """键盘事件处理（支持 WASD 精调裁剪框位置）。

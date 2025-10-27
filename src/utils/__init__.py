@@ -10,6 +10,7 @@ from .file_utils import (
     list_files_by_extension,
     move_file,
 )
+from .gif_utils import GifUtils
 
 __all__ = [
     "ensure_dir",
@@ -20,5 +21,6 @@ __all__ = [
     "move_file",
     "get_file_extension",
     "list_files_by_extension",
+    "GifUtils",
 ]
 
