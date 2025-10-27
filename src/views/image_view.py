@@ -16,6 +16,7 @@ from constants import (
 from services import ConfigService, ImageService
 from views.image_background_view import ImageBackgroundView
 from views.image_compress_view import ImageCompressView
+from views.image_crop_view import ImageCropView
 from views.image_format_view import ImageFormatView
 from views.image_puzzle_view import ImagePuzzleView
 from views.image_resize_view import ImageResizeView
@@ -60,6 +61,7 @@ class ImageView(ft.Container):
         self.format_view: Optional[ImageFormatView] = None
         self.background_view: Optional[ImageBackgroundView] = None
         self.puzzle_view: Optional[ImagePuzzleView] = None
+        self.crop_view: Optional[ImageCropView] = None
         
         # 记录当前显示的视图（用于状态恢复）
         self.current_sub_view: Optional[ft.Container] = None
@@ -106,6 +108,13 @@ class ImageView(ft.Container):
                     description="九宫格切分、多图合并拼接",
                     gradient_colors=("#43E97B", "#38F9D7"),
                     on_click=self._open_puzzle_dialog,
+                ),
+                FeatureCard(
+                    icon=ft.Icons.CROP,
+                    title="图片裁剪",
+                    description="可视化裁剪，实时预览效果",
+                    gradient_colors=("#A8EDEA", "#FED6E3"),
+                    on_click=self._open_crop_dialog,
                 ),
             ],
             wrap=True,  # 自动换行
@@ -268,6 +277,32 @@ class ImageView(ft.Container):
         
         # 切换到拼接视图
         self.parent_container.content = self.puzzle_view
+        self.parent_container.update()
+    
+    def _open_crop_dialog(self, e: ft.ControlEvent) -> None:
+        """切换到图片裁剪工具界面。
+        
+        Args:
+            e: 控件事件对象
+        """
+        if not self.parent_container:
+            print("错误: 未设置父容器")
+            return
+        
+        # 创建裁剪视图（如果还没创建）
+        if not self.crop_view:
+            self.crop_view = ImageCropView(
+                self.page,
+                self.config_service,
+                self.image_service,
+                on_back=self._back_to_main
+            )
+        
+        # 记录当前子视图
+        self.current_sub_view = self.crop_view
+        
+        # 切换到裁剪视图
+        self.parent_container.content = self.crop_view
         self.parent_container.update()
     
     def _back_to_main(self) -> None:

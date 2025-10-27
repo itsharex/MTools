@@ -1,0 +1,626 @@
+"""图片裁剪视图模块。
+
+提供可视化的图片裁剪功能，支持拖动裁剪框。
+"""
+
+import os
+import subprocess
+from pathlib import Path
+from typing import Callable, Optional
+
+import flet as ft
+from PIL import Image
+
+from constants import PADDING_LARGE, PADDING_MEDIUM, PADDING_SMALL, PADDING_XLARGE
+from services import ConfigService, ImageService
+
+
+class ImageCropView(ft.Container):
+    """图片裁剪视图类。
+    
+    提供可拖动的裁剪框功能。
+    """
+
+    def __init__(
+        self,
+        page: ft.Page,
+        config_service: ConfigService,
+        image_service: ImageService,
+        on_back: Optional[Callable[[], None]] = None,
+    ) -> None:
+        """初始化图片裁剪视图。"""
+        super().__init__()
+        self.page: ft.Page = page
+        self.config_service: ConfigService = config_service
+        self.image_service: ImageService = image_service
+        self.on_back: Optional[Callable[[], None]] = on_back
+        self.expand: bool = True
+        self.padding: ft.padding = ft.padding.only(
+            left=PADDING_XLARGE,
+            right=PADDING_XLARGE + 16,
+            top=PADDING_XLARGE,
+            bottom=PADDING_XLARGE
+        )
+        
+        # 选中的文件
+        self.selected_file: Optional[Path] = None
+        self.original_image: Optional[Image.Image] = None
+        
+        # 裁剪参数（像素值）
+        self.crop_x: int = 0
+        self.crop_y: int = 0
+        self.crop_width: int = 200
+        self.crop_height: int = 200
+        
+        # 显示尺寸（动态调整，适配图片大小）
+        # 最大尺寸限制（考虑窗口大小和其他UI元素）
+        self.max_canvas_width: int = 900
+        self.max_canvas_height: int = 600
+        # 初始尺寸（空状态时的默认大小，加载图片后会动态调整）
+        self.canvas_width: int = 600
+        self.canvas_height: int = 400
+        
+        # 拖动状态
+        self.is_dragging: bool = False
+        self.drag_start_x: float = 0
+        self.drag_start_y: float = 0
+        self.crop_start_x: int = 0
+        self.crop_start_y: int = 0
+        
+        # 调整大小状态
+        self.resize_mode: Optional[str] = None  # 'se', 'sw', 'ne', 'nw'
+        
+        # 创建UI组件
+        self._build_ui()
+    
+    def _build_ui(self) -> None:
+        """构建用户界面。"""
+        # 标题栏
+        header: ft.Row = ft.Row(
+            controls=[
+                ft.IconButton(
+                    icon=ft.Icons.ARROW_BACK,
+                    on_click=self._on_back_click,
+                    tooltip="返回",
+                ),
+                ft.Text("图片裁剪 - 拖动裁剪框调整区域", size=24, weight=ft.FontWeight.BOLD),
+            ],
+            spacing=PADDING_MEDIUM,
+        )
+        
+        # 空状态（占满画布）
+        self.empty_state_widget: ft.Container = ft.Container(
+            content=ft.Column(
+                controls=[
+                    ft.Icon(ft.Icons.ADD_PHOTO_ALTERNATE_OUTLINED, size=64, color=ft.Colors.ON_SURFACE_VARIANT),
+                    ft.Text("点击下方「选择图片」按钮开始裁剪", size=16, color=ft.Colors.ON_SURFACE_VARIANT),
+                ],
+                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                spacing=PADDING_MEDIUM,
+            ),
+            alignment=ft.alignment.center,
+            expand=True,  # 占满整个 Stack
+        )
+        
+        # 原图显示（居中保持比例）
+        self.original_image_widget: ft.Image = ft.Image(
+            fit=ft.ImageFit.CONTAIN,
+            visible=False,
+        )
+        
+        # 图片在画布中的实际显示位置和大小
+        self.img_display_x: float = 0
+        self.img_display_y: float = 0
+        self.img_display_width: float = 0
+        self.img_display_height: float = 0
+        
+        # 裁剪框的四个角控制点
+        handle_size = 12
+        
+        # 裁剪框容器（可拖动）- 包装在 Container 中以支持绝对定位
+        self.crop_box_container: ft.Container = ft.Container(
+            content=ft.GestureDetector(
+                content=ft.Container(
+                    border=ft.border.all(3, ft.Colors.PRIMARY),
+                    bgcolor="#40FFFFFF",  # 半透明白色
+                ),
+                on_pan_start=self._on_crop_pan_start,
+                on_pan_update=self._on_crop_pan_update,
+                on_pan_end=self._on_crop_pan_end,
+            ),
+            top=0,
+            left=0,
+            width=200,
+            height=200,
+            visible=False,  # 初始不可见，加载图片后显示
+        )
+        
+        # 右下角控制点（调整大小）- 包装在 Container 中
+        self.resize_handle_container: ft.Container = ft.Container(
+            content=ft.GestureDetector(
+                content=ft.Container(
+                    width=handle_size,
+                    height=handle_size,
+                    bgcolor=ft.Colors.PRIMARY,
+                    border_radius=handle_size // 2,
+                ),
+                on_pan_start=lambda e: self._on_resize_start(e, 'se'),
+                on_pan_update=lambda e: self._on_resize_update(e, 'se'),
+                on_pan_end=self._on_resize_end,
+            ),
+            top=0,
+            left=0,
+            visible=False,  # 初始不可见，加载图片后显示
+        )
+        
+        # 裁剪信息显示
+        self.crop_info_text: ft.Text = ft.Text(
+            "",
+            size=14,
+            color=ft.Colors.PRIMARY,
+            weight=ft.FontWeight.BOLD,
+            bgcolor="#FFFFFFFF",
+            visible=False,
+        )
+        
+        # 使用 Stack 叠加
+        self.crop_canvas: ft.Stack = ft.Stack(
+            controls=[
+                self.original_image_widget,
+                self.crop_box_container,
+                self.resize_handle_container,
+                ft.Container(content=self.crop_info_text, padding=8, top=10, left=10),
+            ],
+            # 不设置固定尺寸，由外层容器控制
+        )
+        
+        # 裁剪区域（动态尺寸）
+        self.canvas_container: ft.Container = ft.Container(
+            content=ft.Stack(
+                controls=[self.empty_state_widget, self.crop_canvas],
+            ),
+            border=ft.border.all(1, ft.Colors.OUTLINE),
+            border_radius=8,
+            width=self.canvas_width,
+            height=self.canvas_height,
+            alignment=ft.alignment.center,
+        )
+        
+        # 包装在容器中以保持居中和边距
+        crop_area: ft.Container = ft.Container(
+            content=ft.Column(
+                controls=[
+                    ft.Text("拖动蓝框调整裁剪区域", size=16, weight=ft.FontWeight.BOLD),
+                    ft.Container(height=PADDING_SMALL),
+                    self.canvas_container,
+                ],
+                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                spacing=0,
+            ),
+            alignment=ft.alignment.center,
+            padding=ft.padding.symmetric(horizontal=PADDING_XLARGE),
+        )
+        
+        # 预览区域（下半部分）
+        self.preview_image_widget: ft.Image = ft.Image(
+            width=400,
+            height=400,
+            fit=ft.ImageFit.CONTAIN,
+            visible=False,
+        )
+        
+        self.preview_info_text: ft.Text = ft.Text(
+            "选择图片后拖动裁剪框查看效果",
+            size=12,
+            color=ft.Colors.ON_SURFACE_VARIANT,
+            text_align=ft.TextAlign.CENTER,
+        )
+        
+        # 包装预览区域以保持居中和边距
+        preview_area: ft.Container = ft.Container(
+            content=ft.Column(
+                controls=[
+                    ft.Text("裁剪预览", size=16, weight=ft.FontWeight.BOLD),
+                    ft.Container(height=PADDING_SMALL),
+                    ft.Container(
+                        content=self.preview_image_widget,
+                        border=ft.border.all(1, ft.Colors.OUTLINE),
+                        border_radius=8,
+                        alignment=ft.alignment.center,
+                        width=400,
+                        height=400,
+                        on_click=self._on_preview_click,
+                        tooltip="点击用系统默认应用打开",
+                        ink=True,
+                    ),
+                    ft.Container(height=PADDING_SMALL),
+                    self.preview_info_text,
+                ],
+                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                spacing=0,
+            ),
+            alignment=ft.alignment.center,
+            padding=ft.padding.symmetric(horizontal=PADDING_XLARGE),
+        )
+        
+        # 控制按钮
+        select_button = ft.OutlinedButton(
+            text="选择图片",
+            icon=ft.Icons.UPLOAD_FILE,
+            on_click=self._on_select_file,
+        )
+        reset_button = ft.OutlinedButton(
+            text="重置",
+            icon=ft.Icons.REFRESH,
+            on_click=self._on_reset,
+        )
+        
+        self.save_button = ft.FilledButton(
+            text="导出裁剪结果",
+            icon=ft.Icons.SAVE,
+            on_click=self._on_save_result,
+            disabled=True,
+            height=48,
+        )
+        
+        button_row = ft.Row(
+            controls=[select_button, reset_button, self.save_button],
+            spacing=PADDING_MEDIUM,
+            alignment=ft.MainAxisAlignment.CENTER,
+        )
+        
+        # 组装 - 上下布局
+        self.content = ft.Column(
+            controls=[
+                header,
+                ft.Container(height=PADDING_MEDIUM),
+                crop_area,
+                ft.Container(height=PADDING_LARGE),
+                preview_area,
+                ft.Container(height=PADDING_LARGE),
+                button_row,
+            ],
+            spacing=0,
+            scroll=ft.ScrollMode.ADAPTIVE,
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+        )
+    
+    def _calculate_canvas_size(self, img_width: int, img_height: int) -> tuple[int, int]:
+        """计算合适的画布尺寸（适配图片大小但不超出最大限制）。
+        
+        Args:
+            img_width: 图片宽度
+            img_height: 图片高度
+        
+        Returns:
+            (画布宽度, 画布高度)
+        """
+        # 如果图片小于最大限制，使用图片实际尺寸
+        if img_width <= self.max_canvas_width and img_height <= self.max_canvas_height:
+            return img_width, img_height
+        
+        # 如果图片超出限制，按比例缩放
+        width_ratio = self.max_canvas_width / img_width
+        height_ratio = self.max_canvas_height / img_height
+        scale = min(width_ratio, height_ratio)
+        
+        return int(img_width * scale), int(img_height * scale)
+    
+    def _on_back_click(self, e: ft.ControlEvent) -> None:
+        """返回。"""
+        if self.on_back:
+            self.on_back()
+    
+    def _on_select_file(self, e: ft.ControlEvent) -> None:
+        """选择文件。"""
+        file_picker = ft.FilePicker(on_result=self._on_file_selected)
+        self.page.overlay.append(file_picker)
+        self.page.update()
+        file_picker.pick_files(
+            dialog_title="选择图片",
+            allowed_extensions=["jpg", "jpeg", "png", "bmp", "webp"],
+            allow_multiple=False,
+        )
+    
+    def _on_file_selected(self, e: ft.FilePickerResultEvent) -> None:
+        """文件选择完成。"""
+        if not e.files:
+            return
+        
+        try:
+            file_path = Path(e.files[0].path)
+            self.selected_file = file_path
+            self.original_image = Image.open(file_path)
+            
+            # 获取图片尺寸
+            img_w, img_h = self.original_image.width, self.original_image.height
+            
+            # 计算合适的画布尺寸
+            self.canvas_width, self.canvas_height = self._calculate_canvas_size(img_w, img_h)
+            
+            # 更新画布容器尺寸
+            self.canvas_container.width = self.canvas_width
+            self.canvas_container.height = self.canvas_height
+            
+            # 更新 Stack 尺寸（确保裁剪框可以正确定位）
+            self.crop_canvas.width = self.canvas_width
+            self.crop_canvas.height = self.canvas_height
+            
+            # 显示原图
+            self.original_image_widget.src = str(file_path)
+            self.original_image_widget.visible = True
+            self.empty_state_widget.visible = False
+            
+            # 初始化裁剪框（居中，1/2大小）
+            self.crop_width = min(img_w // 2, 400)
+            self.crop_height = min(img_h // 2, 400)
+            self.crop_x = (img_w - self.crop_width) // 2
+            self.crop_y = (img_h - self.crop_height) // 2
+            
+            # 更新裁剪框显示
+            self._update_crop_box_position()
+            self._update_preview()
+            
+            self.save_button.disabled = False
+            self.page.update()
+            
+        except Exception as ex:
+            print(f"加载失败: {ex}")
+    
+    def _calculate_image_display_bounds(self) -> None:
+        """计算图片在画布中的实际显示位置和大小。"""
+        if not self.original_image:
+            return
+        
+        img_w, img_h = self.original_image.width, self.original_image.height
+        img_ratio = img_w / img_h
+        canvas_ratio = self.canvas_width / self.canvas_height
+        
+        # 根据 CONTAIN 模式计算实际显示大小
+        if img_ratio > canvas_ratio:
+            # 图片更宽，以画布宽度为准
+            self.img_display_width = self.canvas_width
+            self.img_display_height = self.canvas_width / img_ratio
+            self.img_display_x = 0
+            self.img_display_y = (self.canvas_height - self.img_display_height) / 2
+        else:
+            # 图片更高，以画布高度为准
+            self.img_display_width = self.canvas_height * img_ratio
+            self.img_display_height = self.canvas_height
+            self.img_display_x = (self.canvas_width - self.img_display_width) / 2
+            self.img_display_y = 0
+    
+    def _update_crop_box_position(self) -> None:
+        """更新裁剪框在画布上的位置。"""
+        if not self.original_image:
+            return
+        
+        # 计算图片在画布中的实际显示区域
+        self._calculate_image_display_bounds()
+        
+        # 计算缩放比例
+        img_w, img_h = self.original_image.width, self.original_image.height
+        scale_x = self.img_display_width / img_w
+        scale_y = self.img_display_height / img_h
+        
+        # 设置裁剪框位置和大小（加上图片偏移量）
+        box_left = self.img_display_x + self.crop_x * scale_x
+        box_top = self.img_display_y + self.crop_y * scale_y
+        box_w = self.crop_width * scale_x
+        box_h = self.crop_height * scale_y
+        
+        self.crop_box_container.top = box_top
+        self.crop_box_container.left = box_left
+        self.crop_box_container.width = box_w
+        self.crop_box_container.height = box_h
+        self.crop_box_container.visible = True  # 显示裁剪框
+        
+        # 设置右下角控制点位置
+        self.resize_handle_container.top = box_top + box_h - 6
+        self.resize_handle_container.left = box_left + box_w - 6
+        self.resize_handle_container.visible = True  # 显示控制点
+        
+        # 更新信息
+        self.crop_info_text.value = f"{self.crop_width} × {self.crop_height} px"
+        self.crop_info_text.visible = True
+        
+        try:
+            self.page.update()
+        except:
+            pass
+    
+    def _on_crop_pan_start(self, e: ft.DragStartEvent) -> None:
+        """开始拖动裁剪框。"""
+        self.is_dragging = True
+        self.drag_start_x = e.global_x
+        self.drag_start_y = e.global_y
+        self.crop_start_x = self.crop_x
+        self.crop_start_y = self.crop_y
+    
+    def _on_crop_pan_update(self, e: ft.DragUpdateEvent) -> None:
+        """拖动裁剪框中。"""
+        if not self.is_dragging or not self.original_image:
+            return
+        
+        # 计算移动距离
+        dx = e.global_x - self.drag_start_x
+        dy = e.global_y - self.drag_start_y
+        
+        # 计算缩放比例（显示尺寸到图片尺寸）
+        img_w, img_h = self.original_image.width, self.original_image.height
+        
+        if self.img_display_width > 0:
+            scale_x = self.img_display_width / img_w
+            scale_y = self.img_display_height / img_h
+        else:
+            scale_x = scale_y = 1
+        
+        # 转换为图片坐标
+        dx_img = int(dx / scale_x)
+        dy_img = int(dy / scale_y)
+        
+        # 更新裁剪坐标
+        new_x = self.crop_start_x + dx_img
+        new_y = self.crop_start_y + dy_img
+        
+        # 边界检查（确保不超出图片）
+        new_x = max(0, min(new_x, img_w - self.crop_width))
+        new_y = max(0, min(new_y, img_h - self.crop_height))
+        
+        self.crop_x = new_x
+        self.crop_y = new_y
+        
+        self._update_crop_box_position()
+        self._update_preview()
+    
+    def _on_crop_pan_end(self, e: ft.DragEndEvent) -> None:
+        """拖动结束。"""
+        self.is_dragging = False
+    
+    def _on_resize_start(self, e: ft.DragStartEvent, mode: str) -> None:
+        """开始调整大小。"""
+        self.resize_mode = mode
+        self.drag_start_x = e.global_x
+        self.drag_start_y = e.global_y
+        self.crop_start_x = self.crop_x
+        self.crop_start_y = self.crop_y
+    
+    def _on_resize_update(self, e: ft.DragUpdateEvent, mode: str) -> None:
+        """调整大小中。"""
+        if not self.resize_mode or not self.original_image:
+            return
+        
+        # 计算移动距离
+        dx = e.global_x - self.drag_start_x
+        dy = e.global_y - self.drag_start_y
+        
+        # 计算缩放比例（显示尺寸到图片尺寸）
+        img_w, img_h = self.original_image.width, self.original_image.height
+        
+        if self.img_display_width > 0:
+            scale_x = self.img_display_width / img_w
+            scale_y = self.img_display_height / img_h
+        else:
+            scale_x = scale_y = 1
+        
+        # 转换为图片坐标
+        dx_img = int(dx / scale_x)
+        dy_img = int(dy / scale_y)
+        
+        # 右下角：调整宽高
+        if mode == 'se':
+            new_w = self.crop_width + dx_img
+            new_h = self.crop_height + dy_img
+            
+            # 边界检查（确保不超出图片）
+            new_w = max(50, min(new_w, img_w - self.crop_x))
+            new_h = max(50, min(new_h, img_h - self.crop_y))
+            
+            self.crop_width = new_w
+            self.crop_height = new_h
+        
+        self._update_crop_box_position()
+        self._update_preview()
+    
+    def _on_resize_end(self, e: ft.DragEndEvent) -> None:
+        """调整大小结束。"""
+        self.resize_mode = None
+    
+    def _update_preview(self) -> None:
+        """更新预览。"""
+        if not self.original_image:
+            return
+        
+        try:
+            cropped = self.original_image.crop((
+                self.crop_x, self.crop_y,
+                self.crop_x + self.crop_width,
+                self.crop_y + self.crop_height,
+            ))
+            
+            import time
+            timestamp = int(time.time() * 1000)
+            preview_path = Path("storage/temp") / f"crop_preview_{timestamp}.png"
+            preview_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            for old_file in preview_path.parent.glob("crop_preview_*.png"):
+                try:
+                    old_file.unlink()
+                except:
+                    pass
+            
+            cropped.save(preview_path)
+            self.preview_image_widget.src = str(preview_path)
+            self.preview_image_widget.visible = True
+            self.preview_info_text.value = f"裁剪尺寸: {self.crop_width} × {self.crop_height} 像素"
+            
+            try:
+                self.page.update()
+            except:
+                pass
+        except Exception as ex:
+            print(f"预览失败: {ex}")
+    
+    def _on_preview_click(self, e: ft.ControlEvent) -> None:
+        """点击预览。"""
+        if not self.preview_image_widget.src:
+            return
+        preview_path = Path(self.preview_image_widget.src)
+        if preview_path.exists():
+            if os.name == 'nt':
+                os.startfile(preview_path)
+            elif os.name == 'posix':
+                subprocess.run(['open' if os.uname().sysname == 'Darwin' else 'xdg-open', str(preview_path)])
+    
+    def _on_reset(self, e: ft.ControlEvent) -> None:
+        """重置。"""
+        if not self.original_image:
+            return
+        
+        img_w, img_h = self.original_image.width, self.original_image.height
+        self.crop_width = min(img_w // 2, 400)
+        self.crop_height = min(img_h // 2, 400)
+        self.crop_x = (img_w - self.crop_width) // 2
+        self.crop_y = (img_h - self.crop_height) // 2
+        
+        self._update_crop_box_position()
+        self._update_preview()
+    
+    def _on_save_result(self, e: ft.ControlEvent) -> None:
+        """保存。"""
+        if not self.original_image or not self.selected_file:
+            return
+        
+        try:
+            default_filename = f"{self.selected_file.stem}_cropped.png"
+            file_picker = ft.FilePicker(on_result=self._on_save_file_selected)
+            self.page.overlay.append(file_picker)
+            self.page.update()
+            file_picker.save_file(
+                dialog_title="保存裁剪结果",
+                file_name=default_filename,
+                allowed_extensions=["png", "jpg", "jpeg", "webp"],
+            )
+        except Exception as ex:
+            print(f"保存失败: {ex}")
+    
+    def _on_save_file_selected(self, e: ft.FilePickerResultEvent) -> None:
+        """保存文件选择完成。"""
+        if not e.path:
+            return
+        
+        try:
+            cropped = self.original_image.crop((
+                self.crop_x, self.crop_y,
+                self.crop_x + self.crop_width,
+                self.crop_y + self.crop_height,
+            ))
+            output_path = Path(e.path)
+            cropped.save(output_path)
+            
+            if hasattr(self.page, 'snack_bar'):
+                self.page.snack_bar = ft.SnackBar(content=ft.Text(f"已保存: {output_path.name}"))
+                self.page.snack_bar.open = True
+                self.page.update()
+        except Exception as ex:
+            print(f"保存失败: {ex}")
