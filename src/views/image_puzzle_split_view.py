@@ -165,6 +165,47 @@ class ImagePuzzleSplitView(ft.Container):
             horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
         )
         
+        # GIF 帧选择器
+        self.gif_frame_input: ft.TextField = ft.TextField(
+            value="1",
+            width=60,
+            text_align=ft.TextAlign.CENTER,
+            dense=True,
+            keyboard_type=ft.KeyboardType.NUMBER,
+            on_submit=self._on_frame_input_submit,
+        )
+        
+        self.gif_total_frames_text: ft.Text = ft.Text("", size=12, color=TEXT_SECONDARY)
+        
+        self.gif_frame_selector: ft.Container = ft.Container(
+            content=ft.Row(
+                controls=[
+                    ft.Icon(ft.Icons.INFO_OUTLINE, size=16, color=ft.Colors.ORANGE),
+                    ft.Text("GIF 文件 - 选择要切分的帧:", size=12, color=TEXT_SECONDARY),
+                    ft.IconButton(
+                        icon=ft.Icons.SKIP_PREVIOUS,
+                        icon_size=16,
+                        on_click=self._on_gif_prev_frame,
+                        tooltip="上一帧",
+                    ),
+                    self.gif_frame_input,
+                    self.gif_total_frames_text,
+                    ft.IconButton(
+                        icon=ft.Icons.SKIP_NEXT,
+                        icon_size=16,
+                        on_click=self._on_gif_next_frame,
+                        tooltip="下一帧",
+                    ),
+                ],
+                spacing=PADDING_SMALL,
+            ),
+            padding=PADDING_MEDIUM // 2,
+            border_radius=BORDER_RADIUS_MEDIUM,
+            bgcolor=ft.Colors.with_opacity(0.05, ft.Colors.ORANGE),
+            visible=False,
+            margin=ft.margin.only(bottom=PADDING_MEDIUM),
+        )
+        
         # 参数输入
         self.split_rows: ft.TextField = ft.TextField(
             label="行数",
@@ -271,6 +312,14 @@ class ImagePuzzleSplitView(ft.Container):
             on_change=self._on_option_change,
         )
         
+        # GIF 动画保留选项
+        self.keep_gif_animation: ft.Checkbox = ft.Checkbox(
+            label="保留 GIF 动画",
+            value=False,
+            visible=False,
+            on_change=self._on_option_change,
+        )
+        
         # 不透明度控制
         self.piece_opacity_input: ft.TextField = ft.TextField(
             label="切块不透明度",
@@ -306,6 +355,7 @@ class ImagePuzzleSplitView(ft.Container):
                 self.bg_image_button,
                 self.bg_opacity_input,
                 self.split_shuffle,
+                self.keep_gif_animation,
                 ft.ElevatedButton(
                     content=ft.Row(
                         controls=[
@@ -386,7 +436,13 @@ class ImagePuzzleSplitView(ft.Container):
         
         # 下部：参数设置
         bottom_content: ft.Container = ft.Container(
-            content=options_area,
+            content=ft.Column(
+                controls=[
+                    self.gif_frame_selector,
+                    options_area,
+                ],
+                spacing=0,
+            ),
             padding=PADDING_MEDIUM,
         )
         
@@ -513,6 +569,12 @@ class ImagePuzzleSplitView(ft.Container):
                     self.gif_frame_count = GifUtils.get_frame_count(self.selected_file)
                     self.current_frame_index = 0
                     
+                    # 显示 GIF 帧选择器和动画保留选项
+                    self.gif_frame_selector.visible = True
+                    self.gif_frame_input.value = "1"
+                    self.gif_total_frames_text.value = f"/ {self.gif_frame_count}"
+                    self.keep_gif_animation.visible = True
+                    
                     # 提取第一帧并保存为临时文件
                     try:
                         frame_image = GifUtils.extract_frame(self.selected_file, 0)
@@ -529,7 +591,12 @@ class ImagePuzzleSplitView(ft.Container):
                         self.empty_state_widget.controls[1].value = "GIF 加载失败"
                         self.empty_state_widget.controls[2].value = f"无法提取 GIF 帧: {e}"
                         self.original_image_widget.visible = False
+                        self.gif_frame_selector.visible = False
+                        self.keep_gif_animation.visible = False
                 else:
+                    # 隐藏 GIF 帧选择器和动画保留选项
+                    self.gif_frame_selector.visible = False
+                    self.keep_gif_animation.visible = False
                     # 显示原图预览
                     try:
                         self.original_image_widget.src = self.selected_file
@@ -719,9 +786,12 @@ class ImagePuzzleSplitView(ft.Container):
                 
                 # 应用背景透明度
                 if bg_opacity < 255:
-                    alpha = bg_img.split()[3]
-                    alpha = alpha.point(lambda p: int(p * bg_opacity / 255))
-                    bg_img.putalpha(alpha)
+                    # 获取当前 alpha 通道
+                    r, g, b, a = bg_img.split()
+                    # 创建新的 alpha 通道，直接设置为 bg_opacity
+                    # 如果原图有透明区域，则保留原有的透明度信息
+                    new_alpha = a.point(lambda p: min(int(p * bg_opacity / 255), bg_opacity))
+                    bg_img = Image.merge('RGBA', (r, g, b, new_alpha))
                 
                 result = bg_img
             except Exception:
@@ -872,11 +942,36 @@ class ImagePuzzleSplitView(ft.Container):
             self._show_snackbar("没有可保存的预览图片", ft.Colors.ORANGE)
             return
         
-        # 生成默认文件名：原文件名_split.png
+        # 检查是否需要保存为 GIF 动画
+        save_as_gif = self.is_animated_gif and self.keep_gif_animation.value
+        
+        # 检查是否使用了透明度效果
+        has_transparency = (
+            int(self.piece_opacity_input.value or 100) < 100 or
+            int(self.bg_opacity_input.value or 100) < 100 or
+            self.split_bg_color.value == "transparent"
+        )
+        
+        # 生成默认文件名：原文件名_split.扩展名
         default_filename = "split_result.png"
+        allowed_extensions = ["png", "jpg", "jpeg"]
+        
         if self.selected_file:
-            original_stem = self.selected_file.stem  # 获取不含扩展名的文件名
-            default_filename = f"{original_stem}_split.png"
+            original_stem = self.selected_file.stem
+            if save_as_gif:
+                default_filename = f"{original_stem}_split.gif"
+                allowed_extensions = ["gif"]
+            else:
+                default_filename = f"{original_stem}_split.png"
+                # 如果使用了透明度，只允许保存为 PNG
+                if has_transparency:
+                    allowed_extensions = ["png"]
+        else:
+            if save_as_gif:
+                default_filename = "split_result.gif"
+                allowed_extensions = ["gif"]
+            elif has_transparency:
+                allowed_extensions = ["png"]
         
         def on_result(result: ft.FilePickerResultEvent) -> None:
             if result.path:
@@ -885,11 +980,22 @@ class ImagePuzzleSplitView(ft.Container):
                     
                     # 确保有扩展名
                     if not output_path.suffix:
-                        output_path = output_path.with_suffix('.png')
+                        if save_as_gif:
+                            output_path = output_path.with_suffix('.gif')
+                        else:
+                            output_path = output_path.with_suffix('.png')
                     
-                    # 保存图片
-                    self.preview_image.save(output_path, quality=95, optimize=True)
-                    self._show_snackbar(f"保存成功: {output_path.name}", ft.Colors.GREEN)
+                    # 如果使用了透明度，强制使用 PNG 格式
+                    if not save_as_gif and has_transparency and output_path.suffix.lower() in ['.jpg', '.jpeg']:
+                        output_path = output_path.with_suffix('.png')
+                        self._show_snackbar("检测到透明度效果，已自动转换为 PNG 格式", ft.Colors.BLUE)
+                    
+                    if save_as_gif:
+                        # 保存为动态 GIF
+                        self._save_as_gif(output_path)
+                    else:
+                        # 保存为静态图片 - 重新生成以确保使用最新参数
+                        self._save_static_image(output_path)
                 except Exception as ex:
                     self._show_snackbar(f"保存失败: {ex}", ft.Colors.RED)
         
@@ -900,8 +1006,165 @@ class ImagePuzzleSplitView(ft.Container):
         picker.save_file(
             dialog_title="保存切分结果",
             file_name=default_filename,
-            allowed_extensions=["png", "jpg", "jpeg"],
+            allowed_extensions=allowed_extensions,
         )
+    
+    def _save_static_image(self, output_path: Path) -> None:
+        """保存静态图片 - 重新生成以确保使用最新参数。"""
+        if not self.selected_file:
+            return
+        
+        try:
+            # 获取切分参数
+            rows = int(self.split_rows.value or 3)
+            cols = int(self.split_cols.value or 3)
+            shuffle = self.split_shuffle.value
+            spacing = int(self.split_spacing_input.value or 5)
+            corner_radius = int(self.corner_radius_input.value or 0)
+            overall_corner_radius = int(self.overall_corner_radius_input.value or 0)
+            bg_color = self.split_bg_color.value
+            
+            # 获取透明度值
+            piece_opacity_percent = int(self.piece_opacity_input.value or 100)
+            piece_opacity = max(0, min(100, piece_opacity_percent))
+            piece_opacity = int(piece_opacity * 255 / 100)
+            
+            bg_opacity_percent = int(self.bg_opacity_input.value or 100)
+            bg_opacity = max(0, min(100, bg_opacity_percent))
+            bg_opacity = int(bg_opacity * 255 / 100)
+            
+            # 获取自定义RGB值
+            custom_rgb = None
+            if bg_color == "custom":
+                r = int(self.custom_color_r.value or 255)
+                g = int(self.custom_color_g.value or 255)
+                b = int(self.custom_color_b.value or 255)
+                r, g, b = max(0, min(255, r)), max(0, min(255, g)), max(0, min(255, b))
+                custom_rgb = (r, g, b)
+            
+            # 读取图片（如果是 GIF，使用当前选择的帧）
+            if self.is_animated_gif:
+                image = GifUtils.extract_frame(self.selected_file, self.current_frame_index)
+                if image is None:
+                    raise Exception("无法提取 GIF 帧")
+            else:
+                image = Image.open(self.selected_file)
+            
+            # 切分并重新拼接
+            result = self._split_and_reassemble(
+                image, rows, cols, shuffle, spacing, 
+                corner_radius, overall_corner_radius,
+                bg_color, custom_rgb, self.bg_image_path,
+                piece_opacity, bg_opacity
+            )
+            
+            # 保存图片 - 使用与预览相同的方式
+            if result.mode == 'RGBA' and output_path.suffix.lower() in ['.jpg', '.jpeg']:
+                # RGBA 转 JPG：创建白色背景并合成
+                rgb_image = Image.new('RGB', result.size, (255, 255, 255))
+                rgb_image.paste(result, mask=result.split()[3])
+                rgb_image.save(output_path, quality=95)
+            elif output_path.suffix.lower() in ['.jpg', '.jpeg']:
+                # RGB 保存为 JPG
+                result.save(output_path, quality=95)
+            else:
+                # PNG 格式 - 完全保留透明度信息
+                result.save(output_path)
+            
+            self._show_snackbar(f"保存成功: {output_path.name}", ft.Colors.GREEN)
+            
+        except Exception as e:
+            self._show_snackbar(f"保存失败: {e}", ft.Colors.RED)
+    
+    def _save_as_gif(self, output_path: Path) -> None:
+        """将所有 GIF 帧切分并保存为动态 GIF。"""
+        if not self.is_animated_gif or not self.selected_file:
+            return
+        
+        try:
+            # 获取切分参数
+            rows = int(self.split_rows.value or 3)
+            cols = int(self.split_cols.value or 3)
+            shuffle = self.split_shuffle.value
+            spacing = int(self.split_spacing_input.value or 5)
+            corner_radius = int(self.corner_radius_input.value or 0)
+            overall_corner_radius = int(self.overall_corner_radius_input.value or 0)
+            bg_color = self.split_bg_color.value
+            
+            # 获取透明度值
+            piece_opacity = int(self.piece_opacity_input.value or 100)
+            piece_opacity = max(0, min(100, piece_opacity))
+            piece_opacity = int(piece_opacity * 255 / 100)
+            
+            bg_opacity = int(self.bg_opacity_input.value or 100)
+            bg_opacity = max(0, min(100, bg_opacity))
+            bg_opacity = int(bg_opacity * 255 / 100)
+            
+            # 获取自定义RGB值
+            custom_rgb = None
+            if bg_color == "custom":
+                r = int(self.custom_color_r.value or 255)
+                g = int(self.custom_color_g.value or 255)
+                b = int(self.custom_color_b.value or 255)
+                r, g, b = max(0, min(255, r)), max(0, min(255, g)), max(0, min(255, b))
+                custom_rgb = (r, g, b)
+            
+            # 显示处理进度
+            self._show_snackbar(f"正在处理 {self.gif_frame_count} 帧...", ft.Colors.BLUE)
+            
+            # 提取所有帧
+            all_frames = GifUtils.extract_all_frames(self.selected_file)
+            if not all_frames:
+                raise Exception("无法提取 GIF 帧")
+            
+            # 获取原始帧持续时间
+            durations = GifUtils.get_frame_durations(self.selected_file)
+            
+            # 处理每一帧
+            result_frames = []
+            for i, frame in enumerate(all_frames):
+                # 对当前帧进行切分
+                split_frame = self._split_and_reassemble(
+                    frame, rows, cols, shuffle, spacing,
+                    corner_radius, overall_corner_radius,
+                    bg_color, custom_rgb, self.bg_image_path,
+                    piece_opacity, bg_opacity
+                )
+                
+                # GIF 不支持半透明！如果结果是 RGBA，需要转换为 RGB
+                # 将半透明效果合成到白色背景上
+                if split_frame.mode == 'RGBA':
+                    # 创建白色背景
+                    rgb_frame = Image.new('RGB', split_frame.size, (255, 255, 255))
+                    # 使用 alpha 通道合成
+                    rgb_frame.paste(split_frame, mask=split_frame.split()[3])
+                    split_frame = rgb_frame
+                elif split_frame.mode != 'RGB':
+                    # 转换其他模式为 RGB
+                    split_frame = split_frame.convert('RGB')
+                
+                result_frames.append(split_frame)
+            
+            # 获取原始 GIF 的 loop 参数
+            with Image.open(self.selected_file) as gif:
+                loop = gif.info.get('loop', 0)
+            
+            # 保存为动态 GIF
+            if result_frames:
+                result_frames[0].save(
+                    output_path,
+                    save_all=True,
+                    append_images=result_frames[1:],
+                    duration=durations,
+                    loop=loop,
+                    optimize=False
+                )
+                self._show_snackbar(f"保存成功: {output_path.name}", ft.Colors.GREEN)
+            else:
+                raise Exception("没有生成任何帧")
+                
+        except Exception as e:
+            self._show_snackbar(f"保存 GIF 失败: {e}", ft.Colors.RED)
     
     def _on_preview_click(self, e: ft.ControlEvent) -> None:
         """点击预览图片，用系统查看器打开。"""
@@ -928,6 +1191,68 @@ class ImagePuzzleSplitView(ft.Container):
                 subprocess.run(['xdg-open', tmp_path])
         except Exception as ex:
             self._show_snackbar(f"打开图片失败: {ex}", ft.Colors.RED)
+    
+    def _on_gif_prev_frame(self, e: ft.ControlEvent) -> None:
+        """切换到上一帧。"""
+        if not self.is_animated_gif or self.gif_frame_count == 0:
+            return
+        
+        self.current_frame_index = (self.current_frame_index - 1) % self.gif_frame_count
+        self._update_gif_frame()
+    
+    def _on_gif_next_frame(self, e: ft.ControlEvent) -> None:
+        """切换到下一帧。"""
+        if not self.is_animated_gif or self.gif_frame_count == 0:
+            return
+        
+        self.current_frame_index = (self.current_frame_index + 1) % self.gif_frame_count
+        self._update_gif_frame()
+    
+    def _on_frame_input_submit(self, e: ft.ControlEvent) -> None:
+        """手动输入帧号。"""
+        if not self.is_animated_gif or self.gif_frame_count == 0:
+            return
+        
+        try:
+            frame_num = int(self.gif_frame_input.value)
+            if 1 <= frame_num <= self.gif_frame_count:
+                self.current_frame_index = frame_num - 1
+                self._update_gif_frame()
+            else:
+                self._show_snackbar(f"帧号必须在 1-{self.gif_frame_count} 之间", ft.Colors.ORANGE)
+                self.gif_frame_input.value = str(self.current_frame_index + 1)
+                self.gif_frame_input.update()
+        except ValueError:
+            self._show_snackbar("请输入有效的帧号", ft.Colors.RED)
+            self.gif_frame_input.value = str(self.current_frame_index + 1)
+            self.gif_frame_input.update()
+    
+    def _update_gif_frame(self) -> None:
+        """更新 GIF 当前帧的显示。"""
+        if not self.is_animated_gif or not self.selected_file:
+            return
+        
+        try:
+            # 更新输入框显示
+            self.gif_frame_input.value = str(self.current_frame_index + 1)
+            
+            # 提取并显示当前帧
+            frame_image = GifUtils.extract_frame(self.selected_file, self.current_frame_index)
+            if frame_image:
+                temp_path = self.config_service.get_temp_dir() / f"gif_frame_{self.current_frame_index}.png"
+                frame_image.save(temp_path)
+                self.original_image_widget.src = str(temp_path)
+                
+                # 清除预览（因为帧变了）
+                self._clear_preview()
+                
+                # 更新界面
+                self.gif_frame_input.update()
+                self.original_image_widget.update()
+            else:
+                self._show_snackbar("无法提取 GIF 帧", ft.Colors.RED)
+        except Exception as e:
+            self._show_snackbar(f"更新 GIF 帧失败: {e}", ft.Colors.RED)
     
     def _show_snackbar(self, message: str, color: str) -> None:
         """显示提示消息。"""

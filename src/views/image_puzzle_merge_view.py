@@ -999,22 +999,11 @@ class ImagePuzzleMergeView(ft.Container):
                     
                     # 保存图片或GIF
                     if is_gif_animation:
-                        # 保存为GIF动画
-                        frames = self.preview_image
-                        if frames:
-                            frames[0].save(
-                                output_path,
-                                save_all=True,
-                                append_images=frames[1:],
-                                duration=100,
-                                loop=0,
-                                optimize=False,
-                            )
-                            self._show_snackbar(f"保存成功: {output_path.name} ({len(frames)}帧)", ft.Colors.GREEN)
+                        # 保存为GIF动画 - 重新生成
+                        self._save_merged_gif(output_path)
                     else:
-                        # 保存静态图片
-                        self.preview_image.save(output_path, quality=95, optimize=True)
-                        self._show_snackbar(f"保存成功: {output_path.name}", ft.Colors.GREEN)
+                        # 保存静态图片 - 重新生成
+                        self._save_merged_image(output_path)
                 except Exception as ex:
                     self._show_snackbar(f"保存失败: {ex}", ft.Colors.RED)
         
@@ -1027,6 +1016,115 @@ class ImagePuzzleMergeView(ft.Container):
             file_name=default_filename,
             allowed_extensions=allowed_extensions,
         )
+    
+    def _save_merged_image(self, output_path: Path) -> None:
+        """保存合并后的静态图片 - 重新生成以确保使用最新参数。"""
+        if not self.selected_files:
+            return
+        
+        try:
+            # 获取合并参数
+            direction = self.merge_direction.value
+            spacing = int(self.merge_spacing_input.value or 10)
+            grid_cols = int(self.merge_cols.value or 3) if direction == "grid" else None
+            bg_color = self.merge_bg_color.value
+            
+            # 获取自定义RGB值
+            custom_rgb = None
+            if bg_color == "custom":
+                r = int(self.custom_color_r.value or 255)
+                g = int(self.custom_color_g.value or 255)
+                b = int(self.custom_color_b.value or 255)
+                r, g, b = max(0, min(255, r)), max(0, min(255, g)), max(0, min(255, b))
+                custom_rgb = (r, g, b)
+            
+            # 读取所有选中的图片
+            images = []
+            for file_path in self.selected_files:
+                # 如果是 GIF，提取选定的帧
+                if str(file_path) in self.gif_info:
+                    _, _, selected_frame = self.gif_info[str(file_path)]
+                    img = GifUtils.extract_frame(file_path, selected_frame)
+                    if img:
+                        images.append(img)
+                else:
+                    img = Image.open(file_path)
+                    images.append(img)
+            
+            # 合并图片
+            result = self._merge_images(images, direction, spacing, grid_cols, bg_color, custom_rgb)
+            
+            # 保存图片 - 使用与预览相同的方式
+            if result.mode == 'RGBA' and output_path.suffix.lower() in ['.jpg', '.jpeg']:
+                # RGBA 转 JPG：创建白色背景并合成
+                rgb_image = Image.new('RGB', result.size, (255, 255, 255))
+                rgb_image.paste(result, mask=result.split()[3])
+                rgb_image.save(output_path, quality=95)
+            elif output_path.suffix.lower() in ['.jpg', '.jpeg']:
+                # RGB 保存为 JPG
+                result.save(output_path, quality=95)
+            else:
+                # PNG 格式 - 完全保留透明度信息
+                result.save(output_path)
+            
+            self._show_snackbar(f"保存成功: {output_path.name}", ft.Colors.GREEN)
+            
+        except Exception as e:
+            self._show_snackbar(f"保存失败: {e}", ft.Colors.RED)
+    
+    def _save_merged_gif(self, output_path: Path) -> None:
+        """保存合并后的 GIF 动画 - 重新生成以确保使用最新参数。"""
+        if not self.selected_files:
+            return
+        
+        try:
+            # 获取合并参数
+            direction = self.merge_direction.value
+            spacing = int(self.merge_spacing_input.value or 10)
+            grid_cols = int(self.merge_cols.value or 3) if direction == "grid" else None
+            bg_color = self.merge_bg_color.value
+            
+            # 获取自定义RGB值
+            custom_rgb = None
+            if bg_color == "custom":
+                r = int(self.custom_color_r.value or 255)
+                g = int(self.custom_color_g.value or 255)
+                b = int(self.custom_color_b.value or 255)
+                r, g, b = max(0, min(255, r)), max(0, min(255, g)), max(0, min(255, b))
+                custom_rgb = (r, g, b)
+            
+            # 重新生成 GIF 帧
+            result_frames, duration = self._merge_as_gif(direction, spacing, grid_cols, bg_color, custom_rgb)
+            
+            # GIF 不支持半透明！如果结果是 RGBA，需要转换为 RGB
+            rgb_frames = []
+            for frame in result_frames:
+                if frame.mode == 'RGBA':
+                    # 创建白色背景并合成
+                    rgb_frame = Image.new('RGB', frame.size, (255, 255, 255))
+                    rgb_frame.paste(frame, mask=frame.split()[3])
+                    rgb_frames.append(rgb_frame)
+                elif frame.mode != 'RGB':
+                    rgb_frames.append(frame.convert('RGB'))
+                else:
+                    rgb_frames.append(frame)
+            
+            # 保存为GIF动画
+            if rgb_frames:
+                rgb_frames[0].save(
+                    output_path,
+                    save_all=True,
+                    append_images=rgb_frames[1:],
+                    duration=duration,
+                    loop=0,
+                    optimize=False,
+                )
+                self._show_snackbar(f"保存成功: {output_path.name} ({len(rgb_frames)}帧)", ft.Colors.GREEN)
+            else:
+                raise Exception("没有生成任何帧")
+                
+        except Exception as e:
+            self._show_snackbar(f"保存 GIF 失败: {e}", ft.Colors.RED)
     
     def _on_preview_click(self, e: ft.ControlEvent) -> None:
         """点击预览图片，用系统查看器打开。"""
