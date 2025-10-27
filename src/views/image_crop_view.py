@@ -484,14 +484,25 @@ class ImageCropView(ft.Container):
             vertical_alignment=ft.CrossAxisAlignment.START,
         )
         
-        self.content = ft.Column(
+        # 可滚动内容区域
+        scrollable_content = ft.Column(
             controls=[
-                header,
                 description_text,
                 main_row,
             ],
             spacing=0,
             scroll=ft.ScrollMode.AUTO,
+            expand=True,
+        )
+        
+        # 组装主界面 - 标题固定，分隔线固定，内容可滚动
+        self.content = ft.Column(
+            controls=[
+                header,  # 固定在顶部
+                ft.Divider(),  # 固定的分隔线
+                scrollable_content,  # 可滚动内容
+            ],
+            spacing=0,
             expand=True,
         )
     

@@ -337,10 +337,9 @@ class ImagePuzzleMergeView(ft.Container):
             height=48,
         )
         
-        # 组装视图
-        self.content = ft.Column(
+        # 可滚动内容区域
+        scrollable_content = ft.Column(
             controls=[
-                header,
                 ft.Container(height=PADDING_LARGE),
                 top_row,
                 ft.Container(height=PADDING_LARGE),
@@ -350,6 +349,17 @@ class ImagePuzzleMergeView(ft.Container):
             ],
             spacing=0,
             scroll=ft.ScrollMode.ADAPTIVE,
+            expand=True,
+        )
+        
+        # 组装主界面 - 标题固定，分隔线固定，内容可滚动
+        self.content = ft.Column(
+            controls=[
+                header,  # 固定在顶部
+                ft.Divider(),  # 固定的分隔线
+                scrollable_content,  # 可滚动内容
+            ],
+            spacing=0,
         )
         
         # 更新文件列表

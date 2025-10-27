@@ -418,11 +418,9 @@ class ImageBackgroundView(ft.Container):
             alignment=ft.alignment.center,
         )
         
-        # 组装视图
-        self.content = ft.Column(
+        # 可滚动内容区域
+        scrollable_content = ft.Column(
             controls=[
-                header,
-                ft.Container(height=PADDING_LARGE),
                 main_content,
                 ft.Container(height=PADDING_MEDIUM),
                 self.gif_options,
@@ -433,6 +431,17 @@ class ImageBackgroundView(ft.Container):
             ],
             spacing=0,
             scroll=ft.ScrollMode.ADAPTIVE,
+            expand=True,
+        )
+        
+        # 组装主界面 - 标题固定，分隔线固定，内容可滚动
+        self.content = ft.Column(
+            controls=[
+                header,  # 固定在顶部
+                ft.Divider(),  # 固定的分隔线
+                scrollable_content,  # 可滚动内容
+            ],
+            spacing=0,
         )
         
         # 初始化文件列表空状态
