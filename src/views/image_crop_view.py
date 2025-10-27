@@ -77,6 +77,9 @@ class ImageCropView(ft.Container):
         
         # 创建UI组件
         self._build_ui()
+        
+        # 注册键盘事件
+        self.page.on_keyboard_event = self._on_keyboard
     
     def _build_ui(self) -> None:
         """构建用户界面。"""
@@ -88,7 +91,7 @@ class ImageCropView(ft.Container):
                     on_click=self._on_back_click,
                     tooltip="返回",
                 ),
-                ft.Text("图片裁剪 - 拖动裁剪框调整区域", size=24, weight=ft.FontWeight.BOLD),
+                ft.Text("图片裁剪 - 拖动裁剪框或四角调整，WASD精调", size=24, weight=ft.FontWeight.BOLD),
             ],
             spacing=PADDING_MEDIUM,
         )
@@ -140,8 +143,9 @@ class ImageCropView(ft.Container):
             visible=False,  # 初始不可见，加载图片后显示
         )
         
-        # 右下角控制点（调整大小）- 包装在 Container 中
-        self.resize_handle_container: ft.Container = ft.Container(
+        # 四个角的控制点（调整大小）
+        # 右下角 (SE - South East)
+        self.handle_se: ft.Container = ft.Container(
             content=ft.GestureDetector(
                 content=ft.Container(
                     width=handle_size,
@@ -155,7 +159,61 @@ class ImageCropView(ft.Container):
             ),
             top=0,
             left=0,
-            visible=False,  # 初始不可见，加载图片后显示
+            visible=False,
+        )
+        
+        # 左下角 (SW - South West)
+        self.handle_sw: ft.Container = ft.Container(
+            content=ft.GestureDetector(
+                content=ft.Container(
+                    width=handle_size,
+                    height=handle_size,
+                    bgcolor=ft.Colors.PRIMARY,
+                    border_radius=handle_size // 2,
+                ),
+                on_pan_start=lambda e: self._on_resize_start(e, 'sw'),
+                on_pan_update=lambda e: self._on_resize_update(e, 'sw'),
+                on_pan_end=self._on_resize_end,
+            ),
+            top=0,
+            left=0,
+            visible=False,
+        )
+        
+        # 右上角 (NE - North East)
+        self.handle_ne: ft.Container = ft.Container(
+            content=ft.GestureDetector(
+                content=ft.Container(
+                    width=handle_size,
+                    height=handle_size,
+                    bgcolor=ft.Colors.PRIMARY,
+                    border_radius=handle_size // 2,
+                ),
+                on_pan_start=lambda e: self._on_resize_start(e, 'ne'),
+                on_pan_update=lambda e: self._on_resize_update(e, 'ne'),
+                on_pan_end=self._on_resize_end,
+            ),
+            top=0,
+            left=0,
+            visible=False,
+        )
+        
+        # 左上角 (NW - North West)
+        self.handle_nw: ft.Container = ft.Container(
+            content=ft.GestureDetector(
+                content=ft.Container(
+                    width=handle_size,
+                    height=handle_size,
+                    bgcolor=ft.Colors.PRIMARY,
+                    border_radius=handle_size // 2,
+                ),
+                on_pan_start=lambda e: self._on_resize_start(e, 'nw'),
+                on_pan_update=lambda e: self._on_resize_update(e, 'nw'),
+                on_pan_end=self._on_resize_end,
+            ),
+            top=0,
+            left=0,
+            visible=False,
         )
         
         # 裁剪信息显示
@@ -173,7 +231,11 @@ class ImageCropView(ft.Container):
             controls=[
                 self.original_image_widget,
                 self.crop_box_container,
-                self.resize_handle_container,
+                # 四个角的控制点
+                self.handle_nw,  # 左上
+                self.handle_ne,  # 右上
+                self.handle_sw,  # 左下
+                self.handle_se,  # 右下
                 ft.Container(content=self.crop_info_text, padding=8, top=10, left=10),
             ],
             # 不设置固定尺寸，由外层容器控制
@@ -195,7 +257,7 @@ class ImageCropView(ft.Container):
         crop_area: ft.Container = ft.Container(
             content=ft.Column(
                 controls=[
-                    ft.Text("拖动蓝框调整裁剪区域", size=16, weight=ft.FontWeight.BOLD),
+                    ft.Text("拖动蓝框移动 | 拖动四个角调整大小 | WASD精调1px", size=16, weight=ft.FontWeight.BOLD),
                     ft.Container(height=PADDING_SMALL),
                     self.canvas_container,
                 ],
@@ -420,10 +482,24 @@ class ImageCropView(ft.Container):
         self.crop_box_container.height = box_h
         self.crop_box_container.visible = True  # 显示裁剪框
         
-        # 设置右下角控制点位置
-        self.resize_handle_container.top = box_top + box_h - 6
-        self.resize_handle_container.left = box_left + box_w - 6
-        self.resize_handle_container.visible = True  # 显示控制点
+        # 设置四个角控制点位置（6 是控制点半径）
+        handle_offset = 6
+        # 左上角 (NW)
+        self.handle_nw.top = box_top - handle_offset
+        self.handle_nw.left = box_left - handle_offset
+        self.handle_nw.visible = True
+        # 右上角 (NE)
+        self.handle_ne.top = box_top - handle_offset
+        self.handle_ne.left = box_left + box_w - handle_offset
+        self.handle_ne.visible = True
+        # 左下角 (SW)
+        self.handle_sw.top = box_top + box_h - handle_offset
+        self.handle_sw.left = box_left - handle_offset
+        self.handle_sw.visible = True
+        # 右下角 (SE)
+        self.handle_se.top = box_top + box_h - handle_offset
+        self.handle_se.left = box_left + box_w - handle_offset
+        self.handle_se.visible = True
         
         # 更新信息
         self.crop_info_text.value = f"{self.crop_width} × {self.crop_height} px"
@@ -517,17 +593,46 @@ class ImageCropView(ft.Container):
         dx_img = int(dx / scale_x)
         dy_img = int(dy / scale_y)
         
-        # 右下角：调整宽高（基于初始值计算，避免累积误差）
+        # 根据不同角落调整裁剪框（基于初始值计算，避免累积误差）
         if mode == 'se':
+            # 右下角：增加宽高
             new_w = self.crop_start_width + dx_img
             new_h = self.crop_start_height + dy_img
-            
-            # 边界检查（确保不超出图片）
             new_w = max(50, min(new_w, img_w - self.crop_x))
             new_h = max(50, min(new_h, img_h - self.crop_y))
-            
             self.crop_width = new_w
             self.crop_height = new_h
+            
+        elif mode == 'sw':
+            # 左下角：调整左边界和高度
+            new_x = self.crop_start_x + dx_img
+            new_h = self.crop_start_height + dy_img
+            new_x = max(0, min(new_x, self.crop_start_x + self.crop_start_width - 50))
+            new_h = max(50, min(new_h, img_h - self.crop_y))
+            self.crop_width = self.crop_start_width + (self.crop_start_x - new_x)
+            self.crop_height = new_h
+            self.crop_x = new_x
+            
+        elif mode == 'ne':
+            # 右上角：调整上边界和宽度
+            new_y = self.crop_start_y + dy_img
+            new_w = self.crop_start_width + dx_img
+            new_y = max(0, min(new_y, self.crop_start_y + self.crop_start_height - 50))
+            new_w = max(50, min(new_w, img_w - self.crop_x))
+            self.crop_height = self.crop_start_height + (self.crop_start_y - new_y)
+            self.crop_width = new_w
+            self.crop_y = new_y
+            
+        elif mode == 'nw':
+            # 左上角：调整左边界和上边界
+            new_x = self.crop_start_x + dx_img
+            new_y = self.crop_start_y + dy_img
+            new_x = max(0, min(new_x, self.crop_start_x + self.crop_start_width - 50))
+            new_y = max(0, min(new_y, self.crop_start_y + self.crop_start_height - 50))
+            self.crop_width = self.crop_start_width + (self.crop_start_x - new_x)
+            self.crop_height = self.crop_start_height + (self.crop_start_y - new_y)
+            self.crop_x = new_x
+            self.crop_y = new_y
         
         # 调整大小时只更新裁剪框位置，不更新预览（避免CPU飙升）
         self._update_crop_box_position()
@@ -642,3 +747,51 @@ class ImageCropView(ft.Container):
                 self.page.update()
         except Exception as ex:
             print(f"保存失败: {ex}")
+    
+    def _on_keyboard(self, e: ft.KeyboardEvent) -> None:
+        """键盘事件处理（支持 WASD 精调裁剪框位置）。
+        
+        Args:
+            e: 键盘事件对象
+        """
+        # 必须有图片加载才能处理键盘事件
+        if not self.original_image:
+            return
+        
+        # 获取图片尺寸用于边界检查
+        img_w, img_h = self.original_image.width, self.original_image.height
+        
+        # 判断按键并移动 1px（只支持 WASD）
+        moved = False
+        key = e.key.lower() if hasattr(e.key, 'lower') else str(e.key)
+        
+        # W：向上移动
+        if key == 'w':
+            if self.crop_y > 0:
+                self.crop_y -= 1
+                moved = True
+        
+        # S：向下移动
+        elif key == 's':
+            if self.crop_y + self.crop_height < img_h:
+                self.crop_y += 1
+                moved = True
+        
+        # A：向左移动
+        elif key == 'a':
+            if self.crop_x > 0:
+                self.crop_x -= 1
+                moved = True
+        
+        # D：向右移动
+        elif key == 'd':
+            if self.crop_x + self.crop_width < img_w:
+                self.crop_x += 1
+                moved = True
+        
+        # 如果移动了，更新显示
+        if moved:
+            self._update_crop_box_position()
+            # 精调时也更新预览，但不会频繁（因为是单次按键）
+            self._update_preview()
+
