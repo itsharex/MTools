@@ -419,7 +419,7 @@ class ImageFormatView(ft.Container):
             data=ext,  # 存储扩展名数据
             on_click=self._on_format_card_click,
             ink=True,
-            animate=ft.animation.Animation(200, ft.AnimationCurve.EASE_OUT),
+            animate=ft.Animation(200, ft.AnimationCurve.EASE_OUT),
         )
         
         return card

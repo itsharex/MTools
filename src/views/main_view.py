@@ -10,8 +10,7 @@ import flet as ft
 from components import CustomTitleBar
 from services import ConfigService, EncodingService, ImageService
 from views.audio_view import AudioView
-from views.code_format_view import CodeFormatView
-from views.encoding_view import EncodingView
+from views.dev_tools_view import DevToolsView
 from views.image_view import ImageView
 from views.settings_view import SettingsView
 from views.video_view import VideoView
@@ -51,10 +50,9 @@ class MainView(ft.Column):
         
         # 创建各功能视图
         self.image_view: Optional[ImageView] = None
-        self.encoding_view: Optional[EncodingView] = None
+        self.dev_tools_view: Optional[DevToolsView] = None
         self.audio_view: AudioView = AudioView(page)
         self.video_view: VideoView = VideoView(page)
-        self.code_format_view: CodeFormatView = CodeFormatView(page)
         self.settings_view: SettingsView = SettingsView(page, self.config_service)
         
         # 创建UI组件
@@ -87,14 +85,9 @@ class MainView(ft.Column):
                     label="视频处理",
                 ),
                 ft.NavigationRailDestination(
-                    icon=ft.Icons.CODE_OUTLINED,
-                    selected_icon=ft.Icons.CODE_ROUNDED,
-                    label="编码转换",
-                ),
-                ft.NavigationRailDestination(
-                    icon=ft.Icons.AUTO_FIX_HIGH_OUTLINED,
-                    selected_icon=ft.Icons.AUTO_FIX_HIGH_ROUNDED,
-                    label="代码格式化",
+                    icon=ft.Icons.DEVELOPER_MODE_OUTLINED,
+                    selected_icon=ft.Icons.DEVELOPER_MODE_ROUNDED,
+                    label="开发工具",
                 ),
             ],
             on_change=self._on_navigation_change,
@@ -141,9 +134,9 @@ class MainView(ft.Column):
             alignment=ft.alignment.top_left,  # 内容从左上角开始
         )
         
-        # 创建图片视图和编码视图，并传递容器引用
+        # 创建图片视图和开发工具视图，并传递容器引用
         self.image_view = ImageView(self.page, self.config_service, self.image_service, self.content_container)
-        self.encoding_view = EncodingView(self.page, self.config_service, self.encoding_service, self.content_container)
+        self.dev_tools_view = DevToolsView(self.page, self.config_service, self.encoding_service, self.content_container)
         
         # 设置初始内容
         self.content_container.content = self.image_view
@@ -193,8 +186,8 @@ class MainView(ft.Column):
             self.content_container.content = view
             self.content_container.update()
         elif selected_index == 3:
-            view = self.encoding_view
-            # 尝试恢复编码转换页面的状态
+            view = self.dev_tools_view
+            # 尝试恢复开发工具页面的状态
             restored = False
             if hasattr(view, 'restore_state'):
                 restored = view.restore_state()
@@ -202,10 +195,6 @@ class MainView(ft.Column):
             if not restored:
                 self.content_container.content = view
                 self.content_container.update()
-        elif selected_index == 4:
-            view = self.code_format_view
-            self.content_container.content = view
-            self.content_container.update()
         else:
             return
     

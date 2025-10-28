@@ -3,15 +3,19 @@ name = "mytools"
 version = "0.1.0"
 description = "Multi-functional desktop application with media processing, encoding conversion, and more"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = "==3.11.14"
 authors = [
     { name = "Flet developer", email = "you@example.com" }
 ]
+# Don't hard-code the version, to avoid flet compilation issues.
 dependencies = [
-  "flet==0.27.6",
+  "flet==0.28.3",
   "ffmpeg-python>=0.2.0",
   "Pillow>=9.0.0",
-  "chardet>=5.0.0"
+  "chardet",
+  "opencv-python",
+  "numpy==1.26.4",
+  "onnxruntime",
 ]
 
 [tool.flet]
@@ -34,11 +38,11 @@ path = "src"
 
 [tool.uv]
 dev-dependencies = [
-    "flet[all]==0.27.6",
+    "flet[all]==0.28.3",
 ]
 
 [tool.poetry]
 package-mode = false
 
 [tool.poetry.group.dev.dependencies]
-flet = {extras = ["all"], version = "0.27.6"}
+flet = {extras = ["all"], version = "0.28.3"}

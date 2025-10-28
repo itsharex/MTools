@@ -513,7 +513,7 @@ class SettingsView(ft.Container):
             data=color,  # 存储颜色值
             on_click=self._on_theme_color_click,
             ink=True,
-            animate=ft.animation.Animation(200, ft.AnimationCurve.EASE_OUT),
+            animate=ft.Animation(200, ft.AnimationCurve.EASE_OUT),
         )
         
         return card

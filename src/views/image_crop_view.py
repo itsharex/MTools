@@ -931,10 +931,15 @@ class ImageCropView(ft.Container):
                 ))
                 cropped.save(output_path)
             
-            if hasattr(self.page, 'snack_bar'):
-                self.page.snack_bar = ft.SnackBar(content=ft.Text(f"已保存: {output_path.name}"))
-                self.page.snack_bar.open = True
-                self.page.update()
+            # 显示保存成功提示
+            snackbar = ft.SnackBar(
+                content=ft.Text(f"已保存: {output_path.name}"),
+                bgcolor=ft.Colors.GREEN,
+                duration=2000,
+            )
+            self.page.overlay.append(snackbar)
+            snackbar.open = True
+            self.page.update()
         except Exception as ex:
             print(f"保存失败: {ex}")
             self._show_message(f"保存失败: {str(ex)}", ft.Colors.RED)

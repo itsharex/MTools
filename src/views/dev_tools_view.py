@@ -1,0 +1,175 @@
+"""开发工具视图模块。
+
+提供开发者工具相关功能的用户界面。
+"""
+
+from typing import Optional
+
+import flet as ft
+
+from components import FeatureCard
+from constants import (
+    PADDING_LARGE,
+    PADDING_MEDIUM,
+    PADDING_XLARGE,
+)
+from services import ConfigService, EncodingService
+from views.encoding_convert_view import EncodingConvertView
+
+
+class DevToolsView(ft.Container):
+    """开发工具视图类。
+    
+    提供开发工具相关功能的用户界面，包括：
+    - Python终端
+    - 编码转换
+    - 代码格式化
+    """
+
+    def __init__(
+        self,
+        page: ft.Page,
+        config_service: ConfigService,
+        encoding_service: EncodingService,
+        parent_container: Optional[ft.Container] = None
+    ) -> None:
+        """初始化开发工具视图。
+        
+        Args:
+            page: Flet页面对象
+            config_service: 配置服务实例
+            encoding_service: 编码服务实例
+            parent_container: 父容器（用于视图切换）
+        """
+        super().__init__()
+        self.page: ft.Page = page
+        self.config_service: ConfigService = config_service
+        self.encoding_service: EncodingService = encoding_service
+        self.parent_container: Optional[ft.Container] = parent_container
+        self.expand: bool = True
+        self.padding: ft.padding = ft.padding.only(
+            left=PADDING_XLARGE,
+            right=PADDING_XLARGE,
+            top=PADDING_XLARGE,
+            bottom=PADDING_XLARGE
+        )
+        
+        # 创建子视图（延迟创建）
+        self.python_terminal_view: Optional[ft.Container] = None
+        self.encoding_convert_view: Optional[EncodingConvertView] = None
+        self.code_format_view: Optional[ft.Container] = None
+        
+        # 记录当前显示的视图（用于状态恢复）
+        self.current_sub_view: Optional[ft.Container] = None
+        
+        # 创建UI组件
+        self._build_ui()
+    
+    def _build_ui(self) -> None:
+        """构建用户界面。"""
+        # 功能卡片区域
+        feature_cards: ft.Row = ft.Row(
+            controls=[
+                # Python终端
+                FeatureCard(
+                    icon=ft.Icons.TERMINAL_ROUNDED,
+                    title="Python终端",
+                    description="调用内嵌Python解释器执行代码",
+                    gradient_colors=("#3B82F6", "#1E40AF"),
+                    on_click=self._open_python_terminal,
+                ),
+                # 编码转换
+                FeatureCard(
+                    icon=ft.Icons.TRANSFORM_ROUNDED,
+                    title="编码转换",
+                    description="检测和转换文件编码格式",
+                    gradient_colors=("#667EEA", "#764BA2"),
+                    on_click=self._open_encoding_convert,
+                ),
+                # 代码格式化
+                FeatureCard(
+                    icon=ft.Icons.AUTO_FIX_HIGH_ROUNDED,
+                    title="代码格式化",
+                    description="格式化和美化代码",
+                    gradient_colors=("#FA8BFF", "#2BD2FF"),
+                    on_click=self._open_code_format,
+                ),
+            ],
+            wrap=True,
+            spacing=PADDING_LARGE,
+            run_spacing=PADDING_LARGE,
+            alignment=ft.MainAxisAlignment.START,
+            vertical_alignment=ft.CrossAxisAlignment.START,
+        )
+        
+        # 组装视图
+        self.content = ft.Column(
+            controls=[
+                feature_cards,
+            ],
+            spacing=PADDING_MEDIUM,
+            scroll=ft.ScrollMode.AUTO,
+            horizontal_alignment=ft.CrossAxisAlignment.START,
+            alignment=ft.MainAxisAlignment.START,
+        )
+    
+    def _open_python_terminal(self, e: ft.ControlEvent) -> None:
+        """打开Python终端。"""
+        if self.python_terminal_view is None:
+            from views.python_terminal_view import PythonTerminalView
+            self.python_terminal_view = PythonTerminalView(
+                self.page,
+                self.config_service,
+                self.parent_container
+            )
+        
+        # 切换到Python终端视图
+        if self.parent_container:
+            self.current_sub_view = self.python_terminal_view
+            self.parent_container.content = self.python_terminal_view
+            self.parent_container.update()
+    
+    def _open_encoding_convert(self, e: ft.ControlEvent) -> None:
+        """打开编码转换。"""
+        if self.encoding_convert_view is None:
+            self.encoding_convert_view = EncodingConvertView(
+                self.page,
+                self.config_service,
+                self.encoding_service,
+                self.parent_container
+            )
+        
+        # 切换到编码转换视图
+        if self.parent_container:
+            self.current_sub_view = self.encoding_convert_view
+            self.parent_container.content = self.encoding_convert_view
+            self.parent_container.update()
+    
+    def _open_code_format(self, e: ft.ControlEvent) -> None:
+        """打开代码格式化。"""
+        if self.code_format_view is None:
+            from views.code_format_detail_view import CodeFormatDetailView
+            self.code_format_view = CodeFormatDetailView(
+                self.page,
+                self.config_service,
+                self.parent_container
+            )
+        
+        # 切换到代码格式化视图
+        if self.parent_container:
+            self.current_sub_view = self.code_format_view
+            self.parent_container.content = self.code_format_view
+            self.parent_container.update()
+    
+    def restore_state(self) -> bool:
+        """恢复之前的视图状态。
+        
+        Returns:
+            是否成功恢复到子视图
+        """
+        if self.current_sub_view and self.parent_container:
+            self.parent_container.content = self.current_sub_view
+            self.parent_container.update()
+            return True
+        return False
+

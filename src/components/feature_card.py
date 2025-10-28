@@ -126,8 +126,8 @@ class FeatureCard(ft.Container):
             color=ft.Colors.with_opacity(0.08, ft.Colors.BLACK),
             offset=ft.Offset(0, 4),
         )
-        self.animate = ft.animation.Animation(200, ft.AnimationCurve.EASE_OUT)
-        self.animate_scale = ft.animation.Animation(200, ft.AnimationCurve.EASE_OUT)
+        self.animate = ft.Animation(200, ft.AnimationCurve.EASE_OUT)
+        self.animate_scale = ft.Animation(200, ft.AnimationCurve.EASE_OUT)
         
         # 悬停和点击效果
         if self.click_handler:
