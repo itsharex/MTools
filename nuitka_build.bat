@@ -1,1 +1,36 @@
-python -m nuitka --standalone --windows-console-mode=disable --windows-icon-from-ico=src/assets/icon.png --product-name="MyTools" --file-version=0.1.0.0 --product-version=0.1.0 --file-description="Multi-functional desktop application" --company-name="Flet" --copyright="Copyright (C) 2025 by Flet" --enable-plugin=anti-bloat --assume-yes-for-downloads --include-data-dir=bin=bin --include-data-dir=src/assets=src/assets --follow-imports --nofollow-import-to=tkinter --nofollow-import-to=unittest --nofollow-import-to=test --output-dir=dist --output-filename=mytools.exe --enable-plugin=upx --onefile-no-compression --python-flag=-O --python-flag=no_site --python-flag=no_warnings --enable-plugin=anti-bloat src/main.py
+python -m nuitka ^
+    --standalone ^
+    --windows-console-mode=disable ^
+    --windows-icon-from-ico=src/assets/icon.png ^
+    --product-name="MyTools" ^
+    --file-version=0.1.0.0 ^
+    --product-version=0.1.0 ^
+    --file-description="Multi-functional desktop application" ^
+    --company-name="Flet" ^
+    --copyright="Copyright (C) 2025 by Flet" ^
+    --enable-plugin=anti-bloat ^
+    --assume-yes-for-downloads ^
+    --include-data-dir=bin=bin ^
+    --include-data-files=bin/windows/mozjpeg/shared/Release/cjpeg.exe=bin/windows/mozjpeg/shared/Release/cjpeg.exe ^
+    --include-data-files=bin/windows/mozjpeg/shared/Release/djpeg.exe=bin/windows/mozjpeg/shared/Release/djpeg.exe ^
+    --include-data-files=bin/windows/mozjpeg/shared/Release/jpegtran.exe=bin/windows/mozjpeg/shared/Release/jpegtran.exe ^
+    --include-data-files=bin/windows/mozjpeg/shared/Release/rdjpgcom.exe=bin/windows/mozjpeg/shared/Release/rdjpgcom.exe ^
+    --include-data-files=bin/windows/mozjpeg/shared/Release/wrjpgcom.exe=bin/windows/mozjpeg/shared/Release/wrjpgcom.exe ^
+    --include-data-files=bin/windows/mozjpeg/shared/Release/jpeg62.dll=bin/windows/mozjpeg/shared/Release/jpeg62.dll ^
+    --include-data-files=bin/windows/mozjpeg/shared/Release/turbojpeg.dll=bin/windows/mozjpeg/shared/Release/turbojpeg.dll ^
+    --include-data-files=bin/windows/mozjpeg/shared/Release/libpng16.dll=bin/windows/mozjpeg/shared/Release/libpng16.dll ^
+    --include-data-files=bin/windows/mozjpeg/shared/Release/zlib1.dll=bin/windows/mozjpeg/shared/Release/zlib1.dll ^
+    --include-data-files=bin/windows/pngquant/pngquant/pngquant.exe=bin/windows/pngquant/pngquant/pngquant.exe ^
+    --include-data-dir=src/assets=src/assets ^
+    --follow-imports ^
+    --nofollow-import-to=tkinter ^
+    --nofollow-import-to=unittest ^
+    --nofollow-import-to=test ^
+    --output-dir=dist ^
+    --output-filename=mytools.exe ^
+    --enable-plugin=upx ^
+    --onefile-no-compression ^
+    --python-flag=-O ^
+    --python-flag=no_site ^
+    --python-flag=no_warnings ^
+    src/main.py
