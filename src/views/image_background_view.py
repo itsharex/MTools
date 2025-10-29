@@ -899,7 +899,7 @@ class ImageBackgroundView(ft.Container):
         
         picker.pick_files(
             dialog_title="选择图片文件",
-            allowed_extensions=["jpg", "jpeg", "png", "bmp", "webp", "tiff", "gif"],
+            allowed_extensions=["jpg", "jpeg", "jfif", "png", "bmp", "webp", "tiff", "gif"],
             allow_multiple=True,
         )
     
@@ -913,7 +913,7 @@ class ImageBackgroundView(ft.Container):
             if result.path:
                 folder_path = Path(result.path)
                 # 遍历文件夹中的所有图片文件
-                image_extensions = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tiff", ".tif", ".gif"}
+                image_extensions = {".jpg", ".jpeg", ".jfif", ".png", ".bmp", ".webp", ".tiff", ".tif", ".gif"}
                 for file_path in folder_path.rglob("*"):
                     if file_path.is_file() and file_path.suffix.lower() in image_extensions:
                         if file_path not in self.selected_files:

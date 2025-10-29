@@ -475,7 +475,7 @@ class ImageResizeView(ft.Container):
         self.page.update()
         picker.pick_files(
             dialog_title="选择图片文件",
-            allowed_extensions=["jpg", "jpeg", "png", "webp", "bmp", "gif", "tiff", "tif", "ico", "avif", "heic", "heif"],
+            allowed_extensions=["jpg", "jpeg", "jfif", "png", "webp", "bmp", "gif", "tiff", "tif", "ico", "avif", "heic", "heif"],
             allow_multiple=True,
         )
     
@@ -484,7 +484,7 @@ class ImageResizeView(ft.Container):
         def on_result(result: ft.FilePickerResultEvent) -> None:
             if result.path:
                 folder = Path(result.path)
-                extensions = [".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif", ".tiff", ".tif", ".ico", ".avif", ".heic", ".heif"]
+                extensions = [".jpg", ".jpeg", ".jfif", ".png", ".webp", ".bmp", ".gif", ".tiff", ".tif", ".ico", ".avif", ".heic", ".heif"]
                 self.selected_files = []
                 for ext in extensions:
                     self.selected_files.extend(folder.glob(f"*{ext}"))

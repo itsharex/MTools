@@ -551,7 +551,7 @@ class ImagePuzzleSplitView(ft.Container):
         
         picker.pick_files(
             dialog_title="选择背景图片",
-            allowed_extensions=["jpg", "jpeg", "png", "bmp", "webp", "tiff"],
+            allowed_extensions=["jpg", "jpeg", "jfif", "png", "bmp", "webp", "tiff"],
             allow_multiple=False,
         )
     
@@ -570,7 +570,7 @@ class ImagePuzzleSplitView(ft.Container):
         
         picker.pick_files(
             dialog_title="选择图片文件",
-            allowed_extensions=["jpg", "jpeg", "png", "bmp", "webp", "tiff", "gif"],
+            allowed_extensions=["jpg", "jpeg", "jfif", "png", "bmp", "webp", "tiff", "gif"],
             allow_multiple=False,
         )
     
@@ -981,7 +981,7 @@ class ImagePuzzleSplitView(ft.Container):
         
         # 生成默认文件名：原文件名_split.扩展名
         default_filename = "split_result.png"
-        allowed_extensions = ["png", "jpg", "jpeg"]
+        allowed_extensions = ["png", "jpg", "jpeg", "jfif"]
         
         if self.selected_file:
             original_stem = self.selected_file.stem

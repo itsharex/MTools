@@ -429,7 +429,7 @@ class ImagePuzzleMergeView(ft.Container):
         
         picker.pick_files(
             dialog_title="选择图片文件",
-            allowed_extensions=["jpg", "jpeg", "png", "bmp", "webp", "tiff", "gif"],
+            allowed_extensions=["jpg", "jpeg", "jfif", "png", "bmp", "webp", "tiff", "gif"],
             allow_multiple=True,
         )
     
@@ -1006,7 +1006,7 @@ class ImagePuzzleMergeView(ft.Container):
             allowed_extensions = ["gif"]
         else:
             default_filename = "merge_result.png"
-            allowed_extensions = ["png", "jpg", "jpeg"]
+            allowed_extensions = ["png", "jpg", "jpeg", "jfif"]
         
         if self.selected_files and len(self.selected_files) > 0:
             first_file = self.selected_files[0]

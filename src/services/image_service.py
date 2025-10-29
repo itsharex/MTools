@@ -120,8 +120,8 @@ class ImageService:
                 save_kwargs = {}
                 
                 # 根据目标格式处理图片模式和参数
-                if ext in ['.jpg', '.jpeg']:
-                    # JPEG 不支持透明通道
+                if ext in ['.jpg', '.jpeg', '.jfif']:
+                    # JPEG/JFIF 不支持透明通道
                     if img.mode in ('RGBA', 'LA', 'P'):
                         background = Image.new('RGB', img.size, (255, 255, 255))
                         if img.mode == 'P':
@@ -192,7 +192,7 @@ class ImageService:
             
             elif mode == 'balanced':
                 # 标准压缩 - 使用专业工具
-                if ext in ['.jpg', '.jpeg']:
+                if ext in ['.jpg', '.jpeg', '.jfif']:
                     if self._is_tool_available('mozjpeg'):
                         return self._compress_with_mozjpeg(input_path, output_path, quality)
                     else:
@@ -209,7 +209,7 @@ class ImageService:
             
             elif mode == 'max':
                 # 极限压缩 - 两次压缩
-                if ext in ['.jpg', '.jpeg'] and self._is_tool_available('mozjpeg'):
+                if ext in ['.jpg', '.jpeg', '.jfif'] and self._is_tool_available('mozjpeg'):
                     return self._compress_with_mozjpeg(input_path, output_path, quality - 5)
                 elif ext == '.png' and self._is_tool_available('pngquant'):
                     return self._compress_with_pngquant(input_path, output_path, quality - 10)
@@ -249,13 +249,13 @@ class ImageService:
                         'optimize': True,
                         'compress_level': 9
                     }
-                elif ext in ['.jpg', '.jpeg']:
+                elif ext in ['.jpg', '.jpeg', '.jfif']:
                     save_kwargs = {
                         'quality': quality,
                         'optimize': True,
                         'progressive': True
                     }
-                    # JPEG 不支持透明通道，需要转换
+                    # JPEG/JFIF 不支持透明通道，需要转换
                     if img.mode in ('RGBA', 'LA', 'P'):
                         background = Image.new('RGB', img.size, (255, 255, 255))
                         if img.mode == 'P':

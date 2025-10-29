@@ -129,7 +129,7 @@ class ImageFormatView(ft.Container):
                         controls=[
                             ft.Icon(ft.Icons.INFO_OUTLINE, size=16, color=TEXT_SECONDARY),
                             ft.Text(
-                                "支持格式: JPG, PNG, WebP, GIF, TIFF, BMP, ICO 等",
+                                "支持格式: JPG, JFIF, PNG, WebP, GIF, TIFF, BMP, ICO 等",
                                 size=12,
                                 color=TEXT_SECONDARY,
                             ),
@@ -502,7 +502,7 @@ class ImageFormatView(ft.Container):
         self.page.update()
         picker.pick_files(
             dialog_title="选择图片文件",
-            allowed_extensions=["jpg", "jpeg", "png", "webp", "bmp", "gif", "tiff", "tif", "ico"],
+            allowed_extensions=["jpg", "jpeg", "jfif", "png", "webp", "bmp", "gif", "tiff", "tif", "ico"],
             allow_multiple=True,
         )
     
@@ -512,7 +512,7 @@ class ImageFormatView(ft.Container):
             if result.path:
                 folder: Path = Path(result.path)
                 # 获取文件夹中的所有图片
-                extensions: List[str] = [".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif", ".tiff", ".tif", ".ico"]
+                extensions: List[str] = [".jpg", ".jpeg", ".jfif", ".png", ".webp", ".bmp", ".gif", ".tiff", ".tif", ".ico"]
                 self.selected_files = []
                 for ext in extensions:
                     self.selected_files.extend(folder.glob(f"*{ext}"))

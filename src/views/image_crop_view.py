@@ -540,7 +540,7 @@ class ImageCropView(ft.Container):
         self.page.update()
         file_picker.pick_files(
             dialog_title="选择图片",
-            allowed_extensions=["jpg", "jpeg", "png", "bmp", "webp", "gif"],
+            allowed_extensions=["jpg", "jpeg", "jfif", "png", "bmp", "webp", "gif"],
             allow_multiple=False,
         )
     
@@ -898,7 +898,7 @@ class ImageCropView(ft.Container):
                 allowed_extensions = ["gif"]
             else:
                 default_filename = f"{self.selected_file.stem}_cropped.png"
-                allowed_extensions = ["png", "jpg", "jpeg", "webp"]
+                allowed_extensions = ["png", "jpg", "jpeg", "jfif", "webp"]
             
             file_picker = ft.FilePicker(on_result=self._on_save_file_selected)
             self.page.overlay.append(file_picker)
