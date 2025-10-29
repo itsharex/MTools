@@ -47,6 +47,11 @@ from .app_config import (
     WINDOW_MIN_WIDTH,
     WINDOW_WIDTH,
 )
+from .model_config import (
+    BACKGROUND_REMOVAL_MODELS,
+    DEFAULT_MODEL_KEY,
+    ModelInfo,
+)
 
 __all__ = [
     "APP_TITLE",
@@ -94,5 +99,8 @@ __all__ = [
     "ICON_SIZE_MEDIUM",
     "ICON_SIZE_LARGE",
     "ICON_SIZE_XLARGE",
+    "BACKGROUND_REMOVAL_MODELS",
+    "DEFAULT_MODEL_KEY",
+    "ModelInfo",
 ]
 

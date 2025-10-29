@@ -12,13 +12,16 @@ from typing import Callable, List, Optional, Dict
 import flet as ft
 
 from constants import (
+    BACKGROUND_REMOVAL_MODELS,
     BORDER_RADIUS_MEDIUM,
+    DEFAULT_MODEL_KEY,
     PADDING_LARGE,
     PADDING_MEDIUM,
     PADDING_SMALL,
     PADDING_XLARGE,
     TEXT_PRIMARY,
     TEXT_SECONDARY,
+    ModelInfo,
 )
 from services import ConfigService, ImageService
 from services.image_service import BackgroundRemover
@@ -30,13 +33,11 @@ class ImageBackgroundView(ft.Container):
     
     提供图片背景移除功能，包括：
     - 单文件和批量处理
+    - 多模型选择
     - 自动下载ONNX模型
     - 处理进度显示
     - 导出为PNG格式（保留透明通道）
     """
-
-    # 模型下载URL
-    MODEL_URL = "https://www.modelscope.cn/models/AI-ModelScope/RMBG-2.0/resolve/master/onnx/model_q4.onnx"
 
     def __init__(
         self,
@@ -66,6 +67,13 @@ class ImageBackgroundView(ft.Container):
         # GIF 文件的帧选择映射：{文件路径: 帧索引}
         self.gif_frame_selection: Dict[str, int] = {}
         
+        # 当前选择的模型
+        saved_model_key = self.config_service.get_config_value("background_model_key", DEFAULT_MODEL_KEY)
+        if saved_model_key not in BACKGROUND_REMOVAL_MODELS:
+            saved_model_key = DEFAULT_MODEL_KEY
+        self.current_model_key: str = saved_model_key
+        self.current_model: ModelInfo = BACKGROUND_REMOVAL_MODELS[self.current_model_key]
+        
         self.expand: bool = True
         # 右侧多留一些空间给滚动条
         self.padding: ft.padding = ft.padding.only(
@@ -89,7 +97,7 @@ class ImageBackgroundView(ft.Container):
         threading.Thread(target=self._build_ui_async, daemon=True).start()
     
     def _get_model_path(self) -> Path:
-        """获取模型文件路径。
+        """获取当前选择的模型文件路径。
         
         Returns:
             模型文件路径
@@ -97,12 +105,12 @@ class ImageBackgroundView(ft.Container):
         # 使用数据目录（可以是用户自定义的）
         data_dir = self.config_service.get_data_dir()
         
-        # 模型存储在 models/rmbg2.0 子目录
-        models_dir = data_dir / "models" / "rmbg2.0"
+        # 模型存储在 models/background_removal/版本号 子目录
+        models_dir = data_dir / "models" / "background_removal" / self.current_model.version
         # 不在初始化时创建目录，避免阻塞界面
         # 目录会在需要时（下载/加载模型）自动创建
         
-        return models_dir / "model_q4.onnx"
+        return models_dir / self.current_model.filename
     
     def _ensure_model_dir(self) -> None:
         """确保模型目录存在。"""
@@ -213,6 +221,33 @@ class ImageBackgroundView(ft.Container):
             ],
             spacing=PADDING_MEDIUM,
             horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
+        )
+        
+        # 模型选择下拉框
+        model_options = []
+        for key, model in BACKGROUND_REMOVAL_MODELS.items():
+            model_options.append(
+                ft.dropdown.Option(
+                    key=key,
+                    text=f"{model.display_name} ({model.size_mb}MB)"
+                )
+            )
+        
+        self.model_selector: ft.Dropdown = ft.Dropdown(
+            options=model_options,
+            value=self.current_model_key,
+            label="选择模型",
+            hint_text="选择背景移除模型",
+            on_change=self._on_model_select_change,
+            width=400,
+            dense=True,
+        )
+        
+        # 模型信息显示
+        self.model_info_text: ft.Text = ft.Text(
+            f"质量: {self.current_model.quality} | 性能: {self.current_model.performance}",
+            size=11,
+            color=TEXT_SECONDARY,
         )
         
         # 模型状态显示
@@ -348,10 +383,11 @@ class ImageBackgroundView(ft.Container):
             content=ft.Column(
                 controls=[
                     ft.Text("处理选项:", size=14, weight=ft.FontWeight.W_500),
+                    self.model_selector,
+                    self.model_info_text,
+                    ft.Container(height=PADDING_SMALL),
                     model_status_row,
                     self.auto_load_checkbox,
-                    ft.Container(height=PADDING_MEDIUM),
-                    ft.Text("输出设置:", size=14, weight=ft.FontWeight.W_500),
                     self.output_mode_radio,
                     ft.Row(
                         controls=[
@@ -497,7 +533,7 @@ class ImageBackgroundView(ft.Container):
             return
         
         self.is_model_loading = True
-        self._update_model_status("downloading", "正在下载模型（约350MB），请稍候...")
+        self._update_model_status("downloading", f"正在下载模型（约{self.current_model.size_mb}MB），请稍候...")
         
         # 显示下载进度条
         self.progress_bar.visible = True
@@ -540,7 +576,8 @@ class ImageBackgroundView(ft.Container):
                         except:
                             pass
                 
-                urllib.request.urlretrieve(self.MODEL_URL, self.model_path, reporthook=report_progress)
+                # 使用当前选择的模型URL
+                urllib.request.urlretrieve(self.current_model.url, self.model_path, reporthook=report_progress)
                 
                 # 下载完成，隐藏进度条
                 self.progress_bar.visible = False
@@ -672,7 +709,7 @@ class ImageBackgroundView(ft.Container):
             self.page.update()
         
         def open_url_and_close(e: ft.ControlEvent) -> None:
-            webbrowser.open(self.MODEL_URL)
+            webbrowser.open(self.current_model.url)
             close_dialog(e)
         
         dialog = ft.AlertDialog(
@@ -685,7 +722,7 @@ class ImageBackgroundView(ft.Container):
                     ft.Text("请手动下载模型文件：", weight=ft.FontWeight.W_500),
                     ft.Container(height=PADDING_MEDIUM // 2),
                     ft.Text("1. 点击「打开下载链接」按钮"),
-                    ft.Text("2. 在浏览器中下载模型文件 (model_q4.onnx)"),
+                    ft.Text(f"2. 在浏览器中下载模型文件 ({self.current_model.filename})"),
                     ft.Text("3. 将下载的文件移动到以下位置："),
                     ft.Container(
                         content=ft.Text(
@@ -722,6 +759,90 @@ class ImageBackgroundView(ft.Container):
         """
         if self.on_back:
             self.on_back()
+    
+    def _on_model_select_change(self, e: ft.ControlEvent) -> None:
+        """模型选择变化事件。
+        
+        Args:
+            e: 控件事件对象
+        """
+        new_model_key = e.control.value
+        if new_model_key == self.current_model_key:
+            return
+        
+        # 如果当前有模型加载，提示用户切换模型会卸载当前模型
+        if self.bg_remover:
+            def confirm_switch(confirm_e: ft.ControlEvent) -> None:
+                """确认切换模型。"""
+                dialog.open = False
+                self.page.update()
+                self._switch_model(new_model_key)
+            
+            def cancel_switch(cancel_e: ft.ControlEvent) -> None:
+                """取消切换，恢复原选择。"""
+                dialog.open = False
+                self.model_selector.value = self.current_model_key
+                self.model_selector.update()
+                self.page.update()
+            
+            dialog = ft.AlertDialog(
+                modal=True,
+                title=ft.Text("确认切换模型"),
+                content=ft.Column(
+                    controls=[
+                        ft.Text("切换模型将卸载当前已加载的模型。", size=14),
+                        ft.Container(height=PADDING_SMALL),
+                        ft.Text("是否继续？", size=13, color=TEXT_SECONDARY),
+                    ],
+                    tight=True,
+                    spacing=PADDING_SMALL,
+                ),
+                actions=[
+                    ft.TextButton("取消", on_click=cancel_switch),
+                    ft.ElevatedButton("切换", on_click=confirm_switch),
+                ],
+                actions_alignment=ft.MainAxisAlignment.END,
+            )
+            
+            self.page.overlay.append(dialog)
+            dialog.open = True
+            self.page.update()
+        else:
+            # 没有加载模型，直接切换
+            self._switch_model(new_model_key)
+    
+    def _switch_model(self, new_model_key: str) -> None:
+        """切换到新模型。
+        
+        Args:
+            new_model_key: 新模型的键
+        """
+        # 卸载旧模型
+        if self.bg_remover:
+            self.bg_remover = None
+            gc.collect()
+        
+        # 更新当前模型
+        self.current_model_key = new_model_key
+        self.current_model = BACKGROUND_REMOVAL_MODELS[new_model_key]
+        
+        # 保存到配置
+        self.config_service.set_config_value("background_model_key", new_model_key)
+        
+        # 更新模型路径
+        self.model_path = self._get_model_path()
+        
+        # 更新模型信息显示
+        self.model_info_text.value = f"质量: {self.current_model.quality} | 性能: {self.current_model.performance}"
+        self.model_info_text.update()
+        
+        # 检查新模型状态
+        self._check_model_status()
+        
+        # 更新处理按钮状态
+        self._update_process_button()
+        
+        self._show_snackbar(f"已切换到: {self.current_model.display_name}", ft.Colors.GREEN)
     
     def _on_auto_load_change(self, e: ft.ControlEvent) -> None:
         """自动加载模型复选框变化事件。
@@ -780,6 +901,9 @@ class ImageBackgroundView(ft.Container):
             self.page.update()
         
         # 显示确认对话框
+        # 计算内存占用（模型文件大小的近似值，实际内存可能略大）
+        estimated_memory = int(self.current_model.size_mb * 1.2)  # 估算内存为文件大小的1.2倍
+        
         dialog = ft.AlertDialog(
             modal=True,
             title=ft.Text("确认卸载模型"),
@@ -787,7 +911,7 @@ class ImageBackgroundView(ft.Container):
                 controls=[
                     ft.Text("确定要卸载背景移除模型吗？", size=14),
                     ft.Container(height=PADDING_MEDIUM // 2),
-                    ft.Text("此操作将释放约400MB内存，不会删除模型文件。", size=12, color=TEXT_SECONDARY),
+                    ft.Text(f"此操作将释放约{estimated_memory}MB内存，不会删除模型文件。", size=12, color=TEXT_SECONDARY),
                     ft.Text("需要时可以重新加载。", size=12, color=TEXT_SECONDARY),
                 ],
                 tight=True,
@@ -847,19 +971,19 @@ class ImageBackgroundView(ft.Container):
         dialog = ft.AlertDialog(
             modal=True,
             title=ft.Text("确认删除模型文件"),
-            content=ft.Column(
-                controls=[
-                    ft.Text("确定要删除背景移除模型文件吗？", size=14),
-                    ft.Container(height=PADDING_MEDIUM // 2),
-                    ft.Text("此操作将：", size=13, weight=ft.FontWeight.W_500),
-                    ft.Text("• 删除模型文件（约350MB）", size=12, color=TEXT_SECONDARY),
-                    ft.Text("• 如果模型已加载，将先卸载", size=12, color=TEXT_SECONDARY),
-                    ft.Container(height=PADDING_MEDIUM // 2),
-                    ft.Text("删除后需要重新下载才能使用。", size=12, color=ft.Colors.ERROR),
-                ],
-                tight=True,
-                spacing=PADDING_MEDIUM // 2,
-            ),
+                content=ft.Column(
+                    controls=[
+                        ft.Text("确定要删除背景移除模型文件吗？", size=14),
+                        ft.Container(height=PADDING_MEDIUM // 2),
+                        ft.Text("此操作将：", size=13, weight=ft.FontWeight.W_500),
+                        ft.Text(f"• 删除模型文件（约{self.current_model.size_mb}MB）", size=12, color=TEXT_SECONDARY),
+                        ft.Text("• 如果模型已加载，将先卸载", size=12, color=TEXT_SECONDARY),
+                        ft.Container(height=PADDING_MEDIUM // 2),
+                        ft.Text("删除后需要重新下载才能使用。", size=12, color=ft.Colors.ERROR),
+                    ],
+                    tight=True,
+                    spacing=PADDING_MEDIUM // 2,
+                ),
             actions=[
                 ft.TextButton("取消", on_click=cancel_delete),
                 ft.ElevatedButton(
