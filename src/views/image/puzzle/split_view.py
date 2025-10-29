@@ -6,6 +6,7 @@
 import io
 import os
 import threading
+import time
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -66,6 +67,11 @@ class ImagePuzzleSplitView(ft.Container):
         self.gif_frame_count: int = 0
         self.current_frame_index: int = 0
         
+        # 实时预览支持
+        self._last_update_time: float = 0.0
+        self._update_timer: Optional[threading.Timer] = None
+        self._auto_preview_enabled: bool = True  # 是否启用自动预览
+        
         self.expand: bool = True
         self.padding: ft.padding = ft.padding.only(
             left=PADDING_XLARGE,
@@ -93,6 +99,20 @@ class ImagePuzzleSplitView(ft.Container):
         )
         
         # 左侧：文件选择和预览
+        # 自动预览复选框（需要在 file_select_area 之前定义）
+        self.auto_preview_switch: ft.Checkbox = ft.Checkbox(
+            label="实时预览",
+            value=True,
+            on_change=self._on_auto_preview_toggle,
+        )
+        
+        # 随机打乱选项（需要在 file_select_area 之前定义）
+        self.split_shuffle: ft.Checkbox = ft.Checkbox(
+            label="随机打乱",
+            value=False,
+            on_change=self._on_option_change,
+        )
+        
         # 空状态提示
         self.empty_state_widget: ft.Column = ft.Column(
             controls=[
@@ -122,6 +142,9 @@ class ImagePuzzleSplitView(ft.Container):
                             icon=ft.Icons.FILE_UPLOAD,
                             on_click=self._on_select_file,
                         ),
+                        ft.Container(width=PADDING_MEDIUM),  # 间隔
+                        self.auto_preview_switch,
+                        self.split_shuffle,
                     ],
                     spacing=PADDING_MEDIUM,
                 ),
@@ -173,9 +196,17 @@ class ImagePuzzleSplitView(ft.Container):
             dense=True,
             keyboard_type=ft.KeyboardType.NUMBER,
             on_submit=self._on_frame_input_submit,
+            on_blur=self._on_frame_input_submit,  # 失去焦点时也触发
         )
         
         self.gif_total_frames_text: ft.Text = ft.Text("", size=12, color=TEXT_SECONDARY)
+        
+        # GIF 动画保留选项（需要在 gif_frame_selector 之前定义）
+        self.keep_gif_animation: ft.Checkbox = ft.Checkbox(
+            label="保留 GIF 动画",
+            value=False,
+            on_change=self._on_option_change,
+        )
         
         self.gif_frame_selector: ft.Container = ft.Container(
             content=ft.Row(
@@ -196,6 +227,8 @@ class ImagePuzzleSplitView(ft.Container):
                         on_click=self._on_gif_next_frame,
                         tooltip="下一帧",
                     ),
+                    ft.Container(width=PADDING_MEDIUM),  # 间隔
+                    self.keep_gif_animation,  # 添加到这一行
                 ],
                 spacing=PADDING_SMALL,
             ),
@@ -210,23 +243,25 @@ class ImagePuzzleSplitView(ft.Container):
         self.split_rows: ft.TextField = ft.TextField(
             label="行数",
             value="3",
-            width=80,
+            width=68,
             keyboard_type=ft.KeyboardType.NUMBER,
+            hint_text="1-100",
             on_change=self._on_option_change,
         )
         
         self.split_cols: ft.TextField = ft.TextField(
             label="列数",
             value="3",
-            width=80,
+            width=68,
             keyboard_type=ft.KeyboardType.NUMBER,
+            hint_text="1-100",
             on_change=self._on_option_change,
         )
         
         self.split_spacing_input: ft.TextField = ft.TextField(
             label="切块间距",
             value="5",
-            width=100,
+            width=80,
             keyboard_type=ft.KeyboardType.NUMBER,
             suffix_text="px",
             on_change=self._on_option_change,
@@ -235,7 +270,7 @@ class ImagePuzzleSplitView(ft.Container):
         self.corner_radius_input: ft.TextField = ft.TextField(
             label="切块圆角",
             value="0",
-            width=100,
+            width=80,
             keyboard_type=ft.KeyboardType.NUMBER,
             suffix_text="px",
             on_change=self._on_option_change,
@@ -244,7 +279,7 @@ class ImagePuzzleSplitView(ft.Container):
         self.overall_corner_radius_input: ft.TextField = ft.TextField(
             label="整体圆角",
             value="0",
-            width=100,
+            width=80,
             keyboard_type=ft.KeyboardType.NUMBER,
             suffix_text="px",
             on_change=self._on_option_change,
@@ -260,15 +295,15 @@ class ImagePuzzleSplitView(ft.Container):
                 ft.dropdown.Option("gray", "灰色"),
                 ft.dropdown.Option("transparent", "透明"),
                 ft.dropdown.Option("custom", "自定义..."),
-                ft.dropdown.Option("image", "背景图片"),
+                ft.dropdown.Option("image", "选择图片"),
             ],
-            width=120,
+            width=100,
             on_change=self._on_bg_color_change,
         )
         
         # 背景图片选择按钮
         self.bg_image_button: ft.ElevatedButton = ft.ElevatedButton(
-            "选择背景图",
+            "选择图片",
             icon=ft.Icons.IMAGE,
             on_click=self._on_select_bg_image,
             visible=False,
@@ -306,25 +341,11 @@ class ImagePuzzleSplitView(ft.Container):
             on_change=self._on_option_change,
         )
         
-        self.split_shuffle: ft.Checkbox = ft.Checkbox(
-            label="随机打乱",
-            value=False,
-            on_change=self._on_option_change,
-        )
-        
-        # GIF 动画保留选项
-        self.keep_gif_animation: ft.Checkbox = ft.Checkbox(
-            label="保留 GIF 动画",
-            value=False,
-            visible=False,
-            on_change=self._on_option_change,
-        )
-        
         # 不透明度控制
         self.piece_opacity_input: ft.TextField = ft.TextField(
             label="切块不透明度",
             value="100",
-            width=120,
+            width=100,
             keyboard_type=ft.KeyboardType.NUMBER,
             suffix_text="%",
             on_change=self._on_option_change,
@@ -333,7 +354,7 @@ class ImagePuzzleSplitView(ft.Container):
         self.bg_opacity_input: ft.TextField = ft.TextField(
             label="背景不透明度",
             value="100",
-            width=120,
+            width=100,
             keyboard_type=ft.KeyboardType.NUMBER,
             suffix_text="%",
             on_change=self._on_option_change,
@@ -354,8 +375,6 @@ class ImagePuzzleSplitView(ft.Container):
                 self.custom_color_b,
                 self.bg_image_button,
                 self.bg_opacity_input,
-                self.split_shuffle,
-                self.keep_gif_animation,
             ],
             wrap=True,
             spacing=PADDING_MEDIUM,
@@ -376,7 +395,7 @@ class ImagePuzzleSplitView(ft.Container):
         )
         
         self.preview_info_text: ft.Text = ft.Text(
-            "选择图片后，点击「生成预览」查看效果",
+            "选择图片后将自动生成预览",
             size=13,
             color=TEXT_SECONDARY,
             text_align=ft.TextAlign.CENTER,
@@ -509,9 +528,51 @@ class ImagePuzzleSplitView(ft.Container):
             self.on_back()
     
     def _on_option_change(self, e: ft.ControlEvent) -> None:
-        """选项改变事件。"""
-        # 清空预览（选项改变后需要重新生成）
-        self._clear_preview()
+        """选项改变事件 - 支持实时预览。"""
+        # 如果启用了自动预览且已选择文件，则自动更新预览
+        if self._auto_preview_enabled and self.selected_file:
+            self._schedule_auto_preview()
+        else:
+            # 清空预览（选项改变后需要重新生成）
+            self._clear_preview()
+    
+    def _schedule_auto_preview(self) -> None:
+        """安排自动预览更新（使用防抖机制）。"""
+        # 取消之前的定时器
+        if self._update_timer is not None:
+            self._update_timer.cancel()
+        
+        # 设置新的定时器，延迟500ms后生成预览
+        self._update_timer = threading.Timer(0.5, self._auto_generate_preview)
+        self._update_timer.daemon = True
+        self._update_timer.start()
+    
+    def _auto_generate_preview(self) -> None:
+        """自动生成预览（防抖后触发）。"""
+        # 模拟点击生成预览按钮，传递 is_auto=True 标记
+        class FakeEvent:
+            is_auto = True
+        
+        self._on_generate_preview(FakeEvent())
+    
+    def _on_auto_preview_toggle(self, e: ft.ControlEvent) -> None:
+        """自动预览开关切换事件。"""
+        self._auto_preview_enabled = self.auto_preview_switch.value
+        
+        # 更新提示文本
+        if not self.preview_image:
+            if self._auto_preview_enabled:
+                self.preview_info_text.value = "选择图片后将自动生成预览"
+            else:
+                self.preview_info_text.value = "选择图片后，点击「生成预览」查看效果"
+            try:
+                self.preview_info_text.update()
+            except:
+                pass
+        
+        # 如果打开了自动预览，立即生成一次预览
+        if self._auto_preview_enabled and self.selected_file:
+            self._schedule_auto_preview()
     
     
     def _on_bg_color_change(self, e: ft.ControlEvent) -> None:
@@ -531,7 +592,12 @@ class ImagePuzzleSplitView(ft.Container):
             self.bg_image_button.update()
         except:
             pass
-        self._clear_preview()
+        
+        # 触发实时预览
+        if self._auto_preview_enabled and self.selected_file:
+            self._schedule_auto_preview()
+        else:
+            self._clear_preview()
     
     def _on_select_bg_image(self, e: ft.ControlEvent) -> None:
         """选择背景图片按钮点击事件。"""
@@ -543,7 +609,12 @@ class ImagePuzzleSplitView(ft.Container):
                     self.bg_image_button.update()
                 except:
                     pass
-                self._clear_preview()
+                
+                # 触发实时预览
+                if self._auto_preview_enabled and self.selected_file:
+                    self._schedule_auto_preview()
+                else:
+                    self._clear_preview()
         
         picker: ft.FilePicker = ft.FilePicker(on_result=on_result)
         self.page.overlay.append(picker)
@@ -551,7 +622,7 @@ class ImagePuzzleSplitView(ft.Container):
         
         picker.pick_files(
             dialog_title="选择背景图片",
-            allowed_extensions=["jpg", "jpeg", "jfif", "png", "bmp", "webp", "tiff"],
+            allowed_extensions=["jpg", "jpeg", "jfif", "png", "bmp", "webp", "tiff", "gif"],
             allow_multiple=False,
         )
     
@@ -562,7 +633,12 @@ class ImagePuzzleSplitView(ft.Container):
             if result.files and len(result.files) > 0:
                 self.selected_file = Path(result.files[0].path)
                 self._update_file_info()
-                self._clear_preview()
+                
+                # 选择文件后自动生成首次预览
+                if self._auto_preview_enabled:
+                    self._schedule_auto_preview()
+                else:
+                    self._clear_preview()
         
         picker: ft.FilePicker = ft.FilePicker(on_result=on_result)
         self.page.overlay.append(picker)
@@ -596,18 +672,33 @@ class ImagePuzzleSplitView(ft.Container):
                     self.gif_frame_count = GifUtils.get_frame_count(self.selected_file)
                     self.current_frame_index = 0
                     
-                    # 显示 GIF 帧选择器和动画保留选项
+                    # 显示 GIF 帧选择器（包含动画保留选项）
                     self.gif_frame_selector.visible = True
                     self.gif_frame_input.value = "1"
                     self.gif_total_frames_text.value = f"/ {self.gif_frame_count}"
-                    self.keep_gif_animation.visible = True
                     
                     # 提取第一帧并保存为临时文件
                     try:
                         frame_image = GifUtils.extract_frame(self.selected_file, 0)
                         if frame_image:
-                            temp_path = self.config_service.get_temp_dir() / f"gif_frame_0.png"
+                            # 使用时间戳避免缓存问题
+                            import time
+                            timestamp = int(time.time() * 1000)
+                            temp_dir = self.config_service.get_temp_dir()
+                            temp_path = temp_dir / f"gif_frame_0_{timestamp}.png"
                             frame_image.save(temp_path)
+                            
+                            # 清理旧的GIF帧临时文件
+                            try:
+                                for old_file in temp_dir.glob("gif_frame_*.png"):
+                                    if old_file != temp_path:
+                                        try:
+                                            old_file.unlink()
+                                        except:
+                                            pass
+                            except:
+                                pass
+                            
                             self.original_image_widget.src = str(temp_path)
                             self.original_image_widget.visible = True
                             self.empty_state_widget.visible = False
@@ -619,11 +710,9 @@ class ImagePuzzleSplitView(ft.Container):
                         self.empty_state_widget.controls[2].value = f"无法提取 GIF 帧: {e}"
                         self.original_image_widget.visible = False
                         self.gif_frame_selector.visible = False
-                        self.keep_gif_animation.visible = False
                 else:
-                    # 隐藏 GIF 帧选择器和动画保留选项
+                    # 隐藏 GIF 帧选择器（包含动画保留选项）
                     self.gif_frame_selector.visible = False
-                    self.keep_gif_animation.visible = False
                     # 显示原图预览
                     try:
                         self.original_image_widget.src = self.selected_file
@@ -638,6 +727,7 @@ class ImagePuzzleSplitView(ft.Container):
         try:
             self.empty_state_widget.update()
             self.original_image_widget.update()
+            self.gif_frame_selector.update()
         except:
             pass
     
@@ -646,7 +736,13 @@ class ImagePuzzleSplitView(ft.Container):
         self.preview_image = None
         self.preview_image_widget.src = None  # 清空图片源
         self.preview_image_widget.visible = False
-        self.preview_info_text.value = "选择图片后，点击「生成预览」查看效果"  # 重置提示文本
+        
+        # 根据是否启用实时预览，显示不同的提示文本
+        if self._auto_preview_enabled:
+            self.preview_info_text.value = "选择图片后将自动生成预览"
+        else:
+            self.preview_info_text.value = "选择图片后，点击「生成预览」查看效果"
+        
         self.preview_info_text.visible = True
         self.save_button.disabled = True
         try:
@@ -662,8 +758,13 @@ class ImagePuzzleSplitView(ft.Container):
             return
         
         if not self.selected_file:
-            self._show_snackbar("请先选择图片", ft.Colors.ORANGE)
+            # 只在手动点击时提示
+            if not hasattr(e, 'is_auto'):
+                self._show_snackbar("请先选择图片", ft.Colors.ORANGE)
             return
+        
+        # 检测是否为自动预览
+        is_auto = hasattr(e, 'is_auto') and e.is_auto
         
         try:
             rows = int(self.split_rows.value or 3)
@@ -694,23 +795,29 @@ class ImagePuzzleSplitView(ft.Container):
             
             # 检查背景图片
             if bg_color == "image" and not self.bg_image_path:
-                self._show_snackbar("请先选择背景图片", ft.Colors.ORANGE)
+                if not is_auto:
+                    self._show_snackbar("请先选择背景图片", ft.Colors.ORANGE)
                 return
             
-            if rows < 1 or cols < 1 or rows > 10 or cols > 10:
-                self._show_snackbar("行数和列数必须在1-10之间", ft.Colors.RED)
+            if rows < 1 or cols < 1 or rows > 100 or cols > 100:
+                if not is_auto:
+                    self._show_snackbar("行数和列数必须在1-100之间", ft.Colors.RED)
                 return
         except ValueError:
-            self._show_snackbar("请输入有效的数字", ft.Colors.RED)
+            if not is_auto:
+                self._show_snackbar("请输入有效的数字", ft.Colors.RED)
             return
         
         self.is_processing = True
-        self.preview_info_text.value = "正在生成预览..."
-        self.preview_info_text.visible = True
-        try:
-            self.page.update()
-        except:
-            pass
+        
+        # 自动预览时不显示"正在生成预览"提示
+        if not is_auto:
+            self.preview_info_text.value = "正在生成预览..."
+            self.preview_info_text.visible = True
+            try:
+                self.page.update()
+            except:
+                pass
         
         def process_task():
             try:
@@ -723,7 +830,7 @@ class ImagePuzzleSplitView(ft.Container):
                     image = Image.open(self.selected_file)
                 
                 # 切分并重新拼接
-                result = self._split_and_reassemble(
+                result, _ = self._split_and_reassemble(
                     image, rows, cols, shuffle, spacing, 
                     corner_radius, overall_corner_radius,
                     bg_color, custom_rgb, self.bg_image_path,
@@ -732,7 +839,10 @@ class ImagePuzzleSplitView(ft.Container):
                 
                 # 更新预览
                 self._update_preview(result)
-                self._show_snackbar("预览生成成功", ft.Colors.GREEN)
+                
+                # 只在手动点击时显示成功提示
+                if not is_auto:
+                    self._show_snackbar("预览生成成功", ft.Colors.GREEN)
             except Exception as ex:
                 self._show_snackbar(f"生成预览失败: {ex}", ft.Colors.RED)
                 self._clear_preview()
@@ -754,9 +864,31 @@ class ImagePuzzleSplitView(ft.Container):
         custom_rgb: tuple = None,
         bg_image_path: Optional[Path] = None,
         piece_opacity: int = 255,
-        bg_opacity: int = 255
-    ) -> Image.Image:
-        """切分并重新拼接图片。"""
+        bg_opacity: int = 255,
+        shuffle_indices: Optional[list] = None,
+        bg_image: Optional[Image.Image] = None
+    ) -> tuple:
+        """切分并重新拼接图片。
+        
+        Args:
+            image: 要切分的图片
+            rows: 行数
+            cols: 列数
+            shuffle: 是否打乱
+            spacing: 切块间距
+            corner_radius: 切块圆角
+            overall_corner_radius: 整体圆角
+            bg_color: 背景颜色类型
+            custom_rgb: 自定义RGB值
+            bg_image_path: 背景图片路径
+            piece_opacity: 切块不透明度
+            bg_opacity: 背景不透明度
+            shuffle_indices: 可选的打乱顺序索引列表，用于保持多帧动画的一致性
+            bg_image: 可选的背景图片Image对象，用于GIF背景动画
+        
+        Returns:
+            (result_image, shuffle_indices): 返回结果图片和使用的打乱索引
+        """
         import random
         from PIL import ImageDraw
         
@@ -792,8 +924,18 @@ class ImagePuzzleSplitView(ft.Container):
                 pieces.append(piece)
         
         # 打乱顺序
+        used_indices = None
         if shuffle:
-            random.shuffle(pieces)
+            if shuffle_indices is not None:
+                # 使用提供的打乱顺序（用于多帧GIF保持一致）
+                pieces = [pieces[i] for i in shuffle_indices]
+                used_indices = shuffle_indices
+            else:
+                # 生成新的打乱顺序
+                indices = list(range(len(pieces)))
+                random.shuffle(indices)
+                pieces = [pieces[i] for i in indices]
+                used_indices = indices
         
         # 计算包含间距的新尺寸
         total_spacing_h = spacing * (cols - 1)
@@ -802,10 +944,15 @@ class ImagePuzzleSplitView(ft.Container):
         new_height = height + total_spacing_v
         
         # 创建结果图片（根据背景类型）
-        if bg_color == "image" and bg_image_path and bg_image_path.exists():
+        if bg_color == "image" and (bg_image is not None or (bg_image_path and bg_image_path.exists())):
             # 使用背景图片
             try:
-                bg_img = Image.open(bg_image_path)
+                # 优先使用传入的bg_image，否则从路径加载
+                if bg_image is not None:
+                    bg_img = bg_image.copy()
+                else:
+                    bg_img = Image.open(bg_image_path)
+                
                 # 调整背景图片大小以适应结果尺寸
                 bg_img = bg_img.resize((new_width, new_height), Image.Resampling.LANCZOS)
                 if bg_img.mode != 'RGBA':
@@ -864,7 +1011,7 @@ class ImagePuzzleSplitView(ft.Container):
         if overall_corner_radius > 0:
             result = self._add_overall_rounded_corners(result, overall_corner_radius)
         
-        return result
+        return result, used_indices
     
     def _add_rounded_corners(self, image: Image.Image, radius: int) -> Image.Image:
         """给单个切块添加圆角。"""
@@ -1078,7 +1225,7 @@ class ImagePuzzleSplitView(ft.Container):
                 image = Image.open(self.selected_file)
             
             # 切分并重新拼接
-            result = self._split_and_reassemble(
+            result, _ = self._split_and_reassemble(
                 image, rows, cols, shuffle, spacing, 
                 corner_radius, overall_corner_radius,
                 bg_color, custom_rgb, self.bg_image_path,
@@ -1147,16 +1294,41 @@ class ImagePuzzleSplitView(ft.Container):
             # 获取原始帧持续时间
             durations = GifUtils.get_frame_durations(self.selected_file)
             
+            # 检查背景图是否为GIF
+            bg_frames = None
+            if bg_color == "image" and self.bg_image_path and self.bg_image_path.exists():
+                # 检测背景图是否为动态GIF
+                if GifUtils.is_animated_gif(self.bg_image_path):
+                    bg_frames = GifUtils.extract_all_frames(self.bg_image_path)
+                    if bg_frames:
+                        self._show_snackbar(f"检测到背景GIF动画（{len(bg_frames)}帧），将同步处理", ft.Colors.BLUE)
+            
             # 处理每一帧
             result_frames = []
+            shuffle_order = None  # 用于保存第一帧的打乱顺序
+            
             for i, frame in enumerate(all_frames):
+                # 获取当前帧对应的背景图（如果背景是GIF）
+                current_bg_image = None
+                if bg_frames:
+                    # 如果背景图帧数较少，循环使用；如果较多，按顺序使用
+                    bg_index = i % len(bg_frames)
+                    current_bg_image = bg_frames[bg_index]
+                
                 # 对当前帧进行切分
-                split_frame = self._split_and_reassemble(
+                # 第一帧时生成打乱顺序，后续帧使用相同的顺序
+                split_frame, indices = self._split_and_reassemble(
                     frame, rows, cols, shuffle, spacing,
                     corner_radius, overall_corner_radius,
                     bg_color, custom_rgb, self.bg_image_path,
-                    piece_opacity, bg_opacity
+                    piece_opacity, bg_opacity,
+                    shuffle_indices=shuffle_order,  # 传入之前的顺序（第一帧时为None）
+                    bg_image=current_bg_image  # 传入当前帧对应的背景图
                 )
+                
+                # 保存第一帧的打乱顺序，供后续帧使用
+                if i == 0 and shuffle and indices is not None:
+                    shuffle_order = indices
                 
                 # GIF 不支持半透明！如果结果是 RGBA，需要转换为 RGB
                 # 将半透明效果合成到白色背景上
@@ -1266,16 +1438,35 @@ class ImagePuzzleSplitView(ft.Container):
             # 提取并显示当前帧
             frame_image = GifUtils.extract_frame(self.selected_file, self.current_frame_index)
             if frame_image:
-                temp_path = self.config_service.get_temp_dir() / f"gif_frame_{self.current_frame_index}.png"
+                # 使用时间戳避免缓存问题
+                import time
+                timestamp = int(time.time() * 1000)
+                temp_dir = self.config_service.get_temp_dir()
+                temp_path = temp_dir / f"gif_frame_{self.current_frame_index}_{timestamp}.png"
                 frame_image.save(temp_path)
-                self.original_image_widget.src = str(temp_path)
                 
-                # 清除预览（因为帧变了）
-                self._clear_preview()
+                # 清理旧的GIF帧临时文件
+                try:
+                    for old_file in temp_dir.glob("gif_frame_*.png"):
+                        if old_file != temp_path:
+                            try:
+                                old_file.unlink()
+                            except:
+                                pass
+                except:
+                    pass
+                
+                self.original_image_widget.src = str(temp_path)
                 
                 # 更新界面
                 self.gif_frame_input.update()
                 self.original_image_widget.update()
+                
+                # GIF 帧切换后自动更新预览
+                if self._auto_preview_enabled:
+                    self._schedule_auto_preview()
+                else:
+                    self._clear_preview()
             else:
                 self._show_snackbar("无法提取 GIF 帧", ft.Colors.RED)
         except Exception as e:

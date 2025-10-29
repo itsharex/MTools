@@ -31,14 +31,14 @@ def _setup_flet_directory() -> None:
     is_compiled = _is_nuitka_compiled()
     
     # 调试信息
-    print(f"[Nuitka Setup] Executable: {sys.argv[0]}")
-    print(f"[Nuitka Setup] Is compiled: {is_compiled}")
+    # print(f"[Nuitka Setup] Executable: {sys.argv[0]}")
+    # print(f"[Nuitka Setup] Is compiled: {is_compiled}")
     
     if not is_compiled:
-        print("[Nuitka Setup] Not a nuitka compiled program, skip setup .flet directory")
+        # print("[Nuitka Setup] Not a nuitka compiled program, skip setup .flet directory")
         return
     
-    print("[Nuitka Setup] Nuitka compiled program detected!")
+    # print("[Nuitka Setup] Nuitka compiled program detected!")
     
     # 获取用户家目录
     home_dir = Path.home()
@@ -46,10 +46,10 @@ def _setup_flet_directory() -> None:
     
     # 如果 .flet 目录已存在，不需要做任何操作
     if flet_dir.exists():
-        print(f"[Nuitka Setup] .flet directory already exists at {flet_dir}")
+        # print(f"[Nuitka Setup] .flet directory already exists at {flet_dir}")
         return
     
-    print(f"[Nuitka Setup] .flet directory not found, setting up...")
+    # print(f"[Nuitka Setup] .flet directory not found, setting up...")
     
     # 获取打包后程序的目录
     if getattr(sys, 'frozen', False):
@@ -62,12 +62,12 @@ def _setup_flet_directory() -> None:
     # .flet.zip 文件路径
     flet_zip_path = app_dir / "src" / "assets" / ".flet.zip"
     
-    print(f"[Nuitka Setup] App directory: {app_dir}")
-    print(f"[Nuitka Setup] Looking for .flet.zip at: {flet_zip_path}")
+    # print(f"[Nuitka Setup] App directory: {app_dir}")
+    # print(f"[Nuitka Setup] Looking for .flet.zip at: {flet_zip_path}")
     
     # 检查 zip 文件是否存在
     if not flet_zip_path.exists():
-        print(f"[Nuitka Setup] ERROR: .flet.zip not found at {flet_zip_path}")
+        # print(f"[Nuitka Setup] ERROR: .flet.zip not found at {flet_zip_path}")
         return
     
     try:
@@ -78,10 +78,10 @@ def _setup_flet_directory() -> None:
         with zipfile.ZipFile(flet_zip_path, 'r') as zip_ref:
             zip_ref.extractall(flet_dir)
         
-        print(f"[Nuitka Setup] Successfully extracted .flet directory to {flet_dir}")
+        # print(f"[Nuitka Setup] Successfully extracted .flet directory to {flet_dir}")
     except Exception as e:
-        print(f"[Nuitka Setup] ERROR setting up .flet directory: {e}")
-
+        # print(f"[Nuitka Setup] ERROR setting up .flet directory: {e}")
+        pass
 
 # 模块导入时自动执行初始化
 _setup_flet_directory()

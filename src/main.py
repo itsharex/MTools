@@ -44,8 +44,11 @@ def main(page: ft.Page) -> None:
     # 设置窗口大小（使用保存的大小或默认大小）
     page.window.width = saved_width if saved_width is not None else WINDOW_WIDTH
     page.window.height = saved_height if saved_height is not None else WINDOW_HEIGHT
-    page.window.min_width = WINDOW_MIN_WIDTH
-    page.window.min_height = WINDOW_MIN_HEIGHT
+    # page.window.min_width = WINDOW_MIN_WIDTH
+    # page.window.min_height = WINDOW_MIN_HEIGHT
+    # 设置窗口最小大小
+    page.window.min_width = WINDOW_WIDTH
+    page.window.min_height = WINDOW_HEIGHT
     
     # 恢复窗口位置（如果有保存的位置）
     if saved_left is not None and saved_top is not None:
