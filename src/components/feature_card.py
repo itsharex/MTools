@@ -3,7 +3,7 @@
 提供可复用的功能卡片组件，具有现代化的设计效果。
 """
 
-from typing import Callable, Optional
+from typing import Callable, Optional, Union
 
 import flet as ft
 
@@ -39,6 +39,7 @@ class FeatureCard(ft.Container):
         description: str,
         on_click: Optional[Callable] = None,
         gradient_colors: Optional[tuple[str, str]] = None,
+        margin: Optional[Union[int, float, ft.Margin]] = None,
     ) -> None:
         """初始化功能卡片。
         
@@ -48,6 +49,7 @@ class FeatureCard(ft.Container):
             description: 卡片描述
             on_click: 点击事件回调函数
             gradient_colors: 渐变色元组(起始色, 结束色)，为None则不使用渐变
+            margin: 外边距，可以是整数或 ft.Margin 对象，默认四边外边距为8
         """
         super().__init__()
         self.icon_name: str = icon
@@ -55,6 +57,8 @@ class FeatureCard(ft.Container):
         self.card_description: str = description
         self.click_handler: Optional[Callable] = on_click
         self.gradient_colors: Optional[tuple[str, str]] = gradient_colors
+        # 如果没有指定 margin，默认设置四边外边距为 8
+        self.card_margin: Union[int, float, ft.Margin] = margin if margin is not None else ft.margin.only(left=5, right=0, top=5, bottom=10)
         
         # 构建卡片
         self._build_card()
@@ -116,13 +120,14 @@ class FeatureCard(ft.Container):
         # 配置容器属性
         self.content = card_content
         self.padding = PADDING_LARGE
+        self.margin = self.card_margin  # 设置外边距
         self.width = 280
         self.height = 240
         self.border_radius = BORDER_RADIUS_LARGE
         # 不设置 bgcolor，使用主题的 card_color
         self.shadow = ft.BoxShadow(
             spread_radius=0,
-            blur_radius=10,
+            blur_radius=3,
             color=ft.Colors.with_opacity(0.08, ft.Colors.BLACK),
             offset=ft.Offset(0, 4),
         )
@@ -149,18 +154,18 @@ class FeatureCard(ft.Container):
             self.scale = 1.02
             self.shadow = ft.BoxShadow(
                 spread_radius=0,
-                blur_radius=20,
+                blur_radius=5,
                 color=ft.Colors.with_opacity(0.12, ft.Colors.BLACK),
-                offset=ft.Offset(0, 8),
+                offset=ft.Offset(0, 3),
             )
         else:
             # 鼠标离开
             self.scale = 1.0
             self.shadow = ft.BoxShadow(
                 spread_radius=0,
-                blur_radius=10,
+                blur_radius=3,
                 color=ft.Colors.with_opacity(0.08, ft.Colors.BLACK),
-                offset=ft.Offset(0, 4),
+                offset=ft.Offset(0, 1),
             )
         self.update()
 

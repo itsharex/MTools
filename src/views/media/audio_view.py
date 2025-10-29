@@ -34,7 +34,12 @@ class AudioView(ft.Container):
         super().__init__()
         self.page: ft.Page = page
         self.expand: bool = True
-        self.padding: int = PADDING_XLARGE
+        self.padding: ft.padding = ft.padding.only(
+            left=PADDING_LARGE,
+            right=PADDING_LARGE,
+            top=PADDING_XLARGE,
+            bottom=PADDING_XLARGE
+        )
         
         # 创建UI组件
         self._build_ui()

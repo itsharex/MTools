@@ -131,6 +131,8 @@ class MainView(ft.Column):
         self.content_container = ft.Container(
             expand=True,
             alignment=ft.alignment.top_left,  # 内容从左上角开始
+            width=float('inf'),  # 占满可用宽度
+            height=float('inf'),  # 占满可用高度
         )
         
         # 创建图片视图和开发工具视图，并传递容器引用

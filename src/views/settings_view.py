@@ -39,10 +39,10 @@ class SettingsView(ft.Container):
         self.page: ft.Page = page
         self.config_service: ConfigService = config_service
         self.expand: bool = True
-        # 右侧多留一些空间给滚动条
+        # 左右边距使用 PADDING_LARGE
         self.padding: ft.padding = ft.padding.only(
-            left=PADDING_XLARGE,
-            right=PADDING_XLARGE,
+            left=PADDING_LARGE,
+            right=PADDING_LARGE,
             top=PADDING_XLARGE,
             bottom=PADDING_XLARGE
         )

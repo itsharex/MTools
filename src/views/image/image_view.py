@@ -48,10 +48,11 @@ class ImageView(ft.Container):
         self.image_service: ImageService = image_service
         self.parent_container: Optional[ft.Container] = parent_container
         self.expand: bool = True
-        # 调整边距，避免卡片被遮挡
+        self.clip_behavior: ft.ClipBehavior = ft.ClipBehavior.NONE  # 关键：不裁剪溢出内容
+
         self.padding: ft.padding = ft.padding.only(
-            left=PADDING_XLARGE,
-            right=PADDING_XLARGE,
+            left=PADDING_LARGE,
+            right=PADDING_LARGE,
             top=PADDING_XLARGE,
             bottom=PADDING_XLARGE
         )
@@ -139,9 +140,11 @@ class ImageView(ft.Container):
                 feature_cards,
             ],
             spacing=PADDING_MEDIUM,
-            scroll=ft.ScrollMode.HIDDEN,  # 隐藏滚动条，避免遮挡
+            scroll=ft.ScrollMode.AUTO,  # 允许滚动
             horizontal_alignment=ft.CrossAxisAlignment.START,  # 从左对齐
             alignment=ft.MainAxisAlignment.START,  # 从上对齐
+            expand=True,  # 占满整个容器
+            width=float('inf'),  # 占满可用宽度
         )
     
     def _open_compress_dialog(self, e: ft.ControlEvent) -> None:
