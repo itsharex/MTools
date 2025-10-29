@@ -82,7 +82,7 @@ class ImageService:
             - height: 高度
             - format: 格式
             - mode: 颜色模式
-            - size: 文件大小（字节）
+            - file_size: 文件大小（字节）
             如果读取失败，返回包含 'error' 键的字典
         """
         try:
@@ -92,7 +92,7 @@ class ImageService:
                     'height': img.height,
                     'format': img.format,
                     'mode': img.mode,
-                    'size': image_path.stat().st_size,
+                    'file_size': image_path.stat().st_size,
                 }
                 return info
         except Exception as e:
@@ -460,27 +460,131 @@ class ImageService:
             print(f"尺寸调整失败: {e}")
             return False
     
-    def get_image_info(self, image_path: Path) -> dict:
-        """获取图片信息。
+    def get_detailed_image_info(self, image_path: Path) -> dict:
+        """获取详细的图片信息，包括EXIF、DPI等。
         
         Args:
             image_path: 图片路径
         
         Returns:
-            图片信息字典
+            包含详细图片信息的字典
         """
         try:
+            from datetime import datetime
+            
+            # 获取文件统计信息
+            file_stat = image_path.stat()
+            
             with Image.open(image_path) as img:
-                return {
-                    'format': img.format,
+                # 基本信息
+                info = {
+                    'filename': image_path.name,
+                    'filepath': str(image_path.absolute()),
+                    'format': img.format or '未知',
+                    'format_description': img.format_description if hasattr(img, 'format_description') else '',
                     'mode': img.mode,
-                    'size': img.size,
                     'width': img.width,
                     'height': img.height,
-                    'file_size': image_path.stat().st_size,
+                    'size': img.size,
+                    'file_size': file_stat.st_size,
+                    'aspect_ratio': f"{img.width}:{img.height}",
                 }
+                
+                # 计算更精确的宽高比
+                from math import gcd
+                ratio_gcd = gcd(img.width, img.height)
+                info['aspect_ratio_simplified'] = f"{img.width // ratio_gcd}:{img.height // ratio_gcd}"
+                
+                # 获取 DPI 信息
+                dpi = img.info.get('dpi', None)
+                if dpi:
+                    info['dpi'] = f"{dpi[0]} × {dpi[1]}"
+                    info['dpi_x'] = dpi[0]
+                    info['dpi_y'] = dpi[1]
+                else:
+                    info['dpi'] = '未指定'
+                    info['dpi_x'] = None
+                    info['dpi_y'] = None
+                
+                # 颜色信息
+                info['color_mode_description'] = self._get_mode_description(img.mode)
+                
+                # 获取调色板信息
+                if img.mode == 'P':
+                    palette = img.getpalette()
+                    if palette:
+                        info['palette_size'] = len(palette) // 3
+                    else:
+                        info['palette_size'] = 0
+                
+                # 动画信息（GIF）
+                if hasattr(img, 'is_animated'):
+                    info['is_animated'] = img.is_animated
+                    if img.is_animated:
+                        info['n_frames'] = getattr(img, 'n_frames', 1)
+                else:
+                    info['is_animated'] = False
+                    info['n_frames'] = 1
+                
+                # 获取 EXIF 信息
+                exif_data = {}
+                try:
+                    from PIL import ExifTags
+                    exif = img._getexif()
+                    if exif:
+                        for tag_id, value in exif.items():
+                            tag = ExifTags.TAGS.get(tag_id, tag_id)
+                            # 转换特殊类型为字符串
+                            if isinstance(value, bytes):
+                                try:
+                                    value = value.decode('utf-8', errors='ignore')
+                                except:
+                                    value = str(value)
+                            exif_data[str(tag)] = value
+                except:
+                    pass
+                
+                info['exif'] = exif_data
+                
+                # 文件时间信息
+                info['created_time'] = datetime.fromtimestamp(file_stat.st_ctime).strftime('%Y-%m-%d %H:%M:%S')
+                info['modified_time'] = datetime.fromtimestamp(file_stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')
+                
+                # 其他元数据
+                info['info'] = dict(img.info)
+                
+                return info
         except Exception as e:
             return {'error': str(e)}
+    
+    def _get_mode_description(self, mode: str) -> str:
+        """获取颜色模式描述。
+        
+        Args:
+            mode: PIL 颜色模式
+        
+        Returns:
+            模式描述
+        """
+        mode_descriptions = {
+            '1': '1位像素，黑白',
+            'L': '8位像素，灰度',
+            'P': '8位像素，使用调色板',
+            'RGB': '3×8位像素，真彩色',
+            'RGBA': '4×8位像素，带透明通道的真彩色',
+            'CMYK': '4×8位像素，印刷色彩分色',
+            'YCbCr': '3×8位像素，彩色视频格式',
+            'LAB': 'L*a*b 色彩空间',
+            'HSV': 'HSV 色彩空间',
+            'I': '32位整型像素',
+            'F': '32位浮点型像素',
+            'LA': '灰度 + Alpha',
+            'PA': '调色板 + Alpha',
+            'RGBX': 'RGB + 填充',
+            'RGBa': 'RGB + Alpha (预乘)',
+            'La': '灰度 + Alpha (预乘)',
+        }
+        return mode_descriptions.get(mode, f'未知模式 ({mode})')
 
 
 class BackgroundRemover:
