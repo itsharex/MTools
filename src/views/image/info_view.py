@@ -5,7 +5,7 @@
 """
 
 from pathlib import Path
-from typing import Callable, Optional, Any
+from typing import Any, Callable, Optional
 
 import flet as ft
 
@@ -15,6 +15,7 @@ from constants import (
     PADDING_MEDIUM,
     PADDING_SMALL,
     PADDING_XLARGE,
+    PRIMARY_COLOR,
     TEXT_PRIMARY,
     TEXT_SECONDARY,
 )
@@ -117,42 +118,79 @@ class ImageInfoView(ft.Container):
             visible=False,
         )
         
+        # 空状态预览提示
+        self.preview_placeholder: ft.Container = ft.Container(
+            content=ft.Column(
+                controls=[
+                    ft.Icon(ft.Icons.IMAGE_OUTLINED, size=80, color=TEXT_SECONDARY),
+                    ft.Text("点击选择图片", size=16, weight=ft.FontWeight.W_500, color=TEXT_PRIMARY),
+                    ft.Container(height=PADDING_SMALL),
+                ],
+                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                alignment=ft.MainAxisAlignment.CENTER,
+                spacing=PADDING_SMALL,
+            ),
+            alignment=ft.alignment.center,
+            visible=True,
+        )
+        
+        # 预览区域堆栈（支持切换显示）
+        preview_stack: ft.Stack = ft.Stack(
+            controls=[
+                self.preview_placeholder,
+                self.image_preview,
+            ],
+        )
+        
         preview_container: ft.Container = ft.Container(
-            content=self.image_preview,
-            border=ft.border.all(1, ft.Colors.OUTLINE),
+            content=preview_stack,
+            border=ft.border.all(1, ft.Colors.OUTLINE_VARIANT),
             border_radius=BORDER_RADIUS_MEDIUM,
             padding=PADDING_MEDIUM,
             alignment=ft.alignment.center,
-            height=450,
+            height=420,
+            bgcolor=ft.Colors.with_opacity(0.05, PRIMARY_COLOR),
+            ink=True,
+            on_click=self._on_select_file,
+            tooltip="点击选择或更换图片",
         )
-        
+
         # 信息显示区域
-        self.info_column: ft.Column = ft.Column(
+        self.info_grid: ft.ResponsiveRow = ft.ResponsiveRow(
             controls=[],
             spacing=PADDING_MEDIUM,
-            scroll=ft.ScrollMode.AUTO,
+            run_spacing=PADDING_MEDIUM,
+            alignment=ft.MainAxisAlignment.START,
         )
-        
+
+        info_scroll: ft.Column = ft.Column(
+            controls=[self.info_grid],
+            scroll=ft.ScrollMode.AUTO,
+            spacing=0,
+            expand=True,
+        )
+
         info_container: ft.Container = ft.Container(
-            content=self.info_column,
+            content=info_scroll,
             border=ft.border.all(1, ft.Colors.OUTLINE),
             border_radius=BORDER_RADIUS_MEDIUM,
             padding=PADDING_MEDIUM,
             expand=True,
         )
-        
-        # 主内容区域 - 左右分栏
-        main_content: ft.Row = ft.Row(
+
+        # 主内容区域 - 响应式布局
+        main_content: ft.ResponsiveRow = ft.ResponsiveRow(
             controls=[
                 ft.Container(
                     content=preview_container,
-                    expand=1,
+                    col={"sm": 12, "md": 5, "lg": 4},
                 ),
                 ft.Container(
                     content=info_container,
-                    expand=2,
+                    col={"sm": 12, "md": 7, "lg": 8},
                 ),
             ],
+            run_spacing=PADDING_LARGE,
             spacing=PADDING_LARGE,
             expand=True,
         )
@@ -170,26 +208,29 @@ class ImageInfoView(ft.Container):
             ],
             spacing=PADDING_MEDIUM,
             expand=True,
+            scroll=ft.ScrollMode.AUTO,
         )
     
     def _init_empty_state(self) -> None:
         """初始化空状态显示。"""
-        self.info_column.controls.append(
-            ft.Container(
-                content=ft.Column(
-                    controls=[
-                        ft.Icon(ft.Icons.INFO_OUTLINE, size=64, color=TEXT_SECONDARY),
-                        ft.Text("未选择图片", color=TEXT_SECONDARY, size=16),
-                        ft.Text("请选择一张图片以查看详细信息", color=TEXT_SECONDARY, size=12),
-                    ],
-                    horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                    alignment=ft.MainAxisAlignment.CENTER,
-                    spacing=PADDING_MEDIUM,
-                ),
-                alignment=ft.alignment.center,
-                expand=True,
-            )
+        empty_hint = ft.Container(
+            content=ft.Column(
+                controls=[
+                    ft.Icon(ft.Icons.INFO_OUTLINE, size=64, color=TEXT_SECONDARY),
+                    ft.Text("图片信息将在此显示", color=TEXT_SECONDARY, size=16, weight=ft.FontWeight.W_500),
+                    ft.Text("请先在左侧选择一张图片", color=TEXT_SECONDARY, size=13),
+                ],
+                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                alignment=ft.MainAxisAlignment.CENTER,
+                spacing=PADDING_MEDIUM,
+            ),
+            alignment=ft.alignment.center,
+            height=320,
+            border=ft.border.all(1, ft.Colors.OUTLINE_VARIANT),
+            border_radius=BORDER_RADIUS_MEDIUM,
+            col={"sm": 12},
         )
+        self.info_grid.controls = [empty_hint]
     
     def _on_select_file(self, e: ft.ControlEvent) -> None:
         """选择文件按钮点击事件。
@@ -225,7 +266,9 @@ class ImageInfoView(ft.Container):
             self._show_message(f"读取图片失败: {self.current_info['error']}", ft.Colors.RED)
             return
         
-        # 显示图片预览
+        # 隐藏占位符，显示图片预览
+        self.preview_placeholder.visible = False
+        self.preview_placeholder.update()
         self.image_preview.src = str(self.selected_file)
         self.image_preview.visible = True
         self.image_preview.update()
@@ -239,7 +282,12 @@ class ImageInfoView(ft.Container):
     
     def _display_info(self) -> None:
         """显示图片信息。"""
-        self.info_column.controls.clear()
+        self.info_grid.controls.clear()
+
+        summary_section = self._build_summary_section()
+        if summary_section:
+            summary_section.col = {"sm": 12}
+            self.info_grid.controls.append(summary_section)
         
         # 基本信息部分
         basic_info_controls = [
@@ -265,7 +313,8 @@ class ImageInfoView(ft.Container):
             border=ft.border.all(1, ft.Colors.OUTLINE_VARIANT),
             border_radius=BORDER_RADIUS_MEDIUM,
         )
-        self.info_column.controls.append(basic_info_section)
+        basic_info_section.col = {"sm": 12, "md": 6, "lg": 6}
+        self.info_grid.controls.append(basic_info_section)
         
         # 尺寸与像素信息部分
         dimension_controls = [
@@ -296,7 +345,8 @@ class ImageInfoView(ft.Container):
             border=ft.border.all(1, ft.Colors.OUTLINE_VARIANT),
             border_radius=BORDER_RADIUS_MEDIUM,
         )
-        self.info_column.controls.append(dimension_section)
+        dimension_section.col = {"sm": 12, "md": 6, "lg": 6}
+        self.info_grid.controls.append(dimension_section)
         
         # 颜色信息部分
         color_controls = [
@@ -363,7 +413,8 @@ class ImageInfoView(ft.Container):
             border=ft.border.all(1, ft.Colors.OUTLINE_VARIANT),
             border_radius=BORDER_RADIUS_MEDIUM,
         )
-        self.info_column.controls.append(color_section)
+        color_section.col = {"sm": 12, "md": 6, "lg": 6}
+        self.info_grid.controls.append(color_section)
         
         # 动画信息（如果是动画）
         if self.current_info.get('is_animated', False):
@@ -380,7 +431,8 @@ class ImageInfoView(ft.Container):
                 border=ft.border.all(1, ft.Colors.OUTLINE_VARIANT),
                 border_radius=BORDER_RADIUS_MEDIUM,
             )
-            self.info_column.controls.append(animation_section)
+            animation_section.col = {"sm": 12, "md": 6, "lg": 4}
+            self.info_grid.controls.append(animation_section)
         
         # 压缩和质量信息
         compression_controls = []
@@ -422,7 +474,8 @@ class ImageInfoView(ft.Container):
                 border=ft.border.all(1, ft.Colors.OUTLINE_VARIANT),
                 border_radius=BORDER_RADIUS_MEDIUM,
             )
-            self.info_column.controls.append(compression_section)
+            compression_section.col = {"sm": 12, "md": 6, "lg": 4}
+            self.info_grid.controls.append(compression_section)
         
         # 相机参数信息（如果有）
         camera_data = self.current_info.get('camera', {})
@@ -443,7 +496,8 @@ class ImageInfoView(ft.Container):
                 border=ft.border.all(1, ft.Colors.OUTLINE_VARIANT),
                 border_radius=BORDER_RADIUS_MEDIUM,
             )
-            self.info_column.controls.append(camera_section)
+            camera_section.col = {"sm": 12, "md": 6, "lg": 6}
+            self.info_grid.controls.append(camera_section)
         
         # GPS信息（如果有）
         if 'gps_coordinates' in self.current_info:
@@ -463,7 +517,8 @@ class ImageInfoView(ft.Container):
                 border=ft.border.all(1, ft.Colors.OUTLINE_VARIANT),
                 border_radius=BORDER_RADIUS_MEDIUM,
             )
-            self.info_column.controls.append(gps_section)
+            gps_section.col = {"sm": 12, "md": 6, "lg": 6}
+            self.info_grid.controls.append(gps_section)
         
         # 文件哈希信息
         if 'md5' in self.current_info or 'sha256' in self.current_info:
@@ -488,7 +543,8 @@ class ImageInfoView(ft.Container):
                 border=ft.border.all(1, ft.Colors.OUTLINE_VARIANT),
                 border_radius=BORDER_RADIUS_MEDIUM,
             )
-            self.info_column.controls.append(hash_section)
+            hash_section.col = {"sm": 12, "md": 6, "lg": 6}
+            self.info_grid.controls.append(hash_section)
         
         # 文件时间信息
         time_section = ft.Container(
@@ -504,7 +560,8 @@ class ImageInfoView(ft.Container):
             border=ft.border.all(1, ft.Colors.OUTLINE_VARIANT),
             border_radius=BORDER_RADIUS_MEDIUM,
         )
-        self.info_column.controls.append(time_section)
+        time_section.col = {"sm": 12, "md": 6, "lg": 6}
+        self.info_grid.controls.append(time_section)
         
         # EXIF 信息（如果有）
         exif_data = self.current_info.get('exif', {})
@@ -572,10 +629,120 @@ class ImageInfoView(ft.Container):
                 border=ft.border.all(1, ft.Colors.OUTLINE_VARIANT),
                 border_radius=BORDER_RADIUS_MEDIUM,
             )
-            self.info_column.controls.append(exif_section)
-        
-        self.info_column.update()
+            exif_section.col = {"sm": 12}
+            self.info_grid.controls.append(exif_section)
+
+        self.info_grid.update()
     
+    def _build_summary_section(self) -> Optional[ft.Container]:
+        """构建概览信息卡片。"""
+        if not self.current_info:
+            return None
+
+        filename: str = self.current_info.get('filename', '-')
+        filepath: str = self.current_info.get('filepath', '-')
+        file_size: str = format_file_size(self.current_info.get('file_size', 0))
+        width: int = self.current_info.get('width', 0)
+        height: int = self.current_info.get('height', 0)
+        format_name: str = self.current_info.get('format', '-')
+        color_mode: str = self.current_info.get('mode', '-')
+
+        stats = [
+            ("文件大小", file_size, ft.Icons.DATA_USAGE),
+            ("图片尺寸", f"{width} × {height} px", ft.Icons.STRAIGHTEN),
+            ("格式", format_name, ft.Icons.INSERT_DRIVE_FILE),
+            ("颜色模式", color_mode, ft.Icons.COLOR_LENS),
+        ]
+
+        stat_tiles: list[ft.Control] = []
+        for label, value, icon in stats:
+            stat_tiles.append(
+                ft.Container(
+                    content=ft.Column(
+                        controls=[
+                            ft.Icon(icon, size=22, color=ft.Colors.WHITE),
+                            ft.Text(label, size=12, color=ft.Colors.with_opacity(0.6, ft.Colors.WHITE)),
+                            ft.Text(value, size=15, weight=ft.FontWeight.W_600, color=ft.Colors.WHITE),
+                        ],
+                        spacing=4,
+                        horizontal_alignment=ft.CrossAxisAlignment.START,
+                    ),
+                    padding=ft.padding.symmetric(horizontal=18, vertical=16),
+                    border_radius=BORDER_RADIUS_MEDIUM,
+                    gradient=ft.LinearGradient(
+                        begin=ft.alignment.top_left,
+                        end=ft.alignment.bottom_right,
+                        colors=[
+                            ft.Colors.with_opacity(0.35, PRIMARY_COLOR),
+                            ft.Colors.with_opacity(0.15, PRIMARY_COLOR),
+                        ],
+                    ),
+                    col={"sm": 6, "md": 3, "lg": 3},
+                )
+            )
+
+        stats_row = ft.ResponsiveRow(
+            controls=stat_tiles,
+            spacing=PADDING_SMALL,
+            run_spacing=PADDING_SMALL,
+            alignment=ft.MainAxisAlignment.START,
+        )
+
+        header_row = ft.Row(
+            controls=[
+                ft.Column(
+                    controls=[
+                        ft.Row(
+                            controls=[
+                                ft.Icon(ft.Icons.DESCRIPTION_OUTLINED, color=ft.Colors.WHITE, size=22),
+                                ft.Text(filename, size=18, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS),
+                            ],
+                            spacing=8,
+                        ),
+                        ft.Text(filepath, size=12, color=ft.Colors.with_opacity(0.6, ft.Colors.WHITE), max_lines=1, overflow=ft.TextOverflow.ELLIPSIS),
+                    ],
+                    spacing=6,
+                    expand=True,
+                ),
+                ft.IconButton(
+                    icon=ft.Icons.CONTENT_COPY,
+                    tooltip="复制路径",
+                    icon_color=ft.Colors.WHITE,
+                    style=ft.ButtonStyle(
+                        padding=10,
+                        bgcolor=ft.Colors.with_opacity(0.2, PRIMARY_COLOR),
+                        shape=ft.RoundedRectangleBorder(radius=8),
+                    ),
+                    on_click=lambda e, value=filepath: self._copy_to_clipboard(value),
+                ),
+            ],
+            alignment=ft.MainAxisAlignment.START,
+        )
+
+        summary_section = ft.Container(
+            content=ft.Column(
+                controls=[
+                    header_row,
+                    ft.Divider(height=1, color=ft.Colors.with_opacity(0.2, ft.Colors.WHITE)),
+                    stats_row,
+                ],
+                spacing=PADDING_MEDIUM,
+            ),
+            padding=PADDING_LARGE,
+            border_radius=BORDER_RADIUS_MEDIUM,
+            gradient=ft.LinearGradient(
+                begin=ft.alignment.top_left,
+                end=ft.alignment.bottom_right,
+                colors=[
+                    ft.Colors.with_opacity(0.55, PRIMARY_COLOR),
+                    ft.Colors.with_opacity(0.35, PRIMARY_COLOR),
+                ],
+            ),
+            border=ft.border.all(1, ft.Colors.with_opacity(0.4, PRIMARY_COLOR)),
+        )
+
+        return summary_section
+
     def _create_section_title(self, title: str, icon: str) -> ft.Row:
         """创建分组标题。
         

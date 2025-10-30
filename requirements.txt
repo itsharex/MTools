@@ -5,3 +5,4 @@ chardet>=5.0.0
 opencv-python-headless==4.11.0.86
 numpy<2.0.0
 onnxruntime>=1.16.0
+websockets<=12.0  # 避免弃用警告，等待 flet 更新
