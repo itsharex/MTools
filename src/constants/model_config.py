@@ -104,8 +104,28 @@ BACKGROUND_REMOVAL_MODELS: Final[dict[str, ModelInfo]] = {
         filename="model.onnx",
         version="2.0"
     ),
+    "birefnet_fp16": ModelInfo(
+        name="birefnet_fp16",
+        display_name="BiRefNet FP16（高精度）",
+        url="https://www.modelscope.cn/models/onnx-community/BiRefNet-ONNX/resolve/master/onnx/model_fp16.onnx",
+        size_mb=490,
+        quality="极高质量",
+        performance="速度较慢、内存占用高",
+        filename="model_fp16.onnx",
+        version="birefnet_1.0"
+    ),
+    "birefnet_standard": ModelInfo(
+        name="birefnet_standard",
+        display_name="BiRefNet 标准版（顶级质量）",
+        url="https://www.modelscope.cn/models/onnx-community/BiRefNet-ONNX/resolve/master/onnx/model.onnx",
+        size_mb=973,
+        quality="顶级质量",
+        performance="速度很慢、内存占用极高",
+        filename="model.onnx",
+        version="birefnet_1.0"
+    ),
 }
 
-# 默认模型（使用原本的 RMBG 2.0 Q4 模型）
+# 默认模型（使用原本的 RMBG 1.4 量化版模型）
 DEFAULT_MODEL_KEY: Final[str] = "rmbg_1.4_quantized"
 

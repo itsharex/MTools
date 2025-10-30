@@ -227,10 +227,21 @@ class ImageBackgroundView(ft.Container):
         # 模型选择下拉框
         model_options = []
         for key, model in BACKGROUND_REMOVAL_MODELS.items():
+            # 格式化大小显示，统一宽度
+            if model.size_mb < 100:
+                size_text = f"{model.size_mb}MB  "
+            elif model.size_mb < 1000:
+                size_text = f"{model.size_mb}MB "
+            else:
+                size_text = f"{model.size_mb}MB"
+            
+            # 构建选项文本，使用更清晰的格式
+            option_text = f"{model.display_name}  |  {size_text}"
+            
             model_options.append(
                 ft.dropdown.Option(
                     key=key,
-                    text=f"{model.display_name} ({model.size_mb}MB)"
+                    text=option_text
                 )
             )
         
@@ -240,8 +251,9 @@ class ImageBackgroundView(ft.Container):
             label="选择模型",
             hint_text="选择背景移除模型",
             on_change=self._on_model_select_change,
-            width=400,
+            width=320,
             dense=True,
+            text_size=13,
         )
         
         # 模型信息显示
