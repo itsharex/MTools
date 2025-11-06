@@ -70,6 +70,7 @@ class ImageView(ft.Container):
         self.crop_view: Optional[ImageCropView] = None
         self.info_view: Optional[ImageInfoView] = None
         self.gif_adjustment_view: Optional[GifAdjustmentView] = None
+        self.to_base64_view = None  # 图片转Base64视图
         
         # 记录当前显示的视图（用于状态恢复）
         self.current_sub_view: Optional[ft.Container] = None
@@ -146,6 +147,13 @@ class ImageView(ft.Container):
                     description="调整 GIF / 实况图的速度、循环等参数，支持导出为视频",
                     gradient_colors=("#FF9A9E", "#FAD0C4"),
                     on_click=self._open_gif_adjustment_dialog,
+                ),
+                FeatureCard(
+                    icon=ft.Icons.CODE,
+                    title="图片转Base64",
+                    description="将图片转换为Base64编码，支持Data URI格式",
+                    gradient_colors=("#667EEA", "#764BA2"),
+                    on_click=self._open_to_base64_dialog,
                 ),
             ],
             wrap=True,  # 自动换行
@@ -424,6 +432,34 @@ class ImageView(ft.Container):
         self.parent_container.content = self.gif_adjustment_view
         self.parent_container.update()
     
+    def _open_to_base64_dialog(self, e: ft.ControlEvent) -> None:
+        """切换到图片转Base64工具界面。
+        
+        Args:
+            e: 控件事件对象
+        """
+        if not self.parent_container:
+            print("错误: 未设置父容器")
+            return
+        
+        # 创建图片转Base64视图（如果还没创建）
+        if not self.to_base64_view:
+            from views.image.to_base64_view import ImageToBase64View
+            self.to_base64_view = ImageToBase64View(
+                self.page,
+                self.config_service,
+                self.image_service,
+                on_back=self._back_to_main
+            )
+        
+        # 记录当前子视图
+        self.current_sub_view = self.to_base64_view
+        self.current_sub_view_type = "to_base64"
+        
+        # 切换到图片转Base64视图
+        self.parent_container.content = self.to_base64_view
+        self.parent_container.update()
+    
     def _back_to_main(self) -> None:
         """返回主界面。"""
         # 销毁当前子视图（而不是保留）
@@ -438,6 +474,7 @@ class ImageView(ft.Container):
                 "crop": "crop_view",
                 "info": "info_view",
                 "gif_adjustment": "gif_adjustment_view",
+                "to_base64": "to_base64_view",
             }
             view_attr = view_map.get(self.current_sub_view_type)
             if view_attr:

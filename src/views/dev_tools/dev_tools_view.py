@@ -59,6 +59,7 @@ class DevToolsView(ft.Container):
         self.python_terminal_view: Optional[ft.Container] = None
         self.encoding_convert_view: Optional[EncodingConvertView] = None
         self.code_format_view: Optional[ft.Container] = None
+        self.base64_to_image_view: Optional[ft.Container] = None
         
         # 记录当前显示的视图（用于状态恢复）
         self.current_sub_view: Optional[ft.Container] = None
@@ -96,6 +97,14 @@ class DevToolsView(ft.Container):
                     description="格式化和美化代码",
                     gradient_colors=("#FA8BFF", "#2BD2FF"),
                     on_click=self._open_code_format,
+                ),
+                # Base64转图片
+                FeatureCard(
+                    icon=ft.Icons.IMAGE_OUTLINED,
+                    title="Base64转图片",
+                    description="Base64转图片，自动识别格式",
+                    gradient_colors=("#4FACFE", "#00F2FE"),
+                    on_click=self._open_base64_to_image,
                 ),
             ],
             wrap=True,
@@ -167,6 +176,23 @@ class DevToolsView(ft.Container):
             self.parent_container.content = self.code_format_view
             self.parent_container.update()
     
+    def _open_base64_to_image(self, e: ft.ControlEvent) -> None:
+        """打开Base64转图片。"""
+        if self.base64_to_image_view is None:
+            from views.dev_tools.base64_to_image_view import Base64ToImageView
+            self.base64_to_image_view = Base64ToImageView(
+                self.page,
+                self.config_service,
+                on_back=self._back_to_main
+            )
+        
+        # 切换到Base64转图片视图
+        if self.parent_container:
+            self.current_sub_view = self.base64_to_image_view
+            self.current_sub_view_type = "base64_to_image"
+            self.parent_container.content = self.base64_to_image_view
+            self.parent_container.update()
+    
     def _back_to_main(self) -> None:
         """返回主界面。"""
         # 销毁当前子视图（而不是保留）
@@ -175,6 +201,7 @@ class DevToolsView(ft.Container):
                 "python_terminal": "python_terminal_view",
                 "encoding_convert": "encoding_convert_view",
                 "code_format": "code_format_view",
+                "base64_to_image": "base64_to_image_view",
             }
             view_attr = view_map.get(self.current_sub_view_type)
             if view_attr:
