@@ -162,7 +162,7 @@ class ImageView(ft.Container):
                 FeatureCard(
                     icon=ft.Icons.ROTATE_90_DEGREES_CCW,
                     title="旋转/翻转",
-                    description="支持实时预览、自定义角度、批量处理",
+                    description="支持GIF动图、实时预览、自定义角度、批量处理",
                     gradient_colors=("#F77062", "#FE5196"),
                     on_click=self._open_rotate_dialog,
                 ),

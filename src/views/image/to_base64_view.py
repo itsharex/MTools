@@ -100,6 +100,21 @@ class ImageToBase64View(ft.Container):
                         spacing=PADDING_MEDIUM,
                         vertical_alignment=ft.CrossAxisAlignment.CENTER,
                     ),
+                    # 支持格式说明
+                    ft.Container(
+                        content=ft.Row(
+                            controls=[
+                                ft.Icon(ft.Icons.INFO_OUTLINE, size=16, color=TEXT_SECONDARY),
+                                ft.Text(
+                                    "支持格式: JPG, PNG, WebP, GIF, BMP, TIFF, ICO 等",
+                                    size=12,
+                                    color=TEXT_SECONDARY,
+                                ),
+                            ],
+                            spacing=8,
+                        ),
+                        margin=ft.margin.only(left=4, top=8),
+                    ),
                 ],
                 spacing=PADDING_SMALL,
             ),
@@ -301,10 +316,12 @@ class ImageToBase64View(ft.Container):
             message: 消息内容
             color: 消息颜色
         """
-        self.page.snack_bar = ft.SnackBar(
+        snackbar: ft.SnackBar = ft.SnackBar(
             content=ft.Text(message),
             bgcolor=color,
+            duration=2000,
         )
-        self.page.snack_bar.open = True
+        self.page.overlay.append(snackbar)
+        snackbar.open = True
         self.page.update()
 

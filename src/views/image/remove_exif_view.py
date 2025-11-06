@@ -409,10 +409,12 @@ class ImageRemoveExifView(ft.Container):
             message: 消息内容
             color: 消息颜色
         """
-        self.page.snack_bar = ft.SnackBar(
+        snackbar: ft.SnackBar = ft.SnackBar(
             content=ft.Text(message),
             bgcolor=color,
+            duration=2000,
         )
-        self.page.snack_bar.open = True
+        self.page.overlay.append(snackbar)
+        snackbar.open = True
         self.page.update()
 

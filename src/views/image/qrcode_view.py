@@ -1,21 +1,19 @@
 # -*- coding: utf-8 -*-
 """二维码生成视图模块。
 
-提供二维码生成功能，支持普通二维码、艺术二维码和动态 GIF 二维码。
+提供二维码生成功能，支持普通二维码、带背景图二维码和动态 GIF 二维码。
 """
 
 import base64
 import io
-import os
 import tempfile
 import threading
-import time
 from pathlib import Path
 from typing import Callable, Optional
 
 import flet as ft
-from amzqr import amzqr
-from PIL import Image
+import qrcode
+from PIL import Image, ImageDraw, ImageEnhance, ImageSequence
 
 from constants import (
     PADDING_LARGE,
@@ -99,22 +97,32 @@ class QRCodeGeneratorView(ft.Container):
             controls=[
                 ft.TextButton(
                     text="网址",
-                    on_click=lambda e: self._set_template("https://"),
+                    on_click=lambda e: self._set_template("https://example.com"),
+                    tooltip="网址模板",
                 ),
                 ft.TextButton(
                     text="WiFi",
-                    on_click=lambda e: self._set_template("WIFI:T:WPA;S:网络名称;P:密码;;"),
+                    on_click=lambda e: self._set_template("WIFI:T:WPA;S:我的WiFi;P:密码123456;;"),
+                    tooltip="WiFi配置模板",
                 ),
                 ft.TextButton(
                     text="电话",
-                    on_click=lambda e: self._set_template("tel:"),
+                    on_click=lambda e: self._set_template("tel:13800138000"),
+                    tooltip="电话号码模板",
                 ),
                 ft.TextButton(
                     text="邮箱",
-                    on_click=lambda e: self._set_template("mailto:"),
+                    on_click=lambda e: self._set_template("mailto:user@example.com"),
+                    tooltip="邮箱地址模板",
+                ),
+                ft.TextButton(
+                    text="短信",
+                    on_click=lambda e: self._set_template("SMSTO:13800138000:Message here"),
+                    tooltip="短信模板",
                 ),
             ],
             spacing=PADDING_SMALL,
+            wrap=True,
         )
         
         input_section = ft.Container(
@@ -123,9 +131,43 @@ class QRCodeGeneratorView(ft.Container):
                     ft.Text("二维码内容", size=16, weight=ft.FontWeight.BOLD),
                     ft.Container(height=PADDING_SMALL),
                     self.content_input,
-                    ft.Container(height=PADDING_SMALL),
+                    # 功能说明
+                    ft.Container(
+                        content=ft.Row(
+                            controls=[
+                                ft.Icon(ft.Icons.INFO_OUTLINE, size=16, color=TEXT_SECONDARY),
+                                ft.Text(
+                                    "支持生成普通二维码、带背景图的艺术二维码和动态GIF二维码 | 支持中文、表情符号等所有字符",
+                                    size=12,
+                                    color=TEXT_SECONDARY,
+                                ),
+                            ],
+                            spacing=8,
+                        ),
+                        margin=ft.margin.only(left=4, top=8, bottom=8),
+                    ),
                     ft.Text("快速模板：", size=12, color=TEXT_SECONDARY),
                     template_buttons,
+                    ft.Container(
+                        content=ft.Column(
+                            controls=[
+                                ft.Text("WiFi 格式说明：", size=11, weight=ft.FontWeight.W_500, color=TEXT_PRIMARY),
+                                ft.Text(
+                                    "WIFI:T:WPA;S:网络名称;P:密码;;\n"
+                                    "• T: 加密类型 (WPA, WEP, nopass)\n"
+                                    "• S: 网络名称 (支持中文)\n"
+                                    "• P: 密码",
+                                    size=10,
+                                    color=TEXT_SECONDARY,
+                                ),
+                            ],
+                            spacing=4,
+                        ),
+                        padding=ft.padding.all(8),
+                        bgcolor=ft.Colors.with_opacity(0.05, ft.Colors.BLUE),
+                        border_radius=8,
+                        margin=ft.margin.only(top=8),
+                    ),
                 ],
                 spacing=PADDING_SMALL,
             ),
@@ -381,6 +423,194 @@ class QRCodeGeneratorView(ft.Container):
         self.selected_image_text.value = "未选择图片"
         self.selected_image_text.update()
     
+    def _generate_base_qr(self, content: str, version: int, level: str) -> Image.Image:
+        """生成基础二维码图像。
+        
+        Args:
+            content: 二维码内容
+            version: 版本号 (1-40)
+            level: 纠错级别 (L/M/Q/H)
+            
+        Returns:
+            PIL Image对象
+        """
+        # 创建二维码对象
+        qr = qrcode.QRCode(
+            version=version,
+            error_correction={
+                'L': qrcode.constants.ERROR_CORRECT_L,
+                'M': qrcode.constants.ERROR_CORRECT_M,
+                'Q': qrcode.constants.ERROR_CORRECT_Q,
+                'H': qrcode.constants.ERROR_CORRECT_H,
+            }[level],
+            box_size=10,
+            border=4,
+        )
+        
+        # 添加数据
+        qr.add_data(content)
+        qr.make(fit=True)
+        
+        # 生成图像
+        img = qr.make_image(fill_color="black", back_color="white")
+        
+        return img.convert('RGB')
+    
+    def _apply_background(self, qr_img: Image.Image, bg_path: Path, colorized: bool) -> Image.Image:
+        """将二维码叠加到背景图片上。
+        
+        Args:
+            qr_img: 二维码图像
+            bg_path: 背景图片路径
+            colorized: 是否彩色化
+            
+        Returns:
+            合成后的图像
+        """
+        # 打开背景图
+        bg_img = Image.open(bg_path).convert('RGBA')
+        
+        # 调整二维码大小以匹配背景
+        qr_size = min(bg_img.size)
+        qr_img = qr_img.resize((qr_size, qr_size), Image.Resampling.LANCZOS)
+        
+        # 转换为RGBA
+        qr_img = qr_img.convert('RGBA')
+        
+        if colorized:
+            # 彩色模式：保留背景颜色，二维码黑色部分变透明
+            qr_data = qr_img.getdata()
+            new_data = []
+            
+            for item in qr_data:
+                # 如果是黑色（二维码部分），设置为半透明黑色
+                # 如果是白色（背景部分），设置为完全透明
+                if item[:3] == (0, 0, 0):  # 黑色
+                    new_data.append((0, 0, 0, 180))
+                else:  # 白色
+                    new_data.append((255, 255, 255, 0))
+            
+            qr_img.putdata(new_data)
+            
+            # 将二维码叠加到背景上
+            result = bg_img.copy()
+            
+            # 居中叠加
+            x = (bg_img.width - qr_size) // 2
+            y = (bg_img.height - qr_size) // 2
+            result.paste(qr_img, (x, y), qr_img)
+        else:
+            # 黑白模式：使用背景亮度信息
+            bg_gray = bg_img.convert('L')
+            bg_gray = bg_gray.resize((qr_size, qr_size), Image.Resampling.LANCZOS)
+            
+            # 创建新图像
+            result = Image.new('RGB', (qr_size, qr_size), 'white')
+            
+            qr_binary = qr_img.convert('L')
+            
+            for y in range(qr_size):
+                for x in range(qr_size):
+                    qr_pixel = qr_binary.getpixel((x, y))
+                    bg_pixel = bg_gray.getpixel((x, y))
+                    
+                    # 如果是二维码的黑色部分，使用背景的暗色
+                    # 如果是二维码的白色部分，使用背景的亮色
+                    if qr_pixel < 128:  # 黑色
+                        color_value = int(bg_pixel * 0.3)  # 变暗
+                    else:  # 白色
+                        color_value = 255 - int((255 - bg_pixel) * 0.3)  # 变亮
+                    
+                    result.putpixel((x, y), (color_value, color_value, color_value))
+        
+        return result.convert('RGB')
+    
+    def _apply_adjustments(self, img: Image.Image, contrast: float, brightness: float) -> Image.Image:
+        """应用对比度和亮度调整。
+        
+        Args:
+            img: 输入图像
+            contrast: 对比度 (0.0-2.0)
+            brightness: 亮度 (0.0-2.0)
+            
+        Returns:
+            调整后的图像
+        """
+        # 调整对比度
+        enhancer = ImageEnhance.Contrast(img)
+        img = enhancer.enhance(contrast)
+        
+        # 调整亮度
+        enhancer = ImageEnhance.Brightness(img)
+        img = enhancer.enhance(brightness)
+        
+        return img
+    
+    def _generate_gif_qr(self, content: str, version: int, level: str, 
+                        gif_path: Path, colorized: bool, 
+                        contrast: float, brightness: float) -> Path:
+        """生成动态 GIF 二维码。
+        
+        Args:
+            content: 二维码内容
+            version: 版本号
+            level: 纠错级别
+            gif_path: GIF背景路径
+            colorized: 是否彩色化
+            contrast: 对比度
+            brightness: 亮度
+            
+        Returns:
+            输出文件路径
+        """
+        # 生成基础二维码
+        qr_img = self._generate_base_qr(content, version, level)
+        
+        # 打开GIF
+        gif = Image.open(gif_path)
+        
+        frames = []
+        durations = []
+        
+        try:
+            for frame_idx in range(gif.n_frames):
+                gif.seek(frame_idx)
+                frame = gif.convert('RGB')
+                
+                # 保存当前帧到临时文件
+                temp_frame = Path(tempfile.mkdtemp()) / f"frame_{frame_idx}.png"
+                frame.save(temp_frame)
+                
+                # 叠加二维码
+                result = self._apply_background(qr_img, temp_frame, colorized)
+                
+                # 应用调整
+                result = self._apply_adjustments(result, contrast, brightness)
+                
+                frames.append(result)
+                
+                # 获取帧延迟
+                duration = gif.info.get('duration', 100)
+                durations.append(duration)
+                
+        except EOFError:
+            pass
+        
+        # 保存为GIF
+        output_path = Path(tempfile.mkdtemp()) / "qrcode.gif"
+        
+        if frames:
+            frames[0].save(
+                output_path,
+                save_all=True,
+                append_images=frames[1:],
+                duration=durations,
+                loop=gif.info.get('loop', 0),
+                optimize=False,
+            )
+        
+        return output_path
+    
     def _on_generate(self, e: ft.ControlEvent) -> None:
         """生成按钮点击事件。"""
         content = self.content_input.value.strip()
@@ -399,48 +629,56 @@ class QRCodeGeneratorView(ft.Container):
         # 后台生成
         def generate_task():
             try:
-                # 创建临时目录
-                temp_dir = tempfile.mkdtemp()
-                
                 # 准备参数
                 version = int(self.version_slider.value)
                 level = self.error_correction_dropdown.value
-                picture = str(self.background_image_path) if self.background_image_path else None
                 colorized = self.colorized_checkbox.value
                 contrast = self.contrast_slider.value
                 brightness = self.brightness_slider.value
                 
-                # 确定输出文件名
-                if picture and picture.lower().endswith('.gif'):
-                    save_name = "qrcode.gif"
+                # 生成基础二维码
+                qr_img = self._generate_base_qr(content, version, level)
+                
+                # 如果有背景图片
+                if self.background_image_path:
+                    bg_path = self.background_image_path
+                    
+                    # 如果是GIF
+                    if bg_path.suffix.lower() == '.gif':
+                        self.qr_image_path = self._generate_gif_qr(
+                            content, version, level, bg_path,
+                            colorized, contrast, brightness
+                        )
+                    else:
+                        # 静态图片
+                        result = self._apply_background(qr_img, bg_path, colorized)
+                        result = self._apply_adjustments(result, contrast, brightness)
+                        
+                        # 保存
+                        temp_dir = Path(tempfile.mkdtemp())
+                        self.qr_image_path = temp_dir / "qrcode.png"
+                        result.save(self.qr_image_path, quality=95)
                 else:
-                    save_name = "qrcode.png"
-                
-                # 调用 amzqr 生成
-                version_result, level_result, qr_name = amzqr.run(
-                    words=content,
-                    version=version,
-                    level=level,
-                    picture=picture,
-                    colorized=colorized,
-                    contrast=contrast,
-                    brightness=brightness,
-                    save_name=save_name,
-                    save_dir=temp_dir,
-                )
-                
-                self.qr_image_path = Path(temp_dir) / save_name
+                    # 纯二维码
+                    result = self._apply_adjustments(qr_img, contrast, brightness)
+                    
+                    # 保存
+                    temp_dir = Path(tempfile.mkdtemp())
+                    self.qr_image_path = temp_dir / "qrcode.png"
+                    result.save(self.qr_image_path, quality=95)
                 
                 # 更新UI
                 self.page.run_task(self._update_preview)
                 
             except Exception as ex:
+                import traceback
+                traceback.print_exc()
                 self.page.run_task(self._show_error, str(ex))
         
         thread = threading.Thread(target=generate_task, daemon=True)
         thread.start()
     
-    def _update_preview(self) -> None:
+    async def _update_preview(self) -> None:
         """更新预览（在主线程中调用）。"""
         try:
             if not self.qr_image_path or not self.qr_image_path.exists():
@@ -478,7 +716,7 @@ class QRCodeGeneratorView(ft.Container):
             self.progress_text.visible = False
             self.page.update()
     
-    def _show_error(self, error_msg: str) -> None:
+    async def _show_error(self, error_msg: str) -> None:
         """显示错误（在主线程中调用）。"""
         self._show_message(f"生成失败: {error_msg}", ft.Colors.ERROR)
         # 隐藏进度
@@ -531,9 +769,11 @@ class QRCodeGeneratorView(ft.Container):
             message: 消息内容
             color: 消息颜色
         """
-        self.page.snack_bar = ft.SnackBar(
+        snackbar: ft.SnackBar = ft.SnackBar(
             content=ft.Text(message),
             bgcolor=color,
+            duration=2000,
         )
-        self.page.snack_bar.open = True
+        self.page.overlay.append(snackbar)
+        snackbar.open = True
         self.page.update()

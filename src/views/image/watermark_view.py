@@ -108,6 +108,21 @@ class ImageWatermarkView(ft.Container):
                         ],
                         spacing=PADDING_MEDIUM,
                     ),
+                    # 支持格式说明
+                    ft.Container(
+                        content=ft.Row(
+                            controls=[
+                                ft.Icon(ft.Icons.INFO_OUTLINE, size=16, color=TEXT_SECONDARY),
+                                ft.Text(
+                                    "支持格式: JPG, PNG, WebP, BMP, TIFF 等 | 支持批量处理",
+                                    size=12,
+                                    color=TEXT_SECONDARY,
+                                ),
+                            ],
+                            spacing=8,
+                        ),
+                        margin=ft.margin.only(left=4, top=4),
+                    ),
                     ft.Container(height=PADDING_SMALL),
                     ft.Container(
                         content=self.file_list_view,
@@ -210,12 +225,142 @@ class ImageWatermarkView(ft.Container):
             visible=False,
         )
         
+        # 字体选择
+        self.font_dropdown = ft.Dropdown(
+            label="字体",
+            width=200,
+            options=[
+                ft.dropdown.Option("system", "系统默认"),
+                ft.dropdown.Option("msyh", "微软雅黑"),
+                ft.dropdown.Option("simsun", "宋体"),
+                ft.dropdown.Option("simhei", "黑体"),
+                ft.dropdown.Option("kaiti", "楷体"),
+                ft.dropdown.Option("arial", "Arial"),
+                ft.dropdown.Option("times", "Times New Roman"),
+                ft.dropdown.Option("courier", "Courier New"),
+                ft.dropdown.Option("custom", "📁 自定义字体..."),
+            ],
+            value="msyh",
+            on_change=self._on_font_change,
+        )
+        
+        # 自定义字体文件路径
+        self.custom_font_path: Optional[Path] = None
+        
+        # 自定义字体显示
+        self.custom_font_text = ft.Text(
+            "未选择字体文件",
+            size=12,
+            color=TEXT_SECONDARY,
+        )
+        
+        custom_font_button = ft.ElevatedButton(
+            text="选择字体文件",
+            icon=ft.Icons.FONT_DOWNLOAD,
+            on_click=self._on_select_font_file,
+            height=36,
+        )
+        
+        self.custom_font_container = ft.Container(
+            content=ft.Column(
+                controls=[
+                    ft.Row(
+                        controls=[
+                            custom_font_button,
+                            self.custom_font_text,
+                        ],
+                        spacing=PADDING_MEDIUM,
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                    ),
+                    ft.Container(
+                        content=ft.Row(
+                            controls=[
+                                ft.Icon(ft.Icons.INFO_OUTLINE, size=14, color=TEXT_SECONDARY),
+                                ft.Text(
+                                    "支持格式: TTF, TTC, OTF",
+                                    size=11,
+                                    color=TEXT_SECONDARY,
+                                ),
+                            ],
+                            spacing=4,
+                        ),
+                        margin=ft.margin.only(top=4),
+                    ),
+                ],
+                spacing=PADDING_SMALL,
+            ),
+            visible=False,
+        )
+        
+        # 字体大小模式
+        self.font_size_mode_radio = ft.RadioGroup(
+            content=ft.Row(
+                controls=[
+                    ft.Radio(value="fixed", label="固定大小"),
+                    ft.Radio(value="auto", label="自适应大小"),
+                ],
+                spacing=PADDING_MEDIUM,
+            ),
+            value="fixed",
+            on_change=self._on_font_size_mode_change,
+        )
+        
+        # 固定大小滑块
         self.font_size_slider = ft.Slider(
             min=10,
             max=200,
             divisions=38,
             value=40,
-            label="{value}",
+            label="{value}px",
+            on_change=lambda e: self._update_preview(),
+        )
+        
+        # 自适应大小滑块（百分比）
+        self.font_size_ratio_slider = ft.Slider(
+            min=1,
+            max=20,
+            divisions=19,
+            value=5,
+            label="{value}%",
+            on_change=lambda e: self._update_preview(),
+        )
+        
+        # 固定大小容器
+        self.font_size_fixed_container = ft.Container(
+            content=ft.Column(
+                controls=[
+                    ft.Text("字体大小（像素）", size=12),
+                    self.font_size_slider,
+                ],
+                spacing=PADDING_SMALL,
+            ),
+            visible=True,
+        )
+        
+        # 自适应大小容器
+        self.font_size_auto_container = ft.Container(
+            content=ft.Column(
+                controls=[
+                    ft.Text("字体大小（图片宽度的百分比）", size=12),
+                    self.font_size_ratio_slider,
+                    ft.Container(
+                        content=ft.Row(
+                            controls=[
+                                ft.Icon(ft.Icons.INFO_OUTLINE, size=14, color=TEXT_SECONDARY),
+                                ft.Text(
+                                    "自适应模式会根据图片宽度自动调整字体大小",
+                                    size=11,
+                                    color=TEXT_SECONDARY,
+                                ),
+                            ],
+                            spacing=4,
+                        ),
+                        margin=ft.margin.only(top=4),
+                    ),
+                ],
+                spacing=PADDING_SMALL,
+            ),
+            visible=False,
         )
         
         self.opacity_slider = ft.Slider(
@@ -283,6 +428,10 @@ class ImageWatermarkView(ft.Container):
                     self.single_position_container,
                     self.tile_settings_container,
                     ft.Container(height=PADDING_SMALL),
+                    ft.Text("字体", size=12),
+                    self.font_dropdown,
+                    self.custom_font_container,
+                    ft.Container(height=PADDING_SMALL),
                     ft.Text("文字颜色", size=12),
                     ft.Row(
                         controls=[
@@ -294,8 +443,10 @@ class ImageWatermarkView(ft.Container):
                         vertical_alignment=ft.CrossAxisAlignment.CENTER,
                     ),
                     ft.Container(height=PADDING_SMALL),
-                    ft.Text("字体大小", size=12),
-                    self.font_size_slider,
+                    ft.Text("字体大小模式", size=12),
+                    self.font_size_mode_radio,
+                    self.font_size_fixed_container,
+                    self.font_size_auto_container,
                     ft.Text("透明度", size=12),
                     self.opacity_slider,
                     self.margin_container,
@@ -723,6 +874,159 @@ class ImageWatermarkView(ft.Container):
         self.tile_settings_container.update()
         self.margin_container.update()
     
+    def _on_font_change(self, e: ft.ControlEvent) -> None:
+        """字体选择改变事件。"""
+        font_choice = e.control.value
+        
+        if font_choice == "custom":
+            # 显示自定义字体选择区域
+            self.custom_font_container.visible = True
+        else:
+            # 隐藏自定义字体选择区域
+            self.custom_font_container.visible = False
+        
+        self.custom_font_container.update()
+        
+        # 更新预览
+        self._update_preview()
+    
+    def _on_select_font_file(self, e: ft.ControlEvent) -> None:
+        """选择字体文件按钮点击事件。"""
+        def on_file_picked(result: ft.FilePickerResultEvent) -> None:
+            if result.files and len(result.files) > 0:
+                self.custom_font_path = Path(result.files[0].path)
+                self.custom_font_text.value = self.custom_font_path.name
+                self.custom_font_text.update()
+                
+                # 更新预览
+                self._update_preview()
+        
+        file_picker = ft.FilePicker(on_result=on_file_picked)
+        self.page.overlay.append(file_picker)
+        self.page.update()
+        
+        file_picker.pick_files(
+            dialog_title="选择字体文件",
+            allowed_extensions=["ttf", "ttc", "otf", "TTF", "TTC", "OTF"],
+            allow_multiple=False,
+        )
+    
+    def _on_font_size_mode_change(self, e: ft.ControlEvent) -> None:
+        """字体大小模式改变事件。"""
+        mode = e.control.value
+        if mode == "fixed":
+            self.font_size_fixed_container.visible = True
+            self.font_size_auto_container.visible = False
+        else:
+            self.font_size_fixed_container.visible = False
+            self.font_size_auto_container.visible = True
+        
+        self.font_size_fixed_container.update()
+        self.font_size_auto_container.update()
+        
+        # 更新预览
+        self._update_preview()
+    
+    def _update_preview(self) -> None:
+        """更新预览（当设置改变时自动调用）。"""
+        # 如果已经选择了文件，自动生成预览
+        if self.selected_files and self.preview_section.visible:
+            # 使用小延迟避免频繁更新
+            import threading
+            
+            def delayed_preview():
+                import time
+                time.sleep(0.1)  # 100ms延迟
+                try:
+                    self._on_preview(None)
+                except:
+                    pass
+            
+            threading.Thread(target=delayed_preview, daemon=True).start()
+    
+    def _get_font(self, font_size: int) -> ImageFont.FreeTypeFont:
+        """获取选择的字体。
+        
+        Args:
+            font_size: 字体大小
+        
+        Returns:
+            字体对象
+        """
+        font_choice = self.font_dropdown.value
+        
+        # 如果选择自定义字体
+        if font_choice == "custom":
+            if self.custom_font_path and self.custom_font_path.exists():
+                try:
+                    return ImageFont.truetype(str(self.custom_font_path), font_size)
+                except Exception as e:
+                    print(f"加载自定义字体失败: {e}")
+                    # 加载失败，降级到微软雅黑
+                    pass
+            else:
+                # 没有选择自定义字体文件，降级到微软雅黑
+                pass
+        
+        # 字体文件映射
+        font_map = {
+            "msyh": ["msyh.ttc", "msyh.ttf"],  # 微软雅黑
+            "simsun": ["simsun.ttc", "simsun.ttf"],  # 宋体
+            "simhei": ["simhei.ttf"],  # 黑体
+            "kaiti": ["simkai.ttf", "kaiti.ttf"],  # 楷体
+            "arial": ["arial.ttf", "Arial.ttf"],  # Arial
+            "times": ["times.ttf", "Times New Roman.ttf"],  # Times New Roman
+            "courier": ["cour.ttf", "Courier New.ttf"],  # Courier New
+        }
+        
+        # 如果选择系统默认，直接返回默认字体
+        if font_choice == "system":
+            return ImageFont.load_default()
+        
+        # 尝试加载选择的字体
+        if font_choice in font_map:
+            for font_file in font_map[font_choice]:
+                try:
+                    return ImageFont.truetype(font_file, font_size)
+                except:
+                    continue
+        
+        # 如果选择的字体加载失败，尝试微软雅黑
+        try:
+            return ImageFont.truetype("msyh.ttc", font_size)
+        except:
+            pass
+        
+        # 最后尝试 Arial
+        try:
+            return ImageFont.truetype("arial.ttf", font_size)
+        except:
+            pass
+        
+        # 都失败了，返回默认字体
+        return ImageFont.load_default()
+    
+    def _calculate_font_size(self, img_width: int) -> int:
+        """计算字体大小。
+        
+        Args:
+            img_width: 图片宽度
+        
+        Returns:
+            计算后的字体大小
+        """
+        font_size_mode = self.font_size_mode_radio.value
+        
+        if font_size_mode == "fixed":
+            # 固定大小模式
+            return int(self.font_size_slider.value)
+        else:
+            # 自适应大小模式（按图片宽度百分比）
+            ratio = self.font_size_ratio_slider.value / 100
+            calculated_size = int(img_width * ratio)
+            # 限制最小和最大值
+            return max(10, min(500, calculated_size))
+    
     def _on_select_files(self, e: ft.ControlEvent) -> None:
         """选择文件按钮点击事件（增量选择）。"""
         def on_files_picked(result: ft.FilePickerResultEvent) -> None:
@@ -899,8 +1203,17 @@ class ImageWatermarkView(ft.Container):
             # 使用当前选择的颜色
             text_color = self.current_color
             
+            # 读取图片
+            img = Image.open(preview_file)
+            
+            # 转换为RGBA模式以支持透明度
+            if img.mode != 'RGBA':
+                img = img.convert('RGBA')
+            
+            # 获取图片尺寸
+            img_width, img_height = img.size
+            
             # 获取设置
-            font_size = int(self.font_size_slider.value)
             opacity = int(self.opacity_slider.value * 255 / 100)
             watermark_mode = self.watermark_mode_radio.value
             
@@ -913,36 +1226,21 @@ class ImageWatermarkView(ft.Container):
             tile_spacing_h = int(self.tile_spacing_h_slider.value)
             tile_spacing_v = int(self.tile_spacing_v_slider.value)
             
-            # 读取图片
-            img = Image.open(preview_file)
-            
-            # 转换为RGBA模式以支持透明度
-            if img.mode != 'RGBA':
-                img = img.convert('RGBA')
+            # 计算字体大小（根据模式：固定或自适应）
+            font_size = self._calculate_font_size(img_width)
             
             # 创建文字层
             txt_layer = Image.new('RGBA', img.size, (255, 255, 255, 0))
             draw = ImageDraw.Draw(txt_layer)
             
-            # 尝试使用系统字体
-            try:
-                # Windows
-                font = ImageFont.truetype("msyh.ttc", font_size)  # 微软雅黑
-            except:
-                try:
-                    # 尝试其他字体
-                    font = ImageFont.truetype("arial.ttf", font_size)
-                except:
-                    # 使用默认字体
-                    font = ImageFont.load_default()
+            # 加载选择的字体
+            font = self._get_font(font_size)
             
             # 获取文字大小
             bbox = draw.textbbox((0, 0), watermark_text, font=font)
             text_width = bbox[2] - bbox[0]
             text_height = bbox[3] - bbox[1]
             
-            # 图片尺寸
-            img_width, img_height = img.size
             text_color_with_alpha = text_color + (opacity,)
             
             if watermark_mode == "single":
@@ -1049,7 +1347,6 @@ class ImageWatermarkView(ft.Container):
             text_color = self.current_color
             
             # 获取设置
-            font_size = int(self.font_size_slider.value)
             opacity = int(self.opacity_slider.value * 255 / 100)
             watermark_mode = self.watermark_mode_radio.value
             
@@ -1082,29 +1379,24 @@ class ImageWatermarkView(ft.Container):
                     if img.mode != 'RGBA':
                         img = img.convert('RGBA')
                     
+                    # 获取图片尺寸
+                    img_width, img_height = img.size
+                    
+                    # 计算字体大小（根据模式：固定或自适应）
+                    font_size = self._calculate_font_size(img_width)
+                    
                     # 创建文字层
                     txt_layer = Image.new('RGBA', img.size, (255, 255, 255, 0))
                     draw = ImageDraw.Draw(txt_layer)
                     
-                    # 尝试使用系统字体
-                    try:
-                        # Windows
-                        font = ImageFont.truetype("msyh.ttc", font_size)  # 微软雅黑
-                    except:
-                        try:
-                            # 尝试其他字体
-                            font = ImageFont.truetype("arial.ttf", font_size)
-                        except:
-                            # 使用默认字体
-                            font = ImageFont.load_default()
+                    # 加载选择的字体
+                    font = self._get_font(font_size)
                     
                     # 获取文字大小
                     bbox = draw.textbbox((0, 0), watermark_text, font=font)
                     text_width = bbox[2] - bbox[0]
                     text_height = bbox[3] - bbox[1]
                     
-                    # 图片尺寸
-                    img_width, img_height = img.size
                     text_color_with_alpha = text_color + (opacity,)
                     
                     if watermark_mode == "single":
@@ -1222,10 +1514,12 @@ class ImageWatermarkView(ft.Container):
             message: 消息内容
             color: 消息颜色
         """
-        self.page.snack_bar = ft.SnackBar(
+        snackbar: ft.SnackBar = ft.SnackBar(
             content=ft.Text(message),
             bgcolor=color,
+            duration=2000,
         )
-        self.page.snack_bar.open = True
+        self.page.overlay.append(snackbar)
+        snackbar.open = True
         self.page.update()
 
