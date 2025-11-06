@@ -8,9 +8,13 @@ import os
 import subprocess
 import zipfile
 from pathlib import Path
-from typing import Callable, Optional, Tuple
+from typing import Callable, Optional, Tuple, Dict
 
+import ffmpeg
 import httpx
+import re
+import shutil
+import shlex
 
 from utils.file_utils import get_app_root
 
@@ -261,7 +265,154 @@ class FFmpegService:
             return False, "下载的文件损坏，请重试"
         except Exception as e:
             return False, f"安装失败: {str(e)}"
-    
+
+    def get_video_duration(self, video_path: Path) -> float:
+        """获取视频时长（秒）。"""
+        ffprobe_path = self.get_ffprobe_path()
+        if not ffprobe_path:
+            return 0.0
+        try:
+            probe = ffmpeg.probe(str(video_path), cmd=ffprobe_path)
+            return float(probe['format']['duration'])
+        except (ffmpeg.Error, KeyError):
+            return 0.0
+
+    def compress_video(
+        self,
+        input_path: Path,
+        output_path: Path,
+        params: Dict,
+        progress_callback: Optional[Callable[[float, str, str], None]] = None
+    ) -> Tuple[bool, str]:
+        """压缩视频。
+
+        Args:
+            input_path: 输入视频路径
+            output_path: 输出视频路径
+            params: 压缩参数字典
+            progress_callback: 进度回调 (progress, speed, remaining_time)
+
+        Returns:
+            (是否成功, 消息)
+        """
+        ffmpeg_path = self.get_ffmpeg_path()
+        if not ffmpeg_path:
+            return False, "未找到 FFmpeg"
+
+        try:
+            duration = self.get_video_duration(input_path)
+            
+            stream = ffmpeg.input(str(input_path))
+            
+            # 根据模式构建参数
+            if params.get("mode") == "advanced":
+                # 高级模式：使用详细参数
+                output_params = {
+                    'vcodec': params.get("vcodec", "libx264"),
+                    'preset': params.get("preset", "medium"),
+                    'pix_fmt': params.get("pix_fmt", "yuv420p"),
+                    'crf': params.get("crf", 23), # Also use CRF in advanced mode
+                }
+                
+                acodec = params.get("acodec", "copy")
+                output_params['acodec'] = acodec
+                if acodec != "copy":
+                    output_params['b:a'] = params.get("audio_bitrate", "192k")
+                
+                stream = ffmpeg.output(stream, str(output_path), **output_params)
+
+            else:
+                # 常规模式
+                crf = params.get("crf", 23)
+                scale = params.get("scale", "original")
+
+                output_params = {
+                    'vcodec': 'libx264',
+                    'crf': crf,
+                    'preset': 'medium',
+                    'acodec': 'copy'
+                }
+
+                if scale != 'original':
+                    height = {'1080p': 1080, '720p': 720, '480p': 480}.get(scale)
+                    if height:
+                        output_params['vf'] = f'scale=-2:{height}'
+
+                stream = ffmpeg.output(stream, str(output_path), **output_params)
+
+            # 添加全局参数以确保进度输出
+            stream = stream.global_args('-stats', '-loglevel', 'info', '-progress', 'pipe:2')
+            
+            # 使用 ffmpeg-python 的 run_async 运行
+            process = ffmpeg.run_async(
+                stream,
+                cmd=ffmpeg_path,
+                pipe_stderr=True,
+                pipe_stdout=True,
+                overwrite_output=True
+            )
+            
+            if progress_callback and duration > 0:
+                # 实时读取 stderr 获取进度
+                import threading
+                
+                def read_stderr():
+                    for line in iter(process.stderr.readline, b''):
+                        try:
+                            line_str = line.decode('utf-8', errors='ignore').strip()
+                            
+                            # 解析时间进度
+                            time_match = re.search(r"time=(\d{2}):(\d{2}):(\d{2})\.\d{2}", line_str)
+                            speed_match = re.search(r"speed=\s*([\d.]+)x", line_str)
+                            
+                            if time_match:
+                                hours = int(time_match.group(1))
+                                minutes = int(time_match.group(2))
+                                seconds = int(time_match.group(3))
+                                current_time = hours * 3600 + minutes * 60 + seconds
+                                
+                                progress = min(current_time / duration, 0.99) if duration > 0 else 0
+                                
+                                speed_str = f"{speed_match.group(1)}x" if speed_match else "N/A"
+                                
+                                if speed_match and float(speed_match.group(1)) > 0:
+                                    remaining_seconds = (duration - current_time) / float(speed_match.group(1))
+                                    remaining_time_str = f"{int(remaining_seconds // 60)}m {int(remaining_seconds % 60)}s"
+                                else:
+                                    remaining_time_str = "计算中..."
+                                
+                                progress_callback(progress, speed_str, remaining_time_str)
+                        except Exception:
+                            pass
+                    process.stderr.close()
+                
+                stderr_thread = threading.Thread(target=read_stderr, daemon=True)
+                stderr_thread.start()
+                
+                # 等待进程结束
+                process.wait()
+                stderr_thread.join(timeout=1)
+            else:
+                # 没有回调时直接等待
+                process.wait()
+            
+            # 检查返回码
+            if process.returncode != 0:
+                stderr_output = ""
+                try:
+                    if process.stderr:
+                        stderr_output = process.stderr.read().decode('utf-8', errors='ignore')
+                except Exception:
+                    pass
+                return False, f"FFmpeg 执行失败，退出码: {process.returncode}\n{stderr_output}"
+            
+            return True, "压缩成功"
+
+        except ffmpeg.Error as e:
+            return False, f"FFmpeg 错误: {e.stderr.decode()}"
+        except Exception as e:
+            return False, f"压缩失败: {e}"
+
     def get_install_info(self) -> dict:
         """获取FFmpeg安装信息。
         

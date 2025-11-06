@@ -9,7 +9,7 @@ from typing import Optional
 import flet as ft
 
 from components import CustomTitleBar
-from services import ConfigService, EncodingService, ImageService
+from services import ConfigService, EncodingService, ImageService, FFmpegService
 from views.media import AudioView, VideoView
 from views.dev_tools import DevToolsView
 from views.image import ImageView
@@ -41,6 +41,7 @@ class MainView(ft.Column):
         self.config_service: ConfigService = ConfigService()
         self.image_service: ImageService = ImageService()
         self.encoding_service: EncodingService = EncodingService()
+        self.ffmpeg_service: FFmpegService = FFmpegService(self.config_service)
         
         # 创建自定义标题栏（传递配置服务以保存窗口状态）
         self.title_bar: CustomTitleBar = CustomTitleBar(page, self.config_service)
@@ -52,7 +53,7 @@ class MainView(ft.Column):
         self.image_view: Optional[ImageView] = None
         self.dev_tools_view: Optional[DevToolsView] = None
         self.audio_view: Optional[AudioView] = None
-        self.video_view: VideoView = VideoView(page)
+        self.video_view: VideoView = VideoView(page, self.config_service, self.ffmpeg_service)
         self.settings_view: SettingsView = SettingsView(page, self.config_service)
         
         # 创建UI组件
