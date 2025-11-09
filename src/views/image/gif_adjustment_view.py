@@ -1436,7 +1436,19 @@ class GifAdjustmentView(ft.Container):
                         stream = ffmpeg.filter(stream, 'select', f'not(mod(n,{options.drop_every_n}))')
                         stream = ffmpeg.filter(stream, 'setpts', 'N/FRAME_RATE/TB')
                     
-                    stream = ffmpeg.output(stream, str(output_path), vcodec='libx264', preset='medium', crf=23)
+                    # 尝试使用GPU加速编码器
+                    vcodec = 'libx264'
+                    preset = 'medium'
+                    gpu_encoder = self.ffmpeg_service.get_preferred_gpu_encoder()
+                    if gpu_encoder:
+                        vcodec = gpu_encoder
+                        # GPU编码器可能需要不同的预设
+                        if gpu_encoder.startswith("h264_nvenc") or gpu_encoder.startswith("hevc_nvenc"):
+                            preset = "p4"  # NVIDIA的平衡预设
+                        elif gpu_encoder.startswith("h264_amf") or gpu_encoder.startswith("hevc_amf"):
+                            preset = "balanced"  # AMD的平衡预设
+                    
+                    stream = ffmpeg.output(stream, str(output_path), vcodec=vcodec, preset=preset, crf=23)
                     ffmpeg.run(stream, overwrite_output=True, capture_stdout=True, capture_stderr=True)
                 except ffmpeg.Error as e:
                     return False, f"处理视频失败: {e.stderr.decode('utf-8', errors='replace') if e.stderr else str(e)}"
@@ -1604,13 +1616,25 @@ class GifAdjustmentView(ft.Container):
                     # 使用 ffmpeg-python 转换 GIF 为 MP4
                     stream = ffmpeg.input(str(temp_gif))
                     stream = ffmpeg.filter(stream, 'scale', 'trunc(iw/2)*2:trunc(ih/2)*2')  # 确保宽高为偶数
+                    # 尝试使用GPU加速编码器
+                    vcodec = 'libx264'
+                    preset = 'medium'
+                    gpu_encoder = self.ffmpeg_service.get_preferred_gpu_encoder()
+                    if gpu_encoder:
+                        vcodec = gpu_encoder
+                        # GPU编码器可能需要不同的预设
+                        if gpu_encoder.startswith("h264_nvenc") or gpu_encoder.startswith("hevc_nvenc"):
+                            preset = "p4"  # NVIDIA的平衡预设
+                        elif gpu_encoder.startswith("h264_amf") or gpu_encoder.startswith("hevc_amf"):
+                            preset = "balanced"  # AMD的平衡预设
+                    
                     stream = ffmpeg.output(
                         stream, 
                         str(output_path), 
                         movflags='faststart',
                         pix_fmt='yuv420p',
-                        vcodec='libx264',
-                        preset='medium',
+                        vcodec=vcodec,
+                        preset=preset,
                         crf=23
                     )
                     ffmpeg.run(stream, overwrite_output=True, capture_stdout=True, capture_stderr=True)

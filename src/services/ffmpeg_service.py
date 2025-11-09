@@ -304,39 +304,195 @@ class FFmpegService:
             
             stream = ffmpeg.input(str(input_path))
             
+            # 构建视频滤镜（分辨率缩放和帧率）
+            video_filters = []
+            scale = params.get("scale", "original")
+            if scale == "custom":
+                custom_width = params.get("custom_width")
+                custom_height = params.get("custom_height")
+                if custom_width and custom_height:
+                    try:
+                        width = int(custom_width)
+                        height = int(custom_height)
+                        video_filters.append(f'scale={width}:{height}')
+                    except ValueError:
+                        pass
+            elif scale != 'original':
+                height_map = {
+                    '4k': 2160,
+                    '2k': 1440,
+                    '1080p': 1080,
+                    '720p': 720,
+                    '480p': 480,
+                    '360p': 360,
+                }
+                height = height_map.get(scale)
+                if height:
+                    video_filters.append(f'scale=-2:{height}')
+            
+            # 帧率控制
+            fps_mode = params.get("fps_mode", "original")
+            if fps_mode == "custom":
+                fps = params.get("fps")
+                if fps:
+                    try:
+                        fps_value = float(fps)
+                        video_filters.append(f'fps={fps_value}')
+                    except ValueError:
+                        pass
+            
             # 根据模式构建参数
             if params.get("mode") == "advanced":
                 # 高级模式：使用详细参数
+                vcodec = params.get("vcodec", "libx264")
+                
+                # 如果使用默认编码器，尝试使用GPU加速
+                if vcodec == "libx264":
+                    gpu_encoder = self.get_preferred_gpu_encoder()
+                    if gpu_encoder:
+                        vcodec = gpu_encoder
+                
                 output_params = {
-                    'vcodec': params.get("vcodec", "libx264"),
-                    'preset': params.get("preset", "medium"),
+                    'vcodec': vcodec,
                     'pix_fmt': params.get("pix_fmt", "yuv420p"),
-                    'crf': params.get("crf", 23), # Also use CRF in advanced mode
                 }
                 
+                # 预设（某些编码器可能不支持）
+                preset = params.get("preset", "medium")
+                if vcodec in ["libx264", "libx265"]:
+                    output_params['preset'] = preset
+                elif vcodec.startswith("h264_nvenc") or vcodec.startswith("hevc_nvenc"):
+                    # NVIDIA编码器使用p1-p7预设（p4是平衡）
+                    preset_map = {
+                        "ultrafast": "p1", "superfast": "p2", "veryfast": "p3",
+                        "faster": "p4", "fast": "p4", "medium": "p4",
+                        "slow": "p5", "slower": "p6", "veryslow": "p7"
+                    }
+                    output_params['preset'] = preset_map.get(preset, "p4")
+                elif vcodec.startswith("h264_amf") or vcodec.startswith("hevc_amf") or vcodec.startswith("av1_amf"):
+                    # AMF编码器使用quality参数
+                    quality_map = {
+                        "ultrafast": "speed", "superfast": "speed", "veryfast": "speed",
+                        "faster": "balanced", "fast": "balanced", "medium": "balanced",
+                        "slow": "quality", "slower": "quality", "veryslow": "quality"
+                    }
+                    output_params['quality'] = quality_map.get(preset, "balanced")
+                elif vcodec.startswith("h264_qsv") or vcodec.startswith("hevc_qsv"):
+                    # Intel QSV编码器
+                    output_params['preset'] = preset if preset in ["veryfast", "faster", "fast", "medium", "slow"] else "medium"
+                
+                # 比特率控制
+                bitrate_mode = params.get("bitrate_mode", "crf")
+                if bitrate_mode == "crf":
+                    # CRF模式（质量优先）
+                    if vcodec in ["libx264", "libx265"]:
+                        output_params['crf'] = params.get("crf", 23)
+                    elif vcodec.startswith("libvpx") or vcodec.startswith("libaom"):
+                        output_params['crf'] = params.get("crf", 30)
+                    elif vcodec.startswith("h264_nvenc") or vcodec.startswith("hevc_nvenc"):
+                        # NVIDIA编码器使用cq参数（类似CRF）
+                        output_params['cq'] = params.get("crf", 23)
+                    elif vcodec.startswith("h264_amf") or vcodec.startswith("hevc_amf") or vcodec.startswith("av1_amf"):
+                        # AMD编码器使用rc参数
+                        output_params['rc'] = "vbr_peak"
+                        output_params['qmin'] = params.get("crf", 18)
+                        output_params['qmax'] = params.get("crf", 28)
+                    elif vcodec.startswith("h264_qsv") or vcodec.startswith("hevc_qsv"):
+                        # Intel QSV编码器
+                        output_params['global_quality'] = params.get("crf", 23)
+                elif bitrate_mode == "vbr":
+                    # VBR模式（可变比特率）
+                    video_bitrate = params.get("video_bitrate")
+                    max_bitrate = params.get("max_bitrate")
+                    if video_bitrate:
+                        output_params['b:v'] = f"{video_bitrate}k"
+                    if max_bitrate:
+                        output_params['maxrate'] = f"{max_bitrate}k"
+                        output_params['bufsize'] = f"{int(max_bitrate) * 2}k"
+                elif bitrate_mode == "cbr":
+                    # CBR模式（恒定比特率）
+                    video_bitrate = params.get("video_bitrate")
+                    if video_bitrate:
+                        output_params['b:v'] = f"{video_bitrate}k"
+                        output_params['minrate'] = f"{video_bitrate}k"
+                        output_params['maxrate'] = f"{video_bitrate}k"
+                        output_params['bufsize'] = f"{int(video_bitrate) * 2}k"
+                
+                # 关键帧间隔（GOP）
+                gop = params.get("gop")
+                if gop:
+                    try:
+                        output_params['g'] = int(gop)
+                    except ValueError:
+                        pass
+                
+                # 音频编码
                 acodec = params.get("acodec", "copy")
                 output_params['acodec'] = acodec
                 if acodec != "copy":
                     output_params['b:a'] = params.get("audio_bitrate", "192k")
+                
+                # 应用视频滤镜
+                if video_filters:
+                    vf_string = ','.join(video_filters)
+                    output_params['vf'] = vf_string
+                
+                # 根据输出格式设置容器格式
+                output_format = params.get("output_format", "same")
+                if output_format != "same":
+                    # 设置输出格式
+                    output_params['format'] = output_format
                 
                 stream = ffmpeg.output(stream, str(output_path), **output_params)
 
             else:
                 # 常规模式
                 crf = params.get("crf", 23)
-                scale = params.get("scale", "original")
-
+                
+                # 尝试使用GPU加速编码器
+                vcodec = 'libx264'
+                preset = 'medium'
+                gpu_encoder = self.get_preferred_gpu_encoder()
+                if gpu_encoder:
+                    vcodec = gpu_encoder
+                    # GPU编码器可能需要不同的预设
+                    if gpu_encoder.startswith("h264_nvenc") or gpu_encoder.startswith("hevc_nvenc"):
+                        preset = "p4"  # NVIDIA的平衡预设
+                    elif gpu_encoder.startswith("h264_amf") or gpu_encoder.startswith("hevc_amf"):
+                        preset = "balanced"  # AMD的平衡预设（实际使用quality参数）
+                    elif gpu_encoder.startswith("h264_qsv") or gpu_encoder.startswith("hevc_qsv"):
+                        preset = "medium"  # Intel QSV
+                
                 output_params = {
-                    'vcodec': 'libx264',
-                    'crf': crf,
-                    'preset': 'medium',
+                    'vcodec': vcodec,
                     'acodec': 'copy'
                 }
-
-                if scale != 'original':
-                    height = {'1080p': 1080, '720p': 720, '480p': 480}.get(scale)
-                    if height:
-                        output_params['vf'] = f'scale=-2:{height}'
+                
+                # 根据编码器类型设置参数
+                if vcodec in ["libx264", "libx265"]:
+                    output_params['crf'] = crf
+                    output_params['preset'] = preset
+                elif vcodec.startswith("h264_nvenc") or vcodec.startswith("hevc_nvenc"):
+                    output_params['cq'] = crf
+                    output_params['preset'] = preset
+                elif vcodec.startswith("h264_amf") or vcodec.startswith("hevc_amf"):
+                    output_params['rc'] = "vbr_peak"
+                    output_params['quality'] = preset
+                    output_params['qmin'] = max(18, crf - 5)
+                    output_params['qmax'] = min(28, crf + 5)
+                elif vcodec.startswith("h264_qsv") or vcodec.startswith("hevc_qsv"):
+                    output_params['global_quality'] = crf
+                    output_params['preset'] = preset
+                
+                # 应用视频滤镜
+                if video_filters:
+                    vf_string = ','.join(video_filters)
+                    output_params['vf'] = vf_string
+                
+                # 根据输出格式设置容器格式
+                output_format = params.get("output_format", "same")
+                if output_format != "same":
+                    output_params['format'] = output_format
 
                 stream = ffmpeg.output(stream, str(output_path), **output_params)
 
@@ -413,6 +569,79 @@ class FFmpegService:
         except Exception as e:
             return False, f"压缩失败: {e}"
 
+    def detect_gpu_encoders(self) -> dict:
+        """检测可用的GPU编码器。
+        
+        Returns:
+            包含可用GPU编码器信息的字典
+        """
+        ffmpeg_path = self.get_ffmpeg_path()
+        if not ffmpeg_path:
+            return {"available": False, "encoders": []}
+        
+        try:
+            # 获取FFmpeg支持的编码器列表
+            result = subprocess.run(
+                [ffmpeg_path, "-encoders"],
+                capture_output=True,
+                encoding='utf-8',
+                errors='replace',
+                timeout=5
+            )
+            
+            if result.returncode != 0:
+                return {"available": False, "encoders": []}
+            
+            output = result.stdout
+            available_encoders = []
+            
+            # 检测NVIDIA编码器
+            if "h264_nvenc" in output:
+                available_encoders.append("h264_nvenc")
+            if "hevc_nvenc" in output:
+                available_encoders.append("hevc_nvenc")
+            
+            # 检测AMD编码器
+            if "h264_amf" in output:
+                available_encoders.append("h264_amf")
+            if "hevc_amf" in output:
+                available_encoders.append("hevc_amf")
+            if "av1_amf" in output:
+                available_encoders.append("av1_amf")
+            
+            # 检测Intel编码器（QSV）
+            if "h264_qsv" in output:
+                available_encoders.append("h264_qsv")
+            if "hevc_qsv" in output:
+                available_encoders.append("hevc_qsv")
+            
+            return {
+                "available": len(available_encoders) > 0,
+                "encoders": available_encoders,
+                "preferred": available_encoders[0] if available_encoders else None
+            }
+        except Exception:
+            return {"available": False, "encoders": []}
+    
+    def get_preferred_gpu_encoder(self) -> Optional[str]:
+        """获取首选的GPU编码器。
+        
+        Returns:
+            首选的GPU编码器名称，如果没有则返回None
+        """
+        gpu_info = self.detect_gpu_encoders()
+        if gpu_info.get("available"):
+            preferred = gpu_info.get("preferred")
+            if preferred:
+                return preferred
+            # 如果没有首选，按优先级选择
+            encoders = gpu_info.get("encoders", [])
+            # 优先选择NVIDIA，然后是AMD，最后是Intel
+            for encoder in ["h264_nvenc", "hevc_nvenc", "h264_amf", "hevc_amf", "h264_qsv", "hevc_qsv"]:
+                if encoder in encoders:
+                    return encoder
+        return None
+    
     def get_install_info(self) -> dict:
         """获取FFmpeg安装信息。
         

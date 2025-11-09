@@ -99,57 +99,69 @@ class VideoCompressView(ft.Container):
         
         # 文件选择区域
         self.file_list_view = ft.Column(
-            spacing=PADDING_MEDIUM // 2,
+            spacing=PADDING_SMALL,
             scroll=ft.ScrollMode.ADAPTIVE,
         )
         
-        file_select_area = ft.Column(
-            controls=[
-                ft.Row(
-                    controls=[
-                        ft.Text("选择视频:", size=14, weight=ft.FontWeight.W_500),
-                        ft.ElevatedButton(
-                            "选择文件",
-                            icon=ft.Icons.FILE_UPLOAD,
-                            on_click=self._on_select_files,
-                        ),
-                        ft.ElevatedButton(
-                            "选择文件夹",
-                            icon=ft.Icons.FOLDER_OPEN,
-                            on_click=self._on_select_folder,
-                        ),
-                        ft.TextButton(
-                            "清空列表",
-                            icon=ft.Icons.CLEAR_ALL,
-                            on_click=self._on_clear_files,
-                        ),
-                    ],
-                    spacing=PADDING_MEDIUM,
-                ),
-                ft.Container(
-                    content=ft.Row(
+        file_select_area = ft.Container(
+            content=ft.Column(
+                controls=[
+                    ft.Row(
                         controls=[
-                            ft.Icon(ft.Icons.INFO_OUTLINE, size=16, color=TEXT_SECONDARY),
-                            ft.Text(
-                                "支持格式: MP4, MKV, MOV, AVI, WMV, FLV 等常见视频格式",
-                                size=12,
-                                color=TEXT_SECONDARY,
+                            ft.Text("文件选择", size=18, weight=ft.FontWeight.W_600, color=TEXT_PRIMARY),
+                            ft.Container(expand=True),
+                            ft.ElevatedButton(
+                                "选择文件",
+                                icon=ft.Icons.FILE_UPLOAD,
+                                on_click=self._on_select_files,
+                                height=36,
+                            ),
+                            ft.ElevatedButton(
+                                "选择文件夹",
+                                icon=ft.Icons.FOLDER_OPEN,
+                                on_click=self._on_select_folder,
+                                height=36,
+                            ),
+                            ft.OutlinedButton(
+                                "清空列表",
+                                icon=ft.Icons.CLEAR_ALL,
+                                on_click=self._on_clear_files,
+                                height=36,
                             ),
                         ],
-                        spacing=8,
+                        spacing=PADDING_MEDIUM,
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
                     ),
-                    margin=ft.margin.only(left=4, bottom=4),
-                ),
-                ft.Container(
-                    content=self.file_list_view,
-                    height=380,
-                    border=ft.border.all(1, ft.Colors.OUTLINE),
-                    border_radius=BORDER_RADIUS_MEDIUM,
-                    padding=PADDING_MEDIUM,
-                ),
-            ],
-            spacing=PADDING_MEDIUM,
-            horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
+                    ft.Container(
+                        content=ft.Row(
+                            controls=[
+                                ft.Icon(ft.Icons.INFO_OUTLINE, size=16, color=TEXT_SECONDARY),
+                                ft.Text(
+                                    "支持格式: MP4, MKV, MOV, AVI, WMV, FLV, WebM, M4V, 3GP, TS, M2TS, F4V 等",
+                                    size=11,
+                                    color=TEXT_SECONDARY,
+                                ),
+                            ],
+                            spacing=6,
+                        ),
+                        margin=ft.margin.only(bottom=PADDING_SMALL),
+                    ),
+                    ft.Container(
+                        content=self.file_list_view,
+                        height=280,
+                        border=ft.border.all(1, ft.Colors.OUTLINE),
+                        border_radius=BORDER_RADIUS_MEDIUM,
+                        padding=PADDING_MEDIUM,
+                        bgcolor=ft.Colors.with_opacity(0.02, ft.Colors.PRIMARY),
+                    ),
+                ],
+                spacing=PADDING_SMALL,
+                horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
+            ),
+            padding=PADDING_LARGE,
+            border=ft.border.all(1, ft.Colors.OUTLINE_VARIANT),
+            border_radius=BORDER_RADIUS_MEDIUM,
+            bgcolor=ft.Colors.with_opacity(0.01, ft.Colors.PRIMARY),
         )
         
         # 模式切换
@@ -181,34 +193,123 @@ class VideoCompressView(ft.Container):
             label="分辨率缩放",
             options=[
                 ft.dropdown.Option("original", "保持原始分辨率"),
-                ft.dropdown.Option("1080p", "1920x1080 (1080p)"),
-                ft.dropdown.Option("720p", "1280x720 (720p)"),
-                ft.dropdown.Option("480p", "854x480 (480p)"),
+                ft.dropdown.Option("4k", "3840x2160 (4K UHD)"),
+                ft.dropdown.Option("2k", "2560x1440 (2K QHD)"),
+                ft.dropdown.Option("1080p", "1920x1080 (1080p FHD)"),
+                ft.dropdown.Option("720p", "1280x720 (720p HD)"),
+                ft.dropdown.Option("480p", "854x480 (480p SD)"),
+                ft.dropdown.Option("360p", "640x360 (360p)"),
+                ft.dropdown.Option("custom", "自定义分辨率"),
             ],
             value="original",
+            width=250,
+            on_change=self._on_resolution_change,
+        )
+        
+        # 自定义分辨率输入
+        self.custom_resolution_container = ft.Container(
+            content=ft.Row(
+                controls=[
+                    ft.TextField(
+                        label="宽度",
+                        value="1920",
+                        width=100,
+                        hint_text="px",
+                    ),
+                    ft.Text("x", size=16, color=TEXT_SECONDARY),
+                    ft.TextField(
+                        label="高度",
+                        value="1080",
+                        width=100,
+                        hint_text="px",
+                    ),
+                ],
+                spacing=PADDING_SMALL,
+                vertical_alignment=ft.CrossAxisAlignment.END,
+            ),
+            visible=False,
+        )
+        self.custom_width_input = self.custom_resolution_container.content.controls[0]
+        self.custom_height_input = self.custom_resolution_container.content.controls[2]
+        
+        # 常规模式的输出格式选择
+        self.normal_output_format_dropdown = ft.Dropdown(
+            label="输出格式",
+            options=[
+                ft.dropdown.Option("same", "保持原格式"),
+                ft.dropdown.Option("mp4", "MP4"),
+                ft.dropdown.Option("mkv", "MKV"),
+                ft.dropdown.Option("webm", "WebM"),
+            ],
+            value="same",
             width=250,
         )
 
         self.normal_options_container = ft.Container(
             content=ft.Column(
                 controls=[
-                    self.resolution_dropdown,
+                    ft.Text("常规模式设置", size=14, weight=ft.FontWeight.W_600, color=TEXT_PRIMARY),
+                    ft.Row(
+                        controls=[
+                            self.resolution_dropdown,
+                            self.normal_output_format_dropdown,
+                        ],
+                        spacing=PADDING_MEDIUM,
+                        vertical_alignment=ft.CrossAxisAlignment.START,
+                    ),
+                    self.custom_resolution_container,
                 ],
                 spacing=PADDING_MEDIUM,
             ),
+            padding=PADDING_MEDIUM,
+            border=ft.border.all(1, ft.Colors.OUTLINE_VARIANT),
+            border_radius=BORDER_RADIUS_MEDIUM,
+            bgcolor=ft.Colors.with_opacity(0.02, ft.Colors.PRIMARY),
             visible=True, # 默认可见
         )
 
+        # 检测GPU编码器并设置默认值
+        gpu_info = self.ffmpeg_service.detect_gpu_encoders()
+        default_vcodec = "libx264"
+        gpu_available = False
+        if gpu_info.get("available"):
+            preferred = gpu_info.get("preferred")
+            if preferred:
+                default_vcodec = preferred
+                gpu_available = True
+        
+        # 构建编码器选项列表
+        encoder_options = [
+            ft.dropdown.Option("libx264", "H.264 (libx264) - 兼容性好"),
+            ft.dropdown.Option("libx265", "H.265/HEVC (libx265) - 压缩率高"),
+            ft.dropdown.Option("libvpx-vp9", "VP9 (libvpx-vp9) - WebM标准"),
+            ft.dropdown.Option("libaom-av1", "AV1 (libaom-av1) - 最新标准"),
+        ]
+        
+        # 添加GPU编码器选项（如果可用）
+        if gpu_info.get("available"):
+            encoders = gpu_info.get("encoders", [])
+            if "h264_nvenc" in encoders:
+                encoder_options.append(ft.dropdown.Option("h264_nvenc", "H.264 (NVENC) - NVIDIA显卡加速 ⚡"))
+            if "hevc_nvenc" in encoders:
+                encoder_options.append(ft.dropdown.Option("hevc_nvenc", "H.265 (NVENC) - NVIDIA显卡加速 ⚡"))
+            if "h264_amf" in encoders:
+                encoder_options.append(ft.dropdown.Option("h264_amf", "H.264 (AMF) - AMD显卡加速 ⚡"))
+            if "hevc_amf" in encoders:
+                encoder_options.append(ft.dropdown.Option("hevc_amf", "H.265 (AMF) - AMD显卡加速 ⚡"))
+            if "av1_amf" in encoders:
+                encoder_options.append(ft.dropdown.Option("av1_amf", "AV1 (AMF) - AMD显卡加速 ⚡"))
+            if "h264_qsv" in encoders:
+                encoder_options.append(ft.dropdown.Option("h264_qsv", "H.264 (QSV) - Intel显卡加速 ⚡"))
+            if "hevc_qsv" in encoders:
+                encoder_options.append(ft.dropdown.Option("hevc_qsv", "H.265 (QSV) - Intel显卡加速 ⚡"))
+        
         # --- 高级模式选项 ---
         self.vcodec_dropdown = ft.Dropdown(
             label="视频编码器",
-            options=[
-                ft.dropdown.Option("libx264", "H.264 (libx264) - 兼容性好"),
-                ft.dropdown.Option("libx265", "H.265/HEVC (libx265) - 压缩率高"),
-                ft.dropdown.Option("av1_amf", "AV1 (AMF) - AMD显卡加速"),
-                ft.dropdown.Option("h264_amf", "H.264 (AMF) - AMD显卡加速"),
-            ],
-            value="libx264",
+            options=encoder_options,
+            value=default_vcodec,
+            on_change=self._on_vcodec_change,
         )
         self.preset_dropdown = ft.Dropdown(
             label="编码预设 (速度)",
@@ -248,35 +349,256 @@ class VideoCompressView(ft.Container):
                 ft.dropdown.Option("yuv420p", "yuv420p (兼容性最广)"),
                 ft.dropdown.Option("yuv422p", "yuv422p"),
                 ft.dropdown.Option("yuv444p", "yuv444p"),
+                ft.dropdown.Option("yuv420p10le", "yuv420p10le (10位)"),
+                ft.dropdown.Option("yuv422p10le", "yuv422p10le (10位)"),
             ],
             value="yuv420p",
+        )
+        
+        # 视频比特率控制
+        self.bitrate_mode_radio = ft.RadioGroup(
+            content=ft.Row(
+                controls=[
+                    ft.Radio(value="crf", label="CRF (质量优先)"),
+                    ft.Radio(value="vbr", label="VBR (可变比特率)"),
+                    ft.Radio(value="cbr", label="CBR (恒定比特率)"),
+                ],
+                spacing=PADDING_MEDIUM,
+            ),
+            value="crf",
+            on_change=self._on_bitrate_mode_change,
+        )
+        
+        self.video_bitrate_input = ft.TextField(
+            label="视频比特率 (kbps)",
+            value="5000",
+            width=150,
+            visible=False,
+            hint_text="如: 5000",
+        )
+        
+        self.max_bitrate_input = ft.TextField(
+            label="最大比特率 (kbps)",
+            value="8000",
+            width=150,
+            visible=False,
+            hint_text="如: 8000",
+        )
+        
+        # 帧率控制
+        self.fps_mode_radio = ft.RadioGroup(
+            content=ft.Row(
+                controls=[
+                    ft.Radio(value="original", label="保持原始帧率"),
+                    ft.Radio(value="custom", label="自定义帧率"),
+                ],
+                spacing=PADDING_MEDIUM,
+            ),
+            value="original",
+            on_change=self._on_fps_mode_change,
+        )
+        
+        self.fps_input = ft.TextField(
+            label="帧率 (fps)",
+            value="30",
+            width=150,
+            visible=False,
+            hint_text="如: 30",
+        )
+        
+        # 关键帧间隔
+        self.gop_input = ft.TextField(
+            label="关键帧间隔 (GOP)",
+            value="",
+            width=150,
+            hint_text="留空为自动",
+        )
+        
+        # 输出格式选择
+        self.output_format_dropdown = ft.Dropdown(
+            label="输出格式",
+            options=[
+                ft.dropdown.Option("same", "保持原格式"),
+                ft.dropdown.Option("mp4", "MP4 (H.264/H.265)"),
+                ft.dropdown.Option("mkv", "MKV (通用容器)"),
+                ft.dropdown.Option("webm", "WebM (VP9/AV1)"),
+                ft.dropdown.Option("mov", "MOV (QuickTime)"),
+                ft.dropdown.Option("avi", "AVI (传统格式)"),
+            ],
+            value="same",
+        )
+
+        # 高级模式分组
+        video_settings_card = ft.Container(
+            content=ft.Column(
+                controls=[
+                    ft.Text("视频编码设置", size=14, weight=ft.FontWeight.W_600, color=TEXT_PRIMARY),
+                    ft.Row(
+                        controls=[self.vcodec_dropdown, self.preset_dropdown],
+                        spacing=PADDING_MEDIUM,
+                        vertical_alignment=ft.CrossAxisAlignment.START,
+                    ),
+                    self.pix_fmt_dropdown,
+                ],
+                spacing=PADDING_MEDIUM,
+            ),
+            padding=PADDING_MEDIUM,
+            border=ft.border.all(1, ft.Colors.OUTLINE_VARIANT),
+            border_radius=BORDER_RADIUS_MEDIUM,
+            bgcolor=ft.Colors.with_opacity(0.02, ft.Colors.PRIMARY),
+        )
+        
+        bitrate_settings_card = ft.Container(
+            content=ft.Column(
+                controls=[
+                    ft.Text("比特率控制", size=14, weight=ft.FontWeight.W_600, color=TEXT_PRIMARY),
+                    self.bitrate_mode_radio,
+                    ft.Row(
+                        controls=[self.video_bitrate_input, self.max_bitrate_input],
+                        spacing=PADDING_MEDIUM,
+                    ),
+                ],
+                spacing=PADDING_MEDIUM,
+            ),
+            padding=PADDING_MEDIUM,
+            border=ft.border.all(1, ft.Colors.OUTLINE_VARIANT),
+            border_radius=BORDER_RADIUS_MEDIUM,
+            bgcolor=ft.Colors.with_opacity(0.02, ft.Colors.PRIMARY),
+        )
+        
+        fps_settings_card = ft.Container(
+            content=ft.Column(
+                controls=[
+                    ft.Text("帧率设置", size=14, weight=ft.FontWeight.W_600, color=TEXT_PRIMARY),
+                    self.fps_mode_radio,
+                    self.fps_input,
+                ],
+                spacing=PADDING_MEDIUM,
+            ),
+            padding=PADDING_MEDIUM,
+            border=ft.border.all(1, ft.Colors.OUTLINE_VARIANT),
+            border_radius=BORDER_RADIUS_MEDIUM,
+            bgcolor=ft.Colors.with_opacity(0.02, ft.Colors.PRIMARY),
+        )
+        
+        advanced_params_card = ft.Container(
+            content=ft.Column(
+                controls=[
+                    ft.Text("高级参数", size=14, weight=ft.FontWeight.W_600, color=TEXT_PRIMARY),
+                    ft.Row(
+                        controls=[self.gop_input, self.output_format_dropdown],
+                        spacing=PADDING_MEDIUM,
+                        vertical_alignment=ft.CrossAxisAlignment.START,
+                    ),
+                ],
+                spacing=PADDING_MEDIUM,
+            ),
+            padding=PADDING_MEDIUM,
+            border=ft.border.all(1, ft.Colors.OUTLINE_VARIANT),
+            border_radius=BORDER_RADIUS_MEDIUM,
+            bgcolor=ft.Colors.with_opacity(0.02, ft.Colors.PRIMARY),
+        )
+        
+        audio_settings_card = ft.Container(
+            content=ft.Column(
+                controls=[
+                    ft.Text("音频设置", size=14, weight=ft.FontWeight.W_600, color=TEXT_PRIMARY),
+                    ft.Row(
+                        controls=[self.acodec_dropdown, self.audio_bitrate_input],
+                        spacing=PADDING_MEDIUM,
+                        vertical_alignment=ft.CrossAxisAlignment.START,
+                    ),
+                ],
+                spacing=PADDING_MEDIUM,
+            ),
+            padding=PADDING_MEDIUM,
+            border=ft.border.all(1, ft.Colors.OUTLINE_VARIANT),
+            border_radius=BORDER_RADIUS_MEDIUM,
+            bgcolor=ft.Colors.with_opacity(0.02, ft.Colors.PRIMARY),
         )
 
         self.advanced_options_container = ft.Container(
             content=ft.Column(
                 controls=[
-                    self.vcodec_dropdown,
-                    self.preset_dropdown,
-                    self.pix_fmt_dropdown,
-                    ft.Divider(height=5),
-                    ft.Text("音频设置", size=14, weight=ft.FontWeight.W_500),
-                    self.acodec_dropdown,
-                    self.audio_bitrate_input,
+                    ft.Text("高级模式设置", size=14, weight=ft.FontWeight.W_600, color=TEXT_PRIMARY),
+                    video_settings_card,
+                    bitrate_settings_card,
+                    fps_settings_card,
+                    advanced_params_card,
+                    audio_settings_card,
                 ],
                 spacing=PADDING_MEDIUM,
             ),
+            padding=PADDING_MEDIUM,
+            border=ft.border.all(1, ft.Colors.OUTLINE_VARIANT),
+            border_radius=BORDER_RADIUS_MEDIUM,
+            bgcolor=ft.Colors.with_opacity(0.02, ft.Colors.PRIMARY),
             visible=False, # 默认隐藏
+        )
+
+        # GPU加速状态提示
+        gpu_status_text = None
+        if gpu_available:
+            gpu_encoder_name = gpu_info.get("preferred", "").replace("_", " ").upper()
+            gpu_status_text = ft.Container(
+                content=ft.Row(
+                    controls=[
+                        ft.Icon(ft.Icons.SPEED, size=16, color=ft.Colors.GREEN),
+                        ft.Text(
+                            f"GPU加速已启用: {gpu_encoder_name}",
+                            size=12,
+                            color=ft.Colors.GREEN,
+                            weight=ft.FontWeight.W_500,
+                        ),
+                    ],
+                    spacing=6,
+                ),
+                margin=ft.margin.only(bottom=PADDING_SMALL),
+            )
+        
+        # 质量设置卡片
+        quality_card_controls = [
+            ft.Text("质量设置", size=14, weight=ft.FontWeight.W_600, color=TEXT_PRIMARY),
+        ]
+        if gpu_status_text:
+            quality_card_controls.append(gpu_status_text)
+        quality_card_controls.extend([
+            self.crf_text,
+            self.crf_slider,
+        ])
+        
+        quality_card = ft.Container(
+            content=ft.Column(
+                controls=quality_card_controls,
+                spacing=PADDING_SMALL,
+            ),
+            padding=PADDING_MEDIUM,
+            border=ft.border.all(1, ft.Colors.OUTLINE_VARIANT),
+            border_radius=BORDER_RADIUS_MEDIUM,
+            bgcolor=ft.Colors.with_opacity(0.02, ft.Colors.PRIMARY),
+        )
+        
+        # 模式选择卡片
+        mode_card = ft.Container(
+            content=ft.Column(
+                controls=[
+                    ft.Text("压缩模式", size=14, weight=ft.FontWeight.W_600, color=TEXT_PRIMARY),
+                    self.mode_radio,
+                ],
+                spacing=PADDING_SMALL,
+            ),
+            padding=PADDING_MEDIUM,
+            border=ft.border.all(1, ft.Colors.OUTLINE_VARIANT),
+            border_radius=BORDER_RADIUS_MEDIUM,
+            bgcolor=ft.Colors.with_opacity(0.02, ft.Colors.PRIMARY),
         )
 
         compress_options = ft.Container(
             content=ft.Column(
                 controls=[
-                    ft.Text("压缩设置", size=16, weight=ft.FontWeight.W_500),
-                    self.crf_text,
-                    self.crf_slider,
-                    ft.Divider(height=1),
-                    self.mode_radio,
-                    ft.Divider(height=1),
+                    ft.Text("压缩设置", size=18, weight=ft.FontWeight.W_600, color=TEXT_PRIMARY),
+                    quality_card,
+                    mode_card,
                     self.normal_options_container,
                     self.advanced_options_container,
                 ],
@@ -287,8 +609,6 @@ class VideoCompressView(ft.Container):
             padding=PADDING_LARGE,
             border=ft.border.all(1, ft.Colors.OUTLINE_VARIANT),
             border_radius=BORDER_RADIUS_MEDIUM,
-            expand=1,
-            height=360,
         )
         
         # 输出选项
@@ -328,12 +648,24 @@ class VideoCompressView(ft.Container):
         output_options = ft.Container(
             content=ft.Column(
                 controls=[
-                    ft.Text("输出选项", size=16, weight=ft.FontWeight.W_500),
+                    ft.Text("输出选项", size=18, weight=ft.FontWeight.W_600, color=TEXT_PRIMARY),
                     self.output_mode_radio,
-                    self.file_suffix,
-                    ft.Row(
-                        controls=[self.custom_output_dir, self.browse_output_button],
-                        spacing=PADDING_MEDIUM // 2,
+                    ft.Container(
+                        content=ft.Column(
+                            controls=[
+                                self.file_suffix,
+                                ft.Row(
+                                    controls=[self.custom_output_dir, self.browse_output_button],
+                                    spacing=PADDING_SMALL,
+                                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                                ),
+                            ],
+                            spacing=PADDING_MEDIUM,
+                        ),
+                        padding=PADDING_MEDIUM,
+                        border=ft.border.all(1, ft.Colors.OUTLINE_VARIANT),
+                        border_radius=BORDER_RADIUS_MEDIUM,
+                        bgcolor=ft.Colors.with_opacity(0.02, ft.Colors.PRIMARY),
                     ),
                 ],
                 spacing=PADDING_MEDIUM,
@@ -342,8 +674,6 @@ class VideoCompressView(ft.Container):
             padding=PADDING_LARGE,
             border=ft.border.all(1, ft.Colors.OUTLINE_VARIANT),
             border_radius=BORDER_RADIUS_MEDIUM,
-            expand=1,
-            height=360,
         )
         
         # 进度显示
@@ -370,20 +700,36 @@ class VideoCompressView(ft.Container):
             alignment=ft.alignment.center,
         )
         
+        # 进度显示容器
+        progress_container = ft.Container(
+            content=ft.Column(
+                controls=[
+                    self.progress_bar,
+                    self.progress_text,
+                ],
+                spacing=PADDING_SMALL,
+            ),
+            padding=PADDING_MEDIUM,
+            border=ft.border.all(1, ft.Colors.OUTLINE_VARIANT),
+            border_radius=BORDER_RADIUS_MEDIUM,
+            visible=False,
+        )
+        self.progress_container = progress_container
+        
         scrollable_content = ft.Column(
             controls=[
                 file_select_area,
-                ft.Row(
-                    controls=[compress_options, output_options],
-                    spacing=PADDING_LARGE,
-                    vertical_alignment=ft.CrossAxisAlignment.START,
-                ),
-                self.progress_bar,
-                self.progress_text,
+                ft.Container(height=PADDING_MEDIUM),
+                compress_options,
+                ft.Container(height=PADDING_MEDIUM),
+                output_options,
+                ft.Container(height=PADDING_MEDIUM),
+                progress_container,
+                ft.Container(height=PADDING_SMALL),
                 self.compress_button,
                 ft.Container(height=PADDING_LARGE),
             ],
-            spacing=PADDING_LARGE,
+            spacing=0,
             scroll=ft.ScrollMode.AUTO,
             expand=True,
         )
@@ -432,7 +778,10 @@ class VideoCompressView(ft.Container):
         self.page.update()
         picker.pick_files(
             dialog_title="选择视频文件",
-            allowed_extensions=["mp4", "mkv", "mov", "avi", "wmv", "flv", "webm"],
+            allowed_extensions=[
+                "mp4", "mkv", "mov", "avi", "wmv", "flv", "webm", 
+                "m4v", "3gp", "ts", "m2ts", "f4v", "asf", "rm", "rmvb"
+            ],
             allow_multiple=True,
         )
 
@@ -440,10 +789,14 @@ class VideoCompressView(ft.Container):
         def on_result(result: ft.FilePickerResultEvent) -> None:
             if result.path:
                 folder = Path(result.path)
-                extensions = [".mp4", ".mkv", ".mov", ".avi", ".wmv", ".flv", ".webm"]
+                extensions = [
+                    ".mp4", ".mkv", ".mov", ".avi", ".wmv", ".flv", ".webm",
+                    ".m4v", ".3gp", ".ts", ".m2ts", ".f4v", ".asf", ".rm", ".rmvb"
+                ]
                 self.selected_files.clear()
                 for ext in extensions:
                     self.selected_files.extend(folder.glob(f"**/*{ext}"))
+                    self.selected_files.extend(folder.glob(f"**/*{ext.upper()}"))
                 self._update_file_list()
         
         picker = ft.FilePicker(on_result=on_result)
@@ -492,6 +845,37 @@ class VideoCompressView(ft.Container):
         """音频编码器改变事件。"""
         self.audio_bitrate_input.visible = e.control.value != "copy"
         self.page.update()
+    
+    def _on_resolution_change(self, e: ft.ControlEvent) -> None:
+        """分辨率选择改变事件。"""
+        is_custom = e.control.value == "custom"
+        self.custom_resolution_container.visible = is_custom
+        self.page.update()
+    
+    def _on_vcodec_change(self, e: ft.ControlEvent) -> None:
+        """视频编码器改变事件。"""
+        vcodec = e.control.value
+        # 某些编码器不支持某些预设或参数，可以在这里调整
+        self.page.update()
+    
+    def _on_bitrate_mode_change(self, e: ft.ControlEvent) -> None:
+        """比特率模式改变事件。"""
+        mode = e.control.value
+        if mode == "crf":
+            self.video_bitrate_input.visible = False
+            self.max_bitrate_input.visible = False
+        elif mode == "vbr":
+            self.video_bitrate_input.visible = True
+            self.max_bitrate_input.visible = True
+        else:  # cbr
+            self.video_bitrate_input.visible = True
+            self.max_bitrate_input.visible = False
+        self.page.update()
+    
+    def _on_fps_mode_change(self, e: ft.ControlEvent) -> None:
+        """帧率模式改变事件。"""
+        self.fps_input.visible = e.control.value == "custom"
+        self.page.update()
 
     def _on_mode_change(self, e: ft.ControlEvent) -> None:
         """切换常规/高级模式。"""
@@ -537,9 +921,11 @@ class VideoCompressView(ft.Container):
             self._show_message("请先选择要压缩的视频", ft.Colors.ORANGE)
             return
 
+        self.progress_container.visible = True
         self.progress_bar.visible = True
         self.progress_bar.value = 0
         self.progress_text.value = "准备压缩..."
+        self.progress_container.update()
         self.page.update()
 
         compression_params = {
@@ -547,12 +933,21 @@ class VideoCompressView(ft.Container):
             # 常规模式
             "crf": int(self.crf_slider.value),
             "scale": self.resolution_dropdown.value,
+            "custom_width": self.custom_width_input.value if self.resolution_dropdown.value == "custom" else None,
+            "custom_height": self.custom_height_input.value if self.resolution_dropdown.value == "custom" else None,
+            "output_format": self.normal_output_format_dropdown.value if self.mode_radio.value == "normal" else self.output_format_dropdown.value,
             # 高级模式
             "vcodec": self.vcodec_dropdown.value,
             "preset": self.preset_dropdown.value,
             "acodec": self.acodec_dropdown.value,
             "audio_bitrate": f"{self.audio_bitrate_input.value}k" if self.audio_bitrate_input.value else "192k",
             "pix_fmt": self.pix_fmt_dropdown.value,
+            "bitrate_mode": self.bitrate_mode_radio.value,
+            "video_bitrate": self.video_bitrate_input.value if self.video_bitrate_input.visible else None,
+            "max_bitrate": self.max_bitrate_input.value if self.max_bitrate_input.visible else None,
+            "fps_mode": self.fps_mode_radio.value,
+            "fps": self.fps_input.value if self.fps_input.visible else None,
+            "gop": self.gop_input.value if self.gop_input.value else None,
         }
         output_mode = self.output_mode_radio.value
 
@@ -563,13 +958,22 @@ class VideoCompressView(ft.Container):
             
             for i, input_path in enumerate(self.selected_files):
                 try:
+                    # 确定输出格式
+                    output_format = compression_params.get("output_format", "same")
                     if output_mode == "new":
                         suffix = self.file_suffix.value or "_compressed"
-                        output_path = input_path.parent / f"{input_path.stem}{suffix}{input_path.suffix}"
+                        if output_format == "same":
+                            ext = input_path.suffix
+                        else:
+                            ext = f".{output_format}"
+                        output_path = input_path.parent / f"{input_path.stem}{suffix}{ext}"
                     else:
                         output_dir = Path(self.custom_output_dir.value)
                         output_dir.mkdir(parents=True, exist_ok=True)
-                        output_path = output_dir / input_path.name
+                        if output_format == "same":
+                            output_path = output_dir / input_path.name
+                        else:
+                            output_path = output_dir / f"{input_path.stem}.{output_format}"
                     
                     def progress_handler(progress, speed, remaining_time):
                         # 计算总体进度
@@ -602,6 +1006,7 @@ class VideoCompressView(ft.Container):
 
             # 完成后显示结果
             self.progress_bar.visible = False
+            self.progress_container.visible = False
             
             if failed_files:
                 self.progress_text.value = (
