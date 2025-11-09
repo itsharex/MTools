@@ -71,6 +71,9 @@ class SettingsView(ft.Container):
         # 主题色设置部分
         theme_color_section: ft.Container = self._build_theme_color_section()
         
+        # GPU加速设置部分
+        gpu_acceleration_section: ft.Container = self._build_gpu_acceleration_section()
+        
         # 字体设置部分
         font_section: ft.Container = self._build_font_section()
         
@@ -87,6 +90,8 @@ class SettingsView(ft.Container):
                 theme_mode_section,
                 ft.Container(height=PADDING_LARGE),
                 theme_color_section,
+                ft.Container(height=PADDING_LARGE),
+                gpu_acceleration_section,
                 ft.Container(height=PADDING_LARGE),
                 font_section,
                 ft.Container(height=PADDING_LARGE),
@@ -365,6 +370,98 @@ class SettingsView(ft.Container):
             border=ft.border.all(1, ft.Colors.OUTLINE_VARIANT),
             border_radius=BORDER_RADIUS_MEDIUM,
         )
+    
+    def _build_gpu_acceleration_section(self) -> ft.Container:
+        """构建GPU加速设置部分。
+        
+        Returns:
+            GPU加速设置容器
+        """
+        # 分区标题
+        section_title: ft.Text = ft.Text(
+            "GPU加速",
+            size=20,
+            weight=ft.FontWeight.W_600,
+            color=TEXT_PRIMARY,
+        )
+        
+        # 获取当前GPU加速设置
+        gpu_enabled = self.config_service.get_config_value("gpu_acceleration", True)
+        
+        # GPU加速开关
+        self.gpu_acceleration_switch = ft.Switch(
+            label="启用GPU加速",
+            value=gpu_enabled,
+            on_change=self._on_gpu_acceleration_change,
+        )
+        
+        # 检测GPU编码器状态
+        from services import FFmpegService
+        ffmpeg_service = FFmpegService(self.config_service)
+        gpu_info = ffmpeg_service.detect_gpu_encoders()
+        
+        # GPU状态信息
+        if gpu_info.get("available"):
+            encoders = gpu_info.get("encoders", [])
+            encoder_names = []
+            for enc in encoders:
+                if "nvenc" in enc:
+                    encoder_names.append("NVIDIA")
+                elif "amf" in enc:
+                    encoder_names.append("AMD")
+                elif "qsv" in enc:
+                    encoder_names.append("Intel")
+            encoder_text = "、".join(set(encoder_names)) if encoder_names else "未知"
+            status_text = ft.Text(
+                f"检测到GPU编码器: {encoder_text}",
+                size=12,
+                color=ft.Colors.GREEN,
+            )
+        else:
+            status_text = ft.Text(
+                "未检测到GPU编码器，将使用CPU编码",
+                size=12,
+                color=TEXT_SECONDARY,
+            )
+        
+        # 说明文字
+        info_text: ft.Text = ft.Text(
+            "启用GPU加速可以显著提升视频处理速度。如果遇到兼容性问题，可以关闭此选项。",
+            size=12,
+            color=TEXT_SECONDARY,
+        )
+        
+        # 组装GPU加速设置部分
+        return ft.Container(
+            content=ft.Column(
+                controls=[
+                    section_title,
+                    ft.Container(height=PADDING_MEDIUM),
+                    self.gpu_acceleration_switch,
+                    ft.Container(height=PADDING_SMALL),
+                    status_text,
+                    ft.Container(height=PADDING_MEDIUM // 2),
+                    info_text,
+                ],
+                spacing=0,
+            ),
+            padding=PADDING_LARGE,
+            border=ft.border.all(1, ft.Colors.OUTLINE_VARIANT),
+            border_radius=BORDER_RADIUS_MEDIUM,
+        )
+    
+    def _on_gpu_acceleration_change(self, e: ft.ControlEvent) -> None:
+        """GPU加速开关改变事件处理。
+        
+        Args:
+            e: 控件事件对象
+        """
+        enabled = e.control.value
+        if self.config_service.set_config_value("gpu_acceleration", enabled):
+            status = "已启用" if enabled else "已禁用"
+            self._show_snackbar(f"GPU加速{status}", ft.Colors.GREEN)
+        else:
+            self._show_snackbar("GPU加速设置更新失败", ft.Colors.RED)
     
     def _build_theme_color_section(self) -> ft.Container:
         """构建主题色设置部分。

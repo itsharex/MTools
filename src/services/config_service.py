@@ -104,6 +104,7 @@ class ConfigService:
             "window_top": None,    # 窗口上边距，None表示居中
             "window_width": None,  # 窗口宽度，None表示使用默认值
             "window_height": None, # 窗口高度，None表示使用默认值
+            "gpu_acceleration": True,  # GPU加速开关，默认开启
         }
     
     def save_config(self) -> bool:

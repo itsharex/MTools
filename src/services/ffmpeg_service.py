@@ -629,6 +629,12 @@ class FFmpegService:
         Returns:
             首选的GPU编码器名称，如果没有则返回None
         """
+        # 检查GPU加速开关
+        if self.config_service:
+            gpu_enabled = self.config_service.get_config_value("gpu_acceleration", True)
+            if not gpu_enabled:
+                return None
+        
         gpu_info = self.detect_gpu_encoders()
         if gpu_info.get("available"):
             preferred = gpu_info.get("preferred")

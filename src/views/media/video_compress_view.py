@@ -268,15 +268,13 @@ class VideoCompressView(ft.Container):
             visible=True, # 默认可见
         )
 
-        # 检测GPU编码器并设置默认值
-        gpu_info = self.ffmpeg_service.detect_gpu_encoders()
+        # 检测GPU编码器并设置默认值（会检查配置开关）
+        gpu_encoder = self.ffmpeg_service.get_preferred_gpu_encoder()
         default_vcodec = "libx264"
         gpu_available = False
-        if gpu_info.get("available"):
-            preferred = gpu_info.get("preferred")
-            if preferred:
-                default_vcodec = preferred
-                gpu_available = True
+        if gpu_encoder:
+            default_vcodec = gpu_encoder
+            gpu_available = True
         
         # 构建编码器选项列表
         encoder_options = [
@@ -287,6 +285,8 @@ class VideoCompressView(ft.Container):
         ]
         
         # 添加GPU编码器选项（如果可用）
+        # 检测所有可用的GPU编码器用于显示选项（不受配置开关影响，仅用于显示）
+        gpu_info = self.ffmpeg_service.detect_gpu_encoders()
         if gpu_info.get("available"):
             encoders = gpu_info.get("encoders", [])
             if "h264_nvenc" in encoders:
@@ -538,8 +538,8 @@ class VideoCompressView(ft.Container):
 
         # GPU加速状态提示
         gpu_status_text = None
-        if gpu_available:
-            gpu_encoder_name = gpu_info.get("preferred", "").replace("_", " ").upper()
+        if gpu_available and gpu_encoder:
+            gpu_encoder_name = gpu_encoder.replace("_", " ").upper()
             gpu_status_text = ft.Container(
                 content=ft.Row(
                     controls=[
