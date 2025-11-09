@@ -13,6 +13,7 @@ from constants import (
     BORDER_RADIUS_MEDIUM,
     PADDING_LARGE,
     PADDING_MEDIUM,
+    PADDING_SMALL,
     PADDING_XLARGE,
     TEXT_PRIMARY,
     TEXT_SECONDARY,
@@ -566,6 +567,31 @@ class SettingsView(ft.Container):
         
         return card
     
+    def _hex_to_rgb(self, hex_color: str) -> tuple:
+        """将十六进制颜色转换为RGB值。
+        
+        Args:
+            hex_color: 十六进制颜色值（如#667EEA）
+        
+        Returns:
+            RGB元组 (r, g, b)
+        """
+        hex_color = hex_color.lstrip('#')
+        return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+    
+    def _rgb_to_hex(self, r: int, g: int, b: int) -> str:
+        """将RGB值转换为十六进制颜色。
+        
+        Args:
+            r: 红色值 (0-255)
+            g: 绿色值 (0-255)
+            b: 蓝色值 (0-255)
+        
+        Returns:
+            十六进制颜色值（如#667EEA）
+        """
+        return f"#{r:02x}{g:02x}{b:02x}".upper()
+    
     def _open_color_picker(self, e: ft.ControlEvent) -> None:
         """打开调色盘对话框。
         
@@ -573,88 +599,220 @@ class SettingsView(ft.Container):
             e: 控件事件对象
         """
         # 当前主题色
-        current_color = self.config_service.get_config_value("theme_color", "#667EEA")
+        current_color_hex = self.config_service.get_config_value("theme_color", "#667EEA")
+        current_color_rgb = self._hex_to_rgb(current_color_hex)
         
         # 颜色预览框
-        self.color_preview: ft.Container = ft.Container(
-            width=80,
-            height=80,
-            border_radius=40,
-            bgcolor=current_color,
+        preview_box = ft.Container(
+            width=100,
+            height=100,
+            bgcolor=current_color_hex,
+            border_radius=12,
             border=ft.border.all(2, ft.Colors.OUTLINE),
         )
         
-        # 颜色输入框
-        self.color_input: ft.TextField = ft.TextField(
+        # RGB文本显示
+        rgb_text = ft.Text(
+            f"RGB({current_color_rgb[0]}, {current_color_rgb[1]}, {current_color_rgb[2]})",
+            size=14,
+            weight=ft.FontWeight.W_500,
+        )
+        
+        # 颜色代码输入框
+        color_input = ft.TextField(
             label="颜色代码",
             hint_text="#667EEA",
-            value=current_color,
+            value=current_color_hex,
             width=200,
-            on_change=self._on_color_input_change,
         )
         
-        # 常用颜色网格
-        common_colors = [
-            "#EF4444", "#F97316", "#F59E0B", "#EAB308", "#84CC16", "#22C55E",
-            "#10B981", "#14B8A6", "#06B6D4", "#0EA5E9", "#3B82F6", "#6366F1",
-            "#8B5CF6", "#A855F7", "#D946EF", "#EC4899", "#F43F5E", "#667EEA",
-            "#64748B", "#6B7280", "#71717A", "#78716C", "#57534E", "#44403C",
-            "#1F2937", "#374151", "#4B5563", "#000000", "#FFFFFF", "#F3F4F6",
+        # RGB 滑块
+        r_slider = ft.Slider(
+            min=0,
+            max=255,
+            divisions=255,
+            value=current_color_rgb[0],
+            label="{value}",
+            on_change=lambda e: self._update_color_preview_in_dialog(
+                int(r_slider.value),
+                int(g_slider.value),
+                int(b_slider.value),
+                preview_box,
+                rgb_text,
+                color_input
+            ),
+        )
+        
+        g_slider = ft.Slider(
+            min=0,
+            max=255,
+            divisions=255,
+            value=current_color_rgb[1],
+            label="{value}",
+            on_change=lambda e: self._update_color_preview_in_dialog(
+                int(r_slider.value),
+                int(g_slider.value),
+                int(b_slider.value),
+                preview_box,
+                rgb_text,
+                color_input
+            ),
+        )
+        
+        b_slider = ft.Slider(
+            min=0,
+            max=255,
+            divisions=255,
+            value=current_color_rgb[2],
+            label="{value}",
+            on_change=lambda e: self._update_color_preview_in_dialog(
+                int(r_slider.value),
+                int(g_slider.value),
+                int(b_slider.value),
+                preview_box,
+                rgb_text,
+                color_input
+            ),
+        )
+        
+        # 常用颜色预设
+        preset_colors = [
+            ("#667EEA", "蓝紫色", "默认"),
+            ("#6366F1", "靛蓝色", "科技感"),
+            ("#8B5CF6", "紫色", "优雅"),
+            ("#EC4899", "粉红色", "活力"),
+            ("#F43F5E", "玫瑰红", "激情"),
+            ("#EF4444", "红色", "热烈"),
+            ("#F97316", "橙色", "温暖"),
+            ("#F59E0B", "琥珀色", "明亮"),
+            ("#10B981", "绿色", "清新"),
+            ("#14B8A6", "青色", "自然"),
+            ("#06B6D4", "天蓝色", "清爽"),
+            ("#0EA5E9", "天空蓝", "开阔"),
+            ("#6B7280", "灰色", "稳重"),
+            ("#1F2937", "深灰", "专业"),
+            ("#000000", "黑色", "经典"),
+            ("#FFFFFF", "白色", "纯净"),
         ]
         
-        color_grid_controls = []
-        for color in common_colors:
-            color_btn = ft.Container(
-                width=32,
-                height=32,
-                bgcolor=color,
-                border_radius=16,
-                border=ft.border.all(1, ft.Colors.OUTLINE),
-                tooltip=color,
-                data=color,
-                on_click=self._on_color_grid_click,
-                ink=True,
+        preset_buttons = []
+        for hex_color, name, desc in preset_colors:
+            rgb = self._hex_to_rgb(hex_color)
+            preset_buttons.append(
+                ft.Container(
+                    content=ft.Column(
+                        controls=[
+                            ft.Container(
+                                width=50,
+                                height=50,
+                                bgcolor=hex_color,
+                                border_radius=8,
+                                border=ft.border.all(2, ft.Colors.OUTLINE),
+                                ink=True,
+                                on_click=lambda e, c=hex_color, r=rgb[0], g=rgb[1], b=rgb[2]: self._apply_preset_color(
+                                    c, r, g, b, r_slider, g_slider, b_slider, preview_box, rgb_text, color_input
+                                ),
+                            ),
+                            ft.Text(name, size=10, text_align=ft.TextAlign.CENTER),
+                        ],
+                        spacing=4,
+                        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                    ),
+                    padding=4,
+                )
             )
-            color_grid_controls.append(color_btn)
         
-        color_grid = ft.Row(
-            controls=color_grid_controls,
-            wrap=True,
-            spacing=8,
-            run_spacing=8,
-            width=400,
-        )
+        # 颜色输入框变化事件
+        def on_color_input_change(e: ft.ControlEvent):
+            color_value = e.control.value.strip()
+            if color_value and not color_value.startswith("#"):
+                color_value = "#" + color_value
+            
+            # 验证颜色格式并更新
+            import re
+            if re.match(r'^#[0-9A-Fa-f]{6}$', color_value):
+                rgb = self._hex_to_rgb(color_value)
+                r_slider.value = rgb[0]
+                g_slider.value = rgb[1]
+                b_slider.value = rgb[2]
+                r_slider.update()
+                g_slider.update()
+                b_slider.update()
+                self._update_color_preview_in_dialog(
+                    rgb[0], rgb[1], rgb[2], preview_box, rgb_text, color_input
+                )
+        
+        color_input.on_change = on_color_input_change
         
         # 对话框内容
-        dialog_content = ft.Column(
-            controls=[
-                ft.Row(
-                    controls=[
-                        self.color_preview,
-                        ft.Column(
-                            controls=[
-                                self.color_input,
-                                ft.Text("输入#RRGGBB格式或点击下方颜色选择", size=11, color=TEXT_SECONDARY),
-                            ],
-                            spacing=8,
-                        ),
-                    ],
-                    spacing=PADDING_LARGE,
-                    alignment=ft.MainAxisAlignment.CENTER,
-                ),
-                ft.Container(height=PADDING_MEDIUM),
-                ft.Text("常用颜色:", size=14, weight=ft.FontWeight.W_500),
-                color_grid,
-            ],
-            spacing=PADDING_MEDIUM,
-            horizontal_alignment=ft.CrossAxisAlignment.START,
-            scroll=ft.ScrollMode.AUTO,
+        dialog_content = ft.Container(
+            content=ft.Column(
+                controls=[
+                    # 预览区域
+                    ft.Row(
+                        controls=[
+                            preview_box,
+                            ft.Column(
+                                controls=[
+                                    rgb_text,
+                                    color_input,
+                                    ft.Text("调整RGB值或输入颜色代码", size=12, color=TEXT_SECONDARY),
+                                ],
+                                spacing=PADDING_SMALL,
+                            ),
+                        ],
+                        spacing=PADDING_LARGE,
+                        alignment=ft.MainAxisAlignment.CENTER,
+                    ),
+                    ft.Divider(),
+                    # RGB滑块
+                    ft.Column(
+                        controls=[
+                            ft.Row(
+                                controls=[
+                                    ft.Text("R:", width=20, color=ft.Colors.RED),
+                                    ft.Container(content=r_slider, expand=True),
+                                ],
+                                spacing=PADDING_SMALL,
+                            ),
+                            ft.Row(
+                                controls=[
+                                    ft.Text("G:", width=20, color=ft.Colors.GREEN),
+                                    ft.Container(content=g_slider, expand=True),
+                                ],
+                                spacing=PADDING_SMALL,
+                            ),
+                            ft.Row(
+                                controls=[
+                                    ft.Text("B:", width=20, color=ft.Colors.BLUE),
+                                    ft.Container(content=b_slider, expand=True),
+                                ],
+                                spacing=PADDING_SMALL,
+                            ),
+                        ],
+                        spacing=PADDING_SMALL,
+                    ),
+                    ft.Divider(),
+                    # 常用颜色
+                    ft.Text("常用颜色:", size=12, weight=ft.FontWeight.W_500),
+                    ft.Row(
+                        controls=preset_buttons,
+                        wrap=True,
+                        spacing=PADDING_SMALL,
+                        run_spacing=PADDING_SMALL,
+                    ),
+                ],
+                spacing=PADDING_MEDIUM,
+                scroll=ft.ScrollMode.AUTO,
+            ),
+            width=500,
+            height=500,
         )
         
         # 创建对话框
         def close_dialog(apply: bool = False):
             if apply:
-                color_value = self.color_input.value.strip()
+                color_value = color_input.value.strip()
                 if color_value:
                     self._apply_custom_color(color_value)
             self.color_picker_dialog.open = False
@@ -675,35 +833,68 @@ class SettingsView(ft.Container):
         self.color_picker_dialog.open = True
         self.page.update()
     
-    def _on_color_input_change(self, e: ft.ControlEvent) -> None:
-        """颜色输入框变化事件处理。
+    def _update_color_preview_in_dialog(
+        self,
+        r: int,
+        g: int,
+        b: int,
+        preview_box: ft.Container,
+        rgb_text: ft.Text,
+        color_input: ft.TextField
+    ) -> None:
+        """更新对话框中的颜色预览。
         
         Args:
-            e: 控件事件对象
+            r: 红色值
+            g: 绿色值
+            b: 蓝色值
+            preview_box: 预览框容器
+            rgb_text: RGB文本控件
+            color_input: 颜色输入框
         """
-        color_value = e.control.value.strip()
-        
-        # 确保以#开头
-        if color_value and not color_value.startswith("#"):
-            color_value = "#" + color_value
-        
-        # 验证颜色格式并更新预览
-        import re
-        if re.match(r'^#[0-9A-Fa-f]{6}$', color_value):
-            self.color_preview.bgcolor = color_value
-            self.color_preview.update()
+        hex_color = self._rgb_to_hex(r, g, b)
+        preview_box.bgcolor = hex_color
+        rgb_text.value = f"RGB({r}, {g}, {b})"
+        color_input.value = hex_color
+        preview_box.update()
+        rgb_text.update()
+        color_input.update()
     
-    def _on_color_grid_click(self, e: ft.ControlEvent) -> None:
-        """颜色网格点击事件处理。
+    def _apply_preset_color(
+        self,
+        hex_color: str,
+        r: int,
+        g: int,
+        b: int,
+        r_slider: ft.Slider,
+        g_slider: ft.Slider,
+        b_slider: ft.Slider,
+        preview_box: ft.Container,
+        rgb_text: ft.Text,
+        color_input: ft.TextField
+    ) -> None:
+        """应用预设颜色。
         
         Args:
-            e: 控件事件对象
+            hex_color: 十六进制颜色值
+            r: 红色值
+            g: 绿色值
+            b: 蓝色值
+            r_slider: R滑块
+            g_slider: G滑块
+            b_slider: B滑块
+            preview_box: 预览框容器
+            rgb_text: RGB文本控件
+            color_input: 颜色输入框
         """
-        selected_color = e.control.data
-        self.color_input.value = selected_color
-        self.color_preview.bgcolor = selected_color
-        self.color_input.update()
-        self.color_preview.update()
+        r_slider.value = r
+        g_slider.value = g
+        b_slider.value = b
+        r_slider.update()
+        g_slider.update()
+        b_slider.update()
+        self._update_color_preview_in_dialog(r, g, b, preview_box, rgb_text, color_input)
+    
     
     def _apply_custom_color(self, color_value: str) -> None:
         """应用自定义颜色。
