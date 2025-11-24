@@ -99,20 +99,6 @@ class AudioView(ft.Container):
                     gradient_colors=("#FA709A", "#FEE140"),
                     on_click=self._open_compress_dialog,
                 ),
-                FeatureCard(
-                    icon=ft.Icons.CONTENT_CUT_ROUNDED,
-                    title="音频剪辑",
-                    description="裁剪、合并音频文件",
-                    gradient_colors=("#667eea", "#764ba2"),
-                    on_click=self._open_audio_cut,
-                ),
-                FeatureCard(
-                    icon=ft.Icons.TUNE_ROUNDED,
-                    title="参数调整",
-                    description="调整比特率、采样率等参数",
-                    gradient_colors=("#30CFD0", "#330867"),
-                    on_click=self._open_audio_tune,
-                ),
             ],
             wrap=True,  # 自动换行
             spacing=PADDING_LARGE,
@@ -293,30 +279,6 @@ class AudioView(ft.Container):
             self.parent_container.update()
         
         self._check_ffmpeg_and_open("音频压缩", open_func)
-    
-    def _open_audio_cut(self, e: ft.ControlEvent) -> None:
-        """打开音频剪辑工具（待实现）。
-        
-        Args:
-            e: 控件事件对象
-        """
-        def open_func():
-            # TODO: 实现音频剪辑功能
-            self._show_coming_soon_dialog("音频剪辑")
-        
-        self._check_ffmpeg_and_open("音频剪辑", open_func)
-    
-    def _open_audio_tune(self, e: ft.ControlEvent) -> None:
-        """打开参数调整工具（待实现）。
-        
-        Args:
-            e: 控件事件对象
-        """
-        def open_func():
-            # TODO: 实现参数调整功能
-            self._show_coming_soon_dialog("参数调整")
-        
-        self._check_ffmpeg_and_open("参数调整", open_func)
     
     def _show_coming_soon_dialog(self, feature_name: str) -> None:
         """显示"即将推出"对话框。

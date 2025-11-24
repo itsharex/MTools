@@ -84,12 +84,6 @@ class VideoView(ft.Container):
                     on_click=lambda e: self._open_view('extract_audio'),
                     gradient_colors=("#ff9a9e", "#fad0c4"),
                 ),
-                FeatureCard(
-                    icon=ft.Icons.VIDEO_CALL_ROUNDED,
-                    title="视频剪辑",
-                    description="裁剪、合并、添加水印 (开发中)",
-                    gradient_colors=("#fbc2eb", "#a6c1ee"),
-                ),
             ],
             wrap=True,
             spacing=PADDING_LARGE,
