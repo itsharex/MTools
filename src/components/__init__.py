@@ -3,6 +3,7 @@
 
 from .custom_title_bar import CustomTitleBar
 from .feature_card import FeatureCard
+from .tool_search import ToolInfo, ToolRegistry, ToolSearchDialog
 
-__all__ = ["FeatureCard", "CustomTitleBar"]
+__all__ = ["FeatureCard", "CustomTitleBar", "ToolInfo", "ToolRegistry", "ToolSearchDialog"]
 

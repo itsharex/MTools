@@ -8,8 +8,10 @@ from typing import Optional
 
 import flet as ft
 
-from components import CustomTitleBar
+from components import CustomTitleBar, ToolInfo, ToolSearchDialog
 from services import ConfigService, EncodingService, ImageService, FFmpegService
+from tool_registry import register_all_tools
+from utils import get_all_tools
 from views.media import AudioView, VideoView
 from views.dev_tools import DevToolsView
 from views.image import ImageView
@@ -145,6 +147,12 @@ class MainView(ft.Column):
         # 设置初始内容
         self.content_container.content = self.image_view
         
+        # 注册所有工具（自动注册）
+        register_all_tools()
+        
+        # 注册键盘快捷键
+        self.page.on_keyboard_event = self._on_keyboard
+        
         # 主内容区域（导航栏 + 内容）
         main_content: ft.Row = ft.Row(
             controls=[
@@ -155,11 +163,24 @@ class MainView(ft.Column):
             expand=True,
         )
         
+        # 创建悬浮搜索按钮
+        self.fab_search = ft.FloatingActionButton(
+            icon=ft.Icons.SEARCH,
+            tooltip="搜索工具 (Ctrl+K)",
+            on_click=self._open_search,
+            bgcolor=ft.Colors.PRIMARY,
+            foreground_color=ft.Colors.ON_PRIMARY,
+        )
+        
         # 组装主视图（标题栏 + 主内容）
         self.controls = [
             self.title_bar,
             main_content,
         ]
+        
+        # 注意：FAB需要添加到 page.overlay 或 page.floating_action_button
+        # 我们将在初始化完成后添加
+        self.page.floating_action_button = self.fab_search
     
     def _on_navigation_change(self, e: ft.ControlEvent) -> None:
         """导航变更事件处理。
@@ -207,6 +228,76 @@ class MainView(ft.Column):
                 self.content_container.update()
         else:
             return
+    
+    def _open_tool_by_id(self, tool_id: str) -> None:
+        """根据工具ID打开工具。
+        
+        Args:
+            tool_id: 工具ID，格式如 "image.compress", "audio.format"
+        """
+        # 解析工具ID
+        parts = tool_id.split(".")
+        if len(parts) < 2:
+            return
+        
+        category = parts[0]
+        tool_name = ".".join(parts[1:])  # 支持多级，如 "puzzle.merge"
+        
+        # 先切换到对应的分类
+        if category == "image":
+            self.navigation_rail.selected_index = 0
+            self.content_container.content = self.image_view
+            # 调用图片视图的方法打开子工具
+            if hasattr(self.image_view, 'open_tool'):
+                self.image_view.open_tool(tool_name)
+        elif category == "audio":
+            self.navigation_rail.selected_index = 1
+            self.content_container.content = self.audio_view
+            if hasattr(self.audio_view, 'open_tool'):
+                self.audio_view.open_tool(tool_name)
+        elif category == "video":
+            self.navigation_rail.selected_index = 2
+            self.content_container.content = self.video_view
+            # 视频视图使用 _open_view 方法
+            self.video_view._open_view(tool_name)
+        elif category == "dev":
+            self.navigation_rail.selected_index = 3
+            self.content_container.content = self.dev_tools_view
+            if hasattr(self.dev_tools_view, 'open_tool'):
+                self.dev_tools_view.open_tool(tool_name)
+        
+        self.navigation_rail.update()
+        self.content_container.update()
+    
+    def _open_search(self, e: ft.ControlEvent = None) -> None:
+        """打开搜索对话框。"""
+        # 从全局注册表获取工具并转换为ToolInfo
+        tools_metadata = get_all_tools()
+        tools = []
+        for metadata in tools_metadata:
+            # 获取图标对象
+            icon = getattr(ft.Icons, metadata.icon, ft.Icons.HELP_OUTLINE)
+            
+            tool_info = ToolInfo(
+                name=metadata.name,
+                description=metadata.description,
+                category=metadata.category,
+                keywords=metadata.keywords,
+                icon=icon,
+                on_click=lambda tid=metadata.tool_id: self._open_tool_by_id(tid),
+            )
+            tools.append(tool_info)
+        
+        search_dialog = ToolSearchDialog(self.page, tools)
+        self.page.overlay.append(search_dialog)
+        search_dialog.open = True
+        self.page.update()
+    
+    def _on_keyboard(self, e: ft.KeyboardEvent) -> None:
+        """键盘事件处理。"""
+        # Ctrl+K 打开搜索
+        if e.key == "K" and e.ctrl and not e.shift and not e.alt:
+            self._open_search()
     
     def _open_settings(self, e: ft.ControlEvent) -> None:
         """打开设置视图。

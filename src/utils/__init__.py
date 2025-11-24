@@ -12,6 +12,13 @@ from .file_utils import (
     move_file,
 )
 from .gif_utils import GifUtils
+from .tool_metadata import (
+    ToolMetadata,
+    get_all_tools,
+    get_tool,
+    register_tool,
+    register_tool_manual,
+)
 
 __all__ = [
     "ensure_dir",
@@ -23,5 +30,10 @@ __all__ = [
     "get_file_extension",
     "list_files_by_extension",
     "GifUtils",
+    "ToolMetadata",
+    "register_tool",
+    "register_tool_manual",
+    "get_all_tools",
+    "get_tool",
 ]
 
