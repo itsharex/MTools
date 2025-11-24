@@ -531,7 +531,19 @@ class ImageBackgroundView(ft.Container):
     def _load_model_async(self) -> None:
         """异步加载模型。"""
         try:
-            self.bg_remover = BackgroundRemover(self.model_path)
+            # 从配置中获取GPU相关设置
+            use_gpu = self.config_service.get_config_value("gpu_acceleration", True)
+            gpu_device_id = self.config_service.get_config_value("gpu_device_id", 0)
+            gpu_memory_limit = self.config_service.get_config_value("gpu_memory_limit", 2048)
+            enable_memory_arena = self.config_service.get_config_value("gpu_enable_memory_arena", True)
+            
+            self.bg_remover = BackgroundRemover(
+                self.model_path, 
+                use_gpu=use_gpu,
+                gpu_device_id=gpu_device_id,
+                gpu_memory_limit=gpu_memory_limit,
+                enable_memory_arena=enable_memory_arena
+            )
             self._on_model_loaded(True, None)
         except Exception as e:
             self._on_model_loaded(False, str(e))
@@ -608,8 +620,19 @@ class ImageBackgroundView(ft.Container):
                 except:
                     pass
                 
-                # 加载模型
-                self.bg_remover = BackgroundRemover(self.model_path)
+                # 加载模型（使用GPU配置）
+                use_gpu = self.config_service.get_config_value("gpu_acceleration", True)
+                gpu_device_id = self.config_service.get_config_value("gpu_device_id", 0)
+                gpu_memory_limit = self.config_service.get_config_value("gpu_memory_limit", 2048)
+                enable_memory_arena = self.config_service.get_config_value("gpu_enable_memory_arena", True)
+                
+                self.bg_remover = BackgroundRemover(
+                    self.model_path,
+                    use_gpu=use_gpu,
+                    gpu_device_id=gpu_device_id,
+                    gpu_memory_limit=gpu_memory_limit,
+                    enable_memory_arena=enable_memory_arena
+                )
                 self._on_model_loaded(True, None)
             except Exception as e:
                 # 下载失败，隐藏进度条
@@ -632,11 +655,16 @@ class ImageBackgroundView(ft.Container):
             error: 错误信息
         """
         self.is_model_loading = False
-        
+        print(success,error)
         if success:
-            self._update_model_status("ready", "模型就绪")
+            # 获取设备信息
+            device_info = "未知设备"
+            if self.bg_remover:
+                device_info = self.bg_remover.get_device_info()
+            
+            self._update_model_status("ready", f"模型就绪 ({device_info})")
             self._update_process_button()
-            self._show_snackbar("模型加载成功", ft.Colors.GREEN)
+            self._show_snackbar(f"模型加载成功，使用设备: {device_info}", ft.Colors.GREEN)
         else:
             self._update_model_status("error", f"模型加载失败: {error}")
             self._show_snackbar(f"模型加载失败: {error}", ft.Colors.RED)

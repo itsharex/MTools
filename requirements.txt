@@ -4,6 +4,11 @@ Pillow>=10.0.0
 chardet>=5.0.0
 opencv-python-headless==4.11.0.86
 numpy<2.0.0
-onnxruntime>=1.16.0
+# ONNX Runtime - 背景移除功能
+# CPU版本（默认）：onnxruntime>=1.16.0
+# GPU加速版本（可选，需要额外安装）：
+#   - Windows通用GPU: pip install onnxruntime-directml>=1.16.0
+#   - NVIDIA CUDA: pip install onnxruntime-gpu>=1.16.0 (需要CUDA Toolkit和cuDNN)
+onnxruntime-directml==1.22.0
 websockets<=12.0  # 避免弃用警告，等待 flet 更新
 qrcode[pil]>=7.4.2  # 二维码生成（支持中文和所有语言）

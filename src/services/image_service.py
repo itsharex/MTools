@@ -1571,14 +1571,25 @@ class ImageService:
 class BackgroundRemover:
     """背景移除器类。
     
-    使用ONNX模型进行图像背景移除。
+    使用ONNX模型进行图像背景移除，支持GPU加速。
     """
     
-    def __init__(self, model_path: Path) -> None:
+    def __init__(
+        self, 
+        model_path: Path, 
+        use_gpu: bool = False,
+        gpu_device_id: int = 0,
+        gpu_memory_limit: int = 2048,
+        enable_memory_arena: bool = True
+    ) -> None:
         """初始化背景移除器。
         
         Args:
             model_path: ONNX模型路径
+            use_gpu: 是否启用GPU加速
+            gpu_device_id: GPU设备ID，默认0（第一个GPU）
+            gpu_memory_limit: GPU内存限制（MB），默认2048MB
+            enable_memory_arena: 是否启用内存池优化，默认True
         """
         try:
             import onnxruntime as ort
@@ -1588,29 +1599,90 @@ class BackgroundRemover:
         if not model_path.exists():
             raise FileNotFoundError(f"模型文件不存在: {model_path}")
         
-        # 设置日志级别为 ERROR，抑制警告信息
-        ort.set_default_logger_severity(3)  # 0=Verbose, 1=Info, 2=Warning, 3=Error, 4=Fatal
-        
         # 配置会话选项，启用内存优化
         sess_options = ort.SessionOptions()
         sess_options.enable_mem_pattern = True   # 启用内存模式优化
         sess_options.enable_mem_reuse = True     # 启用内存重用
-        sess_options.enable_cpu_mem_arena = True # 启用CPU内存池
+        sess_options.enable_cpu_mem_arena = enable_memory_arena # 启用CPU内存池
         sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-        sess_options.log_severity_level = 3      # 设置会话日志级别为 ERROR
+        sess_options.log_severity_level = 3      # 设置日志级别为 ERROR，抑制警告信息 (0=Verbose, 1=Info, 2=Warning, 3=Error, 4=Fatal)
+        
+        # 选择执行提供者（GPU或CPU）
+        providers = []
+        self.using_gpu = False
+        
+        if use_gpu:
+            # 尝试使用GPU加速
+            available_providers = ort.get_available_providers()
+            
+            # 按优先级尝试GPU提供者
+            # 1. CUDA (NVIDIA)
+            if 'CUDAExecutionProvider' in available_providers:
+                providers.append(('CUDAExecutionProvider', {
+                    'device_id': gpu_device_id,
+                    'arena_extend_strategy': 'kNextPowerOfTwo',
+                    'gpu_mem_limit': gpu_memory_limit * 1024 * 1024,  # 转换为字节
+                    'cudnn_conv_algo_search': 'EXHAUSTIVE',
+                    'do_copy_in_default_stream': True,
+                }))
+                self.using_gpu = True
+            # 2. DirectML (Windows通用GPU)
+            elif 'DmlExecutionProvider' in available_providers:
+                providers.append('DmlExecutionProvider')
+                self.using_gpu = True
+            # 3. ROCm (AMD)
+            elif 'ROCMExecutionProvider' in available_providers:
+                providers.append('ROCMExecutionProvider')
+                self.using_gpu = True
+        
+        # CPU作为后备
+        providers.append('CPUExecutionProvider')
         
         try:
             self.sess = ort.InferenceSession(
                 str(model_path),
                 sess_options=sess_options,
-                providers=['CPUExecutionProvider']  # 只使用CPU
+                providers=providers
             )
+            
+            # 记录实际使用的提供者
+            actual_provider = self.sess.get_providers()[0]
+            if actual_provider != 'CPUExecutionProvider':
+                self.using_gpu = True
+            else:
+                self.using_gpu = False
+                
         except Exception as e:
             raise RuntimeError(f"加载ONNX模型失败: {e}")
         
         self.input_name: str = self.sess.get_inputs()[0].name
         self.output_name: str = self.sess.get_outputs()[0].name
         self.model_input_size: Tuple[int, int] = (1024, 1024)
+        
+        # 记录实际使用的执行提供者
+        self.device_info = self.sess.get_providers()[0]
+    
+    def is_using_gpu(self) -> bool:
+        """返回是否正在使用GPU加速。
+        
+        Returns:
+            如果使用GPU则返回True，否则返回False
+        """
+        return self.using_gpu
+    
+    def get_device_info(self) -> str:
+        """获取当前使用的设备信息。
+        
+        Returns:
+            设备信息字符串，例如 "CUDA GPU"、"DirectML GPU"、"CPU"
+        """
+        provider_map = {
+            'CUDAExecutionProvider': 'CUDA GPU',
+            'DmlExecutionProvider': 'DirectML GPU',
+            'ROCMExecutionProvider': 'ROCm GPU',
+            'CPUExecutionProvider': 'CPU',
+        }
+        return provider_map.get(self.device_info, self.device_info)
     
     def _preprocess_image(self, im: np.ndarray, model_input_size: Tuple[int, int]) -> np.ndarray:
         """预处理图像，优化内存使用和性能。

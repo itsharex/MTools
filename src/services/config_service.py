@@ -105,6 +105,9 @@ class ConfigService:
             "window_width": None,  # 窗口宽度，None表示使用默认值
             "window_height": None, # 窗口高度，None表示使用默认值
             "gpu_acceleration": True,  # GPU加速开关，默认开启
+            "gpu_memory_limit": 2048,  # GPU内存限制（MB），默认2048MB
+            "gpu_device_id": 0,  # GPU设备ID，默认使用第一个GPU（0）
+            "gpu_enable_memory_arena": True,  # 是否启用GPU内存池优化，默认开启
         }
     
     def save_config(self) -> bool:

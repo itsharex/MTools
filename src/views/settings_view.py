@@ -15,6 +15,7 @@ from constants import (
     PADDING_MEDIUM,
     PADDING_SMALL,
     PADDING_XLARGE,
+    SURFACE_VARIANT,
     TEXT_PRIMARY,
     TEXT_SECONDARY,
 )
@@ -372,46 +373,45 @@ class SettingsView(ft.Container):
         )
     
     def _build_gpu_acceleration_section(self) -> ft.Container:
-        """构建GPU加速设置部分。
-        
-        Returns:
-            GPU加速设置容器
-        """
-        # 分区标题
-        section_title: ft.Text = ft.Text(
+        """构建GPU加速设置部分，包括高级参数配置。"""
+
+        # 标题与当前配置
+        section_title = ft.Text(
             "GPU加速",
             size=20,
             weight=ft.FontWeight.W_600,
             color=TEXT_PRIMARY,
         )
-        
-        # 获取当前GPU加速设置
+
         gpu_enabled = self.config_service.get_config_value("gpu_acceleration", True)
-        
-        # GPU加速开关
+        gpu_memory_limit = self.config_service.get_config_value("gpu_memory_limit", 2048)
+        gpu_device_id = self.config_service.get_config_value("gpu_device_id", 0)
+        enable_memory_arena = self.config_service.get_config_value("gpu_enable_memory_arena", True)
+
+        # GPU开关
         self.gpu_acceleration_switch = ft.Switch(
             label="启用GPU加速",
             value=gpu_enabled,
             on_change=self._on_gpu_acceleration_change,
         )
-        
-        # 检测GPU编码器状态
+
+        # 检测GPU编码器
         from services import FFmpegService
+
         ffmpeg_service = FFmpegService(self.config_service)
         gpu_info = ffmpeg_service.detect_gpu_encoders()
-        
-        # GPU状态信息
+
         if gpu_info.get("available"):
             encoders = gpu_info.get("encoders", [])
-            encoder_names = []
+            vendor_tags: set[str] = set()
             for enc in encoders:
                 if "nvenc" in enc:
-                    encoder_names.append("NVIDIA")
+                    vendor_tags.add("NVIDIA")
                 elif "amf" in enc:
-                    encoder_names.append("AMD")
+                    vendor_tags.add("AMD")
                 elif "qsv" in enc:
-                    encoder_names.append("Intel")
-            encoder_text = "、".join(set(encoder_names)) if encoder_names else "未知"
+                    vendor_tags.add("Intel")
+            encoder_text = "、".join(vendor_tags) if vendor_tags else "已检测到GPU编码器"
             status_text = ft.Text(
                 f"检测到GPU编码器: {encoder_text}",
                 size=12,
@@ -423,15 +423,94 @@ class SettingsView(ft.Container):
                 size=12,
                 color=TEXT_SECONDARY,
             )
-        
-        # 说明文字
-        info_text: ft.Text = ft.Text(
-            "启用GPU加速可以显著提升视频处理速度。如果遇到兼容性问题，可以关闭此选项。",
+
+        # 高级设置控件
+        self.gpu_memory_value_text = ft.Text(
+            f"{gpu_memory_limit} MB",
+            size=13,
+            color=TEXT_PRIMARY,
+            text_align=ft.TextAlign.END,
+            width=80,
+        )
+
+        memory_label_row = ft.Row(
+            controls=[
+                ft.Text("GPU内存限制", size=13, color=TEXT_PRIMARY),
+                self.gpu_memory_value_text,
+            ],
+            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+        )
+
+        self.gpu_memory_slider = ft.Slider(
+            min=512,
+            max=8192,
+            divisions=15,
+            value=gpu_memory_limit,
+            label=None,
+            on_change=self._on_gpu_memory_change,
+        )
+
+        self.gpu_device_dropdown = ft.Dropdown(
+            label="GPU设备",
+            hint_text="在多GPU系统中选择一个设备",
+            value=str(gpu_device_id),
+            options=[
+                ft.dropdown.Option("0", "GPU 0 (主GPU)"),
+                ft.dropdown.Option("1", "GPU 1"),
+                ft.dropdown.Option("2", "GPU 2"),
+                ft.dropdown.Option("3", "GPU 3"),
+            ],
+            on_change=self._on_gpu_device_change,
+            width=280,
+        )
+
+        self.memory_arena_switch = ft.Switch(
+            label="启用内存池优化",
+            value=enable_memory_arena,
+            on_change=self._on_memory_arena_change,
+        )
+
+        advanced_content = ft.Column(
+            controls=[
+                memory_label_row,
+                self.gpu_memory_slider,
+                self.gpu_device_dropdown,
+                self.memory_arena_switch,
+            ],
+            spacing=16,
+        )
+
+        self.gpu_advanced_title = ft.Text(
+            "高级参数",
+            size=14,
+            weight=ft.FontWeight.W_500,
+            color=TEXT_PRIMARY,
+        )
+
+        self.gpu_advanced_container = ft.Container(
+            content=advanced_content,
+            padding=ft.padding.all(PADDING_MEDIUM),
+            border=ft.border.all(1, ft.Colors.OUTLINE_VARIANT),
+            border_radius=BORDER_RADIUS_MEDIUM,
+            bgcolor=SURFACE_VARIANT,
+        )
+
+        info_text = ft.Text(
+            "启用GPU加速可显著提升图像与视频处理速度。如遇兼容性或显存不足问题，可在此调整参数。",
             size=12,
             color=TEXT_SECONDARY,
         )
-        
-        # 组装GPU加速设置部分
+
+        # 初始状态同步
+        if not gpu_enabled:
+            for ctrl in (self.gpu_memory_slider, self.gpu_device_dropdown, self.memory_arena_switch):
+                ctrl.disabled = True
+            self.gpu_memory_value_text.opacity = 0.6
+            self.gpu_advanced_container.opacity = 0.6
+        else:
+            self.gpu_memory_value_text.opacity = 1.0
+            self.gpu_advanced_container.opacity = 1.0
+
         return ft.Container(
             content=ft.Column(
                 controls=[
@@ -440,6 +519,10 @@ class SettingsView(ft.Container):
                     self.gpu_acceleration_switch,
                     ft.Container(height=PADDING_SMALL),
                     status_text,
+                    ft.Container(height=PADDING_MEDIUM),
+                    self.gpu_advanced_title,
+                    ft.Container(height=PADDING_SMALL),
+                    self.gpu_advanced_container,
                     ft.Container(height=PADDING_MEDIUM // 2),
                     info_text,
                 ],
@@ -460,8 +543,65 @@ class SettingsView(ft.Container):
         if self.config_service.set_config_value("gpu_acceleration", enabled):
             status = "已启用" if enabled else "已禁用"
             self._show_snackbar(f"GPU加速{status}", ft.Colors.GREEN)
+            self._update_gpu_controls_state(enabled)
         else:
             self._show_snackbar("GPU加速设置更新失败", ft.Colors.RED)
+    
+    def _on_gpu_memory_change(self, e: ft.ControlEvent) -> None:
+        """GPU内存限制改变事件处理。
+        
+        Args:
+            e: 控件事件对象
+        """
+        memory_limit = int(e.control.value)
+        if self.config_service.set_config_value("gpu_memory_limit", memory_limit):
+            self.gpu_memory_value_text.value = f"{memory_limit} MB"
+            self.gpu_memory_value_text.update()
+            self._show_snackbar(f"GPU内存限制已设置为 {memory_limit} MB", ft.Colors.GREEN)
+        else:
+            self._show_snackbar("GPU内存限制设置更新失败", ft.Colors.RED)
+    
+    def _on_gpu_device_change(self, e: ft.ControlEvent) -> None:
+        """GPU设备ID改变事件处理。
+        
+        Args:
+            e: 控件事件对象
+        """
+        device_id = int(e.control.value)
+        if self.config_service.set_config_value("gpu_device_id", device_id):
+            self._show_snackbar(f"GPU设备已设置为 GPU {device_id}", ft.Colors.GREEN)
+        else:
+            self._show_snackbar("GPU设备设置更新失败", ft.Colors.RED)
+    
+    def _on_memory_arena_change(self, e: ft.ControlEvent) -> None:
+        """内存池优化开关改变事件处理。
+        
+        Args:
+            e: 控件事件对象
+        """
+        enabled = e.control.value
+        if self.config_service.set_config_value("gpu_enable_memory_arena", enabled):
+            status = "已启用" if enabled else "已禁用"
+            self._show_snackbar(f"内存池优化{status}", ft.Colors.GREEN)
+        else:
+            self._show_snackbar("内存池优化设置更新失败", ft.Colors.RED)
+
+    def _update_gpu_controls_state(self, enabled: bool) -> None:
+        """根据GPU加速开关更新高级参数控件的可用状态。"""
+
+        for ctrl in (self.gpu_memory_slider, self.gpu_device_dropdown, self.memory_arena_switch):
+            ctrl.disabled = not enabled
+            ctrl.opacity = 1.0 if enabled else 0.6
+            ctrl.update()
+
+        self.gpu_advanced_container.opacity = 1.0 if enabled else 0.5
+        self.gpu_advanced_container.update()
+
+        self.gpu_memory_value_text.opacity = 1.0 if enabled else 0.6
+        self.gpu_memory_value_text.update()
+
+        self.gpu_advanced_title.opacity = 1.0 if enabled else 0.6
+        self.gpu_advanced_title.update()
     
     def _build_theme_color_section(self) -> ft.Container:
         """构建主题色设置部分。
