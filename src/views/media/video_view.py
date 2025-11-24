@@ -16,6 +16,7 @@ from constants import (
 )
 from services import ConfigService, FFmpegService
 from views.media.video_compress_view import VideoCompressView
+from views.media.video_convert_view import VideoConvertView
 
 
 class VideoView(ft.Container):
@@ -51,6 +52,7 @@ class VideoView(ft.Container):
         
         # 子视图
         self.compress_view: Optional[VideoCompressView] = None
+        self.convert_view: Optional[VideoConvertView] = None
         
         # 创建UI组件
         self._build_ui()
@@ -70,6 +72,7 @@ class VideoView(ft.Container):
                     icon=ft.Icons.VIDEO_FILE_ROUNDED,
                     title="格式转换",
                     description="支持MP4、AVI、MKV等格式互转",
+                    on_click=lambda e: self._open_view('convert'),
                     gradient_colors=("#a8edea", "#fed6e3"),
                 ),
                 FeatureCard(
@@ -113,6 +116,15 @@ class VideoView(ft.Container):
                 on_back=self._back_to_main
             )
             self.parent_container.content = self.compress_view
+            self.page.update()
+        elif view_name == 'convert':
+            self.convert_view = VideoConvertView(
+                self.page,
+                self.config_service,
+                self.ffmpeg_service,
+                on_back=self._back_to_main
+            )
+            self.parent_container.content = self.convert_view
             self.page.update()
 
     def _back_to_main(self) -> None:

@@ -105,6 +105,13 @@ class ImageCropView(ft.Container):
         self.crop_start_width: int = 0
         self.crop_start_height: int = 0
         
+        # 更新控制
+        self._update_pending: bool = False
+        self._last_update_time: float = 0
+        
+        # 预览更新控制
+        self._preview_update_timer: Optional[object] = None
+        
         # 精调步长（WASD 键移动的像素数）
         self.fine_tune_step: int = 1
         
@@ -427,6 +434,14 @@ class ImageCropView(ft.Container):
             visible=False,
         )
         
+        # 裁剪尺寸显示(移到预览标题旁边)
+        self.crop_size_text: ft.Text = ft.Text(
+            "",
+            size=12,
+            color=TEXT_SECONDARY,
+            weight=ft.FontWeight.W_500,
+        )
+        
         self.preview_info_text: ft.Text = ft.Text(
             "选择图片后拖动裁剪框查看效果",
             size=12,
@@ -438,7 +453,14 @@ class ImageCropView(ft.Container):
         preview_area: ft.Container = ft.Container(
             content=ft.Column(
                 controls=[
-                    ft.Text("裁剪预览", size=14, weight=ft.FontWeight.W_500),
+                    # 标题行:包含"裁剪预览"和尺寸信息
+                    ft.Row(
+                        controls=[
+                            ft.Text("裁剪预览", size=14, weight=ft.FontWeight.W_500),
+                            self.crop_size_text,
+                        ],
+                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                    ),
                     ft.Container(height=PADDING_SMALL),
                     ft.Container(
                         content=ft.Stack(
@@ -462,7 +484,7 @@ class ImageCropView(ft.Container):
                         ink=True,
                     ),
                 ],
-                horizontal_alignment=ft.CrossAxisAlignment.CENTER,  # 居中对齐
+                horizontal_alignment=ft.CrossAxisAlignment.STRETCH,  # 拉伸以适应行宽度
                 spacing=0,
             ),
             expand=1,  # 占据上半部分（1:1 比例）
@@ -872,8 +894,77 @@ class ImageCropView(ft.Container):
             self.img_display_x = (self.canvas_width - self.img_display_width) / 2
             self.img_display_y = 0
     
-    def _update_crop_box_position(self) -> None:
-        """更新裁剪框在画布上的位置。"""
+    def _throttled_update_position(self) -> None:
+        """节流更新裁剪框位置,减少page.update()调用频率"""
+        import time
+        current_time = time.time()
+        
+        # 节流时间间隔(秒) - 30ms更新一次,约33fps
+        throttle_interval = 0.03
+        
+        # 更新位置数据(不刷新UI)
+        self._update_crop_box_position_data()
+        
+        # 只有距离上次更新超过节流间隔才真正刷新UI
+        if current_time - self._last_update_time >= throttle_interval:
+            try:
+                self.page.update()
+                self._last_update_time = current_time
+            except:
+                pass
+    
+    def _update_crop_box_position_data(self) -> None:
+        """只更新裁剪框位置数据,不调用page.update()"""
+        if not self.original_image:
+            return
+        
+        # 计算图片在画布中的实际显示区域
+        self._calculate_image_display_bounds()
+        
+        # 计算缩放比例
+        img_w, img_h = self.original_image.width, self.original_image.height
+        scale_x = self.img_display_width / img_w
+        scale_y = self.img_display_height / img_h
+        
+        # 设置裁剪框位置和大小（加上图片偏移量）
+        box_left = self.img_display_x + self.crop_x * scale_x
+        box_top = self.img_display_y + self.crop_y * scale_y
+        box_w = self.crop_width * scale_x
+        box_h = self.crop_height * scale_y
+        
+        self.crop_box_container.top = box_top
+        self.crop_box_container.left = box_left
+        self.crop_box_container.width = box_w
+        self.crop_box_container.height = box_h
+        self.crop_box_container.visible = True
+        
+        # 设置四个角控制点位置
+        handle_offset = 6
+        self.handle_nw.top = box_top - handle_offset
+        self.handle_nw.left = box_left - handle_offset
+        self.handle_nw.visible = True
+        
+        self.handle_ne.top = box_top - handle_offset
+        self.handle_ne.left = box_left + box_w - handle_offset
+        self.handle_ne.visible = True
+        
+        self.handle_sw.top = box_top + box_h - handle_offset
+        self.handle_sw.left = box_left - handle_offset
+        self.handle_sw.visible = True
+        
+        self.handle_se.top = box_top + box_h - handle_offset
+        self.handle_se.left = box_left + box_w - handle_offset
+        self.handle_se.visible = True
+        
+        # 更新刻度尺
+        self._update_rulers()
+    
+    def _update_crop_box_position(self, skip_update: bool = False) -> None:
+        """更新裁剪框在画布上的位置。
+        
+        Args:
+            skip_update: 是否跳过page.update()调用,用于拖动时减少刷新次数
+        """
         if not self.original_image:
             return
         
@@ -919,10 +1010,12 @@ class ImageCropView(ft.Container):
         # 更新刻度尺
         self._update_rulers()
         
-        try:
-            self.page.update()
-        except:
-            pass
+        # 只在非拖动时更新页面
+        if not skip_update:
+            try:
+                self.page.update()
+            except:
+                pass
     
     def _update_rulers(self) -> None:
         """更新刻度尺显示。"""
@@ -1065,8 +1158,8 @@ class ImageCropView(ft.Container):
         self.crop_x = new_x
         self.crop_y = new_y
         
-        # 拖动时只更新裁剪框位置，不更新预览（避免CPU飙升）
-        self._update_crop_box_position()
+        # 使用节流更新,提升拖动流畅度
+        self._throttled_update_position()
     
     def _on_crop_pan_end(self, e: ft.DragEndEvent) -> None:
         """拖动结束。"""
@@ -1148,8 +1241,8 @@ class ImageCropView(ft.Container):
             self.crop_x = new_x
             self.crop_y = new_y
         
-        # 调整大小时只更新裁剪框位置，不更新预览（避免CPU飙升）
-        self._update_crop_box_position()
+        # 使用节流更新,提升调整大小时的流畅度
+        self._throttled_update_position()
     
     def _on_resize_end(self, e: ft.DragEndEvent) -> None:
         """调整大小结束。"""
@@ -1157,12 +1250,28 @@ class ImageCropView(ft.Container):
         # 调整大小结束后更新预览
         self._update_preview()
     
+    def _schedule_preview_update(self) -> None:
+        """延迟更新预览,避免快速操作时出现空白。"""
+        import threading
+        
+        # 取消之前的定时器(如果存在)
+        if self._preview_update_timer is not None:
+            try:
+                self._preview_update_timer.cancel()
+            except:
+                pass
+        
+        # 设置新的定时器,200ms后更新预览
+        self._preview_update_timer = threading.Timer(0.2, self._update_preview)
+        self._preview_update_timer.start()
+    
     def _update_preview(self) -> None:
         """更新预览。"""
         if not self.original_image:
             return
         
         try:
+            # 裁剪图片
             cropped = self.original_image.crop((
                 self.crop_x, self.crop_y,
                 self.crop_x + self.crop_width,
@@ -1174,27 +1283,36 @@ class ImageCropView(ft.Container):
             preview_path = Path("storage/temp") / f"crop_preview_{timestamp}.png"
             preview_path.parent.mkdir(parents=True, exist_ok=True)
             
-            # 删除当前预览的旧文件（如果存在）
-            if hasattr(self, '_last_preview_path') and self._last_preview_path:
-                try:
-                    old_path = Path(self._last_preview_path)
-                    if old_path.exists():
-                        old_path.unlink()
-                except:
-                    pass
-            
             # 保存新预览
             cropped.save(preview_path)
+            
+            # 删除当前预览的旧文件（在设置新路径之后,避免时序问题）
+            old_preview_path = self._last_preview_path
             self._last_preview_path = str(preview_path)
             
+            # 先更新UI显示新预览
             self.preview_image_widget.src = str(preview_path)
             self.preview_image_widget.visible = True
-            self.preview_info_text.value = f"裁剪尺寸: {self.crop_width} × {self.crop_height} 像素"
+            
+            # 更新尺寸显示到标题旁边
+            self.crop_size_text.value = f"{self.crop_width} × {self.crop_height} px"
+            # 隐藏预览区域的提示文字
+            self.preview_info_text.visible = False
             
             try:
                 self.page.update()
             except:
                 pass
+            
+            # UI更新完成后再删除旧文件
+            if old_preview_path:
+                try:
+                    old_path = Path(old_preview_path)
+                    if old_path.exists() and old_path != preview_path:
+                        old_path.unlink()
+                except:
+                    pass
+                    
         except Exception as ex:
             print(f"预览失败: {ex}")
     
@@ -1438,8 +1556,8 @@ class ImageCropView(ft.Container):
         # 如果移动了，更新显示
         if moved:
             self._update_crop_box_position()
-            # 精调时也更新预览，但不会频繁（因为是单次按键）
-            self._update_preview()
+            # 使用延迟更新预览，避免快速按键时出现空白
+            self._schedule_preview_update()
     
     def _on_fine_tune_step_change(self, e: ft.ControlEvent) -> None:
         """精调步长输入框变化事件。"""
