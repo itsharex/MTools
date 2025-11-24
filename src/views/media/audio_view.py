@@ -16,6 +16,7 @@ from constants import (
     PADDING_XLARGE,
 )
 from services import AudioService, ConfigService, FFmpegService
+from views.media.audio_compress_view import AudioCompressView
 from views.media.audio_format_view import AudioFormatView
 from views.media.ffmpeg_install_view import FFmpegInstallView
 
@@ -61,6 +62,7 @@ class AudioView(ft.Container):
         
         # 创建子视图（延迟创建）
         self.format_view: Optional[AudioFormatView] = None
+        self.compress_view: Optional[AudioCompressView] = None
         self.ffmpeg_install_view: Optional[FFmpegInstallView] = None
         
         # 记录当前显示的视图（用于状态恢复）
@@ -91,10 +93,17 @@ class AudioView(ft.Container):
                     on_click=self._open_format_dialog,
                 ),
                 FeatureCard(
+                    icon=ft.Icons.COMPRESS,
+                    title="音频压缩",
+                    description="调整比特率和采样率压缩音频",
+                    gradient_colors=("#FA709A", "#FEE140"),
+                    on_click=self._open_compress_dialog,
+                ),
+                FeatureCard(
                     icon=ft.Icons.CONTENT_CUT_ROUNDED,
                     title="音频剪辑",
                     description="裁剪、合并音频文件",
-                    gradient_colors=("#FA709A", "#FEE140"),
+                    gradient_colors=("#667eea", "#764ba2"),
                     on_click=self._open_audio_cut,
                 ),
                 FeatureCard(
@@ -259,6 +268,32 @@ class AudioView(ft.Container):
         
         self._check_ffmpeg_and_open("音频格式转换", open_func)
     
+    def _open_compress_dialog(self, e: ft.ControlEvent) -> None:
+        """切换到音频压缩工具界面。
+        
+        Args:
+            e: 控件事件对象
+        """
+        def open_func():
+            # 创建压缩视图（如果还没创建）
+            if not self.compress_view:
+                self.compress_view = AudioCompressView(
+                    self.page,
+                    self.config_service,
+                    self.ffmpeg_service,
+                    on_back=self._back_to_main
+                )
+            
+            # 记录当前子视图
+            self.current_sub_view = self.compress_view
+            self.current_sub_view_type = "compress"
+            
+            # 切换到压缩视图
+            self.parent_container.content = self.compress_view
+            self.parent_container.update()
+        
+        self._check_ffmpeg_and_open("音频压缩", open_func)
+    
     def _open_audio_cut(self, e: ft.ControlEvent) -> None:
         """打开音频剪辑工具（待实现）。
         
@@ -352,6 +387,7 @@ class AudioView(ft.Container):
         if self.current_sub_view_type:
             view_map = {
                 "format": "format_view",
+                "compress": "compress_view",
                 "ffmpeg_install": "ffmpeg_install_view",
             }
             view_attr = view_map.get(self.current_sub_view_type)
