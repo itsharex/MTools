@@ -43,10 +43,10 @@ class SettingsView(ft.Container):
         self.expand: bool = True
         # 左右边距使用 PADDING_LARGE
         self.padding: ft.padding = ft.padding.only(
-            left=PADDING_LARGE,
-            right=PADDING_LARGE,
-            top=PADDING_XLARGE,
-            bottom=PADDING_XLARGE
+            left=PADDING_MEDIUM,
+            right=PADDING_MEDIUM,
+            top=PADDING_MEDIUM,
+            bottom=PADDING_MEDIUM
         )
         
         # 创建UI组件

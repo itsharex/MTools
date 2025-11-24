@@ -58,10 +58,10 @@ class ImageCropView(ft.Container):
         self.on_back: Optional[Callable[[], None]] = on_back
         self.expand: bool = True
         self.padding: ft.padding = ft.padding.only(
-            left=PADDING_XLARGE,
-            right=PADDING_XLARGE,
-            top=PADDING_XLARGE,
-            bottom=PADDING_XLARGE
+            left=PADDING_MEDIUM,
+            right=PADDING_MEDIUM,
+            top=PADDING_MEDIUM,
+            bottom=PADDING_MEDIUM
         )
         
         # 选中的文件
@@ -729,11 +729,11 @@ class ImageCropView(ft.Container):
 
         # 左侧区域大约占比 62%，减去外边距和安全余量
         available_width: int = int(window_width * 0.62)
-        available_width -= (PADDING_XLARGE * 2 + PADDING_LARGE * 2 + 60)
+        available_width -= (PADDING_MEDIUM * 2 + PADDING_LARGE * 2 + 60)
         available_width = max(360, min(available_width, 900))
 
         # 垂直方向扣除上下边距、标题和按钮区域
-        available_height: int = window_height - (PADDING_XLARGE * 2 + 220)
+        available_height: int = window_height - (PADDING_MEDIUM * 2 + 220)
         available_height = max(320, min(available_height, 720))
 
         self.max_canvas_width = available_width

@@ -150,7 +150,7 @@ class CustomTitleBar(ft.Container):
         
         # 配置容器属性
         self.content = title_bar_content
-        self.height = 48
+        self.height = 42  # 减小标题栏高度
         self.padding = ft.padding.symmetric(horizontal=PADDING_MEDIUM)
         # 使用用户设置的主题色创建半透明渐变
         self.gradient = self._create_gradient()

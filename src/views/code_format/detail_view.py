@@ -45,37 +45,17 @@ class CodeFormatDetailView(ft.Container):
     
     def _build_ui(self) -> None:
         """构建用户界面。"""
-        # 返回按钮
-        back_button = ft.IconButton(
-            icon=ft.Icons.ARROW_BACK_ROUNDED,
-            icon_size=24,
-            tooltip="返回",
-            on_click=self._go_back,
-        )
-        
-        # 标题
-        title = ft.Text(
-            "代码格式化",
-            size=28,
-            weight=ft.FontWeight.BOLD,
-        )
-        
         # 标题栏
-        title_bar = ft.Container(
-            content=ft.Row(
-                controls=[
-                    back_button,
-                    title,
-                ],
-                spacing=PADDING_SMALL,
-                vertical_alignment=ft.CrossAxisAlignment.CENTER,
-            ),
-            padding=ft.padding.only(
-                left=PADDING_LARGE,
-                right=PADDING_XLARGE,
-                top=PADDING_LARGE,
-                bottom=PADDING_MEDIUM,
-            ),
+        header = ft.Row(
+            controls=[
+                ft.IconButton(
+                    icon=ft.Icons.ARROW_BACK,
+                    tooltip="返回",
+                    on_click=self._go_back,
+                ),
+                ft.Text("代码格式化", size=28, weight=ft.FontWeight.BOLD, ),
+            ],
+            spacing=PADDING_MEDIUM,
         )
         
         # 语言选择
@@ -155,15 +135,6 @@ class CodeFormatDetailView(ft.Container):
             ),
         )
         
-        # 标题行(只包含返回按钮和标题)
-        header = ft.Row(
-            controls=[
-                back_button,
-                title,
-            ],
-            spacing=PADDING_MEDIUM,
-        )
-        
         # 可滚动内容区域
         scrollable_content = ft.Column(
             controls=[
@@ -197,10 +168,10 @@ class CodeFormatDetailView(ft.Container):
         )
         
         self.padding = ft.padding.only(
-            left=PADDING_XLARGE,
-            right=PADDING_XLARGE,
-            top=PADDING_XLARGE,
-            bottom=PADDING_XLARGE,
+            left=PADDING_MEDIUM,
+            right=PADDING_MEDIUM,
+            top=PADDING_MEDIUM,
+            bottom=PADDING_MEDIUM,
         )
     
     def _format_code(self, e: ft.ControlEvent) -> None:

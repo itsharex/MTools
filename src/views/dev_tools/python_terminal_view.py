@@ -98,56 +98,28 @@ class PythonTerminalView(ft.Container):
     
     def _build_ui(self) -> None:
         """构建用户界面。"""
-        # 返回按钮
-        back_button = ft.IconButton(
-            icon=ft.Icons.ARROW_BACK_ROUNDED,
-            icon_size=24,
-            tooltip="返回",
-            on_click=self._go_back,
-        )
-        
-        # 标题
-        title = ft.Text(
-            "Python 交互式终端",
-            size=28,
-            weight=ft.FontWeight.BOLD,
-        )
-        
-        # 清屏按钮
-        clear_button = ft.IconButton(
-            icon=ft.Icons.CLEAR_ALL_ROUNDED,
-            icon_size=20,
-            tooltip="清屏",
-            on_click=self._clear_terminal,
-        )
-        
-        # 重启按钮
-        restart_button = ft.IconButton(
-            icon=ft.Icons.RESTART_ALT_ROUNDED,
-            icon_size=20,
-            tooltip="重启终端",
-            on_click=self._restart_terminal,
-        )
-        
-        # 标题栏
-        title_bar = ft.Container(
-            content=ft.Row(
-                controls=[
-                    back_button,
-                    title,
-                    ft.Container(expand=True),  # 弹性空间
-                    clear_button,
-                    restart_button,
-                ],
-                spacing=PADDING_SMALL,
-                vertical_alignment=ft.CrossAxisAlignment.CENTER,
-            ),
-            padding=ft.padding.only(
-                left=PADDING_LARGE,
-                right=PADDING_XLARGE,
-                top=PADDING_LARGE,
-                bottom=PADDING_MEDIUM,
-            ),
+        # 标题栏(包含返回按钮、标题和操作按钮)
+        title_bar = ft.Row(
+            controls=[
+                ft.IconButton(
+                    icon=ft.Icons.ARROW_BACK,
+                    tooltip="返回",
+                    on_click=self._go_back,
+                ),
+                ft.Text("Python 交互式终端", size=28, weight=ft.FontWeight.BOLD, ),
+                ft.Container(expand=True),  # 弹性空间
+                ft.IconButton(
+                    icon=ft.Icons.CLEAR_ALL_ROUNDED,
+                    tooltip="清屏",
+                    on_click=self._clear_terminal,
+                ),
+                ft.IconButton(
+                    icon=ft.Icons.RESTART_ALT_ROUNDED,
+                    tooltip="重启终端",
+                    on_click=self._restart_terminal,
+                ),
+            ],
+            spacing=PADDING_MEDIUM,
         )
         
         # Python环境信息卡片
@@ -259,9 +231,9 @@ class PythonTerminalView(ft.Container):
                         expand=True,
                     ),
                     padding=ft.padding.only(
-                        left=PADDING_XLARGE,
-                        right=PADDING_XLARGE,
-                        bottom=PADDING_XLARGE,
+                        left=PADDING_MEDIUM,
+                        right=PADDING_MEDIUM,
+                        bottom=PADDING_MEDIUM,
                     ),
                     expand=True,
                 ),

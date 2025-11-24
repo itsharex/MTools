@@ -78,14 +78,12 @@ class VideoConvertView(ft.Container):
             controls=[
                 ft.IconButton(
                     icon=ft.Icons.ARROW_BACK,
-                    icon_size=20,
-                    on_click=lambda e: self.on_back(),
                     tooltip="返回",
+                    on_click=lambda e: self.on_back(),
                 ),
-                ft.Text("视频格式转换", size=20, weight=ft.FontWeight.W_500),
+                ft.Text("视频格式转换", size=28, weight=ft.FontWeight.BOLD, ),
             ],
-            spacing=PADDING_SMALL,
-            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            spacing=PADDING_MEDIUM,
         )
         
         # 文件选择器
@@ -426,10 +424,10 @@ class VideoConvertView(ft.Container):
         )
         
         self.padding = ft.padding.only(
-            left=PADDING_XLARGE,
-            right=PADDING_XLARGE,
-            top=PADDING_XLARGE,
-            bottom=PADDING_XLARGE,
+            left=PADDING_MEDIUM,
+            right=PADDING_MEDIUM,
+            top=PADDING_MEDIUM,
+            bottom=PADDING_MEDIUM,
         )
         
         # 初始化文件列表空状态

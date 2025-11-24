@@ -58,10 +58,10 @@ class ImageCompressView(ft.Container):
         self.expand: bool = True
         # 右侧多留一些空间给滚动条
         self.padding: ft.padding = ft.padding.only(
-            left=PADDING_XLARGE,
-            right=PADDING_XLARGE,  # 右侧多留16px给滚动条
-            top=PADDING_XLARGE,
-            bottom=PADDING_XLARGE
+            left=PADDING_MEDIUM,
+            right=PADDING_MEDIUM,  # 右侧多留16px给滚动条
+            top=PADDING_MEDIUM,
+            bottom=PADDING_MEDIUM
         )
         
         # 构建界面
