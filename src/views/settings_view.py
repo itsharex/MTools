@@ -1751,6 +1751,7 @@ class SettingsView(ft.Container):
                 ft.Text("MyTools - 多功能工具箱", size=16, weight=ft.FontWeight.W_500),
                 ft.Text("版本: 0.1.0", size=14, color=ft.Colors.ON_SURFACE_VARIANT),
                 ft.Text("By：一铭"),
+                ft.Text("QQ交流群：1029212047"),
                 ft.Container(height=PADDING_MEDIUM // 2),
                 ft.Text(
                     "一个集成了图片处理、音视频处理、编码转换、代码格式化等功能的桌面应用",
