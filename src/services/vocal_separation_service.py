@@ -526,6 +526,110 @@ class VocalSeparationService:
             # 单声道
             return librosa.resample(audio, orig_sr=orig_sr, target_sr=target_sr)
     
+    def _stft(self, y: np.ndarray, n_fft: int, hop_length: int, window: str = 'hann', center: bool = True) -> np.ndarray:
+        """手动实现 STFT（短时傅里叶变换），与 librosa 兼容。
+        
+        Args:
+            y: 输入信号
+            n_fft: FFT 大小
+            hop_length: 帧移
+            window: 窗口类型
+            center: 是否中心填充
+            
+        Returns:
+            复数频谱 (n_fft//2 + 1, n_frames)
+        """
+        # 创建窗口
+        if window == 'hann':
+            win = np.hanning(n_fft)
+        else:
+            win = np.ones(n_fft)
+        
+        # Center padding（与 librosa 一致）
+        if center:
+            pad_len = n_fft // 2
+            y = np.pad(y, (pad_len, pad_len), mode='reflect')
+        
+        # 计算帧数
+        n_frames = 1 + (len(y) - n_fft) // hop_length
+        
+        # 初始化频谱
+        spec = np.zeros((n_fft // 2 + 1, n_frames), dtype=np.complex64)
+        
+        # 对每一帧进行 FFT
+        for i in range(n_frames):
+            start = i * hop_length
+            frame = y[start:start + n_fft]
+            
+            # 应用窗口并进行 FFT
+            windowed = frame * win
+            spec[:, i] = np.fft.rfft(windowed, n=n_fft)
+        
+        return spec
+    
+    def _istft(
+        self, 
+        spec: np.ndarray, 
+        hop_length: int, 
+        window: str = 'hann', 
+        center: bool = True,
+        length: Optional[int] = None
+    ) -> np.ndarray:
+        """手动实现 ISTFT（逆短时傅里叶变换），与 librosa 兼容。
+        
+        Args:
+            spec: 复数频谱 (n_fft//2 + 1, n_frames)
+            hop_length: 帧移
+            window: 窗口类型
+            center: 是否使用了中心填充（需要裁剪）
+            length: 输出长度
+            
+        Returns:
+            重建的信号
+        """
+        n_fft = (spec.shape[0] - 1) * 2
+        n_frames = spec.shape[1]
+        
+        # 创建窗口
+        if window == 'hann':
+            win = np.hanning(n_fft)
+        else:
+            win = np.ones(n_fft)
+        
+        # 计算输出长度
+        expected_len = n_fft + hop_length * (n_frames - 1)
+        y = np.zeros(expected_len)
+        window_sum = np.zeros(expected_len)
+        
+        # 重叠相加重建
+        for i in range(n_frames):
+            start = i * hop_length
+            
+            # 逆 FFT
+            frame = np.fft.irfft(spec[:, i], n=n_fft)
+            
+            # 应用窗口并累加
+            y[start:start + n_fft] += frame * win
+            window_sum[start:start + n_fft] += win * win
+        
+        # 归一化（避免除零）
+        nonzero = window_sum > 1e-10
+        y[nonzero] /= window_sum[nonzero]
+        
+        # 如果使用了 center padding，需要裁剪
+        if center:
+            pad_len = n_fft // 2
+            y = y[pad_len:-pad_len]
+        
+        # 裁剪到指定长度
+        if length is not None:
+            if len(y) > length:
+                y = y[:length]
+            elif len(y) < length:
+                y = np.pad(y, (0, length - len(y)), mode='constant')
+        
+        return y
+    
     def _process_audio(
         self,
         audio: np.ndarray,
@@ -544,15 +648,15 @@ class VocalSeparationService:
         if progress_callback:
             progress_callback("正在进行频谱分析...", 0.2)
         
-        # STFT (使用 librosa，与 UVR 完全一致)
-        spec_left = librosa.stft(
+        # STFT (手动实现，与 librosa 完全一致)
+        spec_left = self._stft(
             audio[0],
             n_fft=self.n_fft,
             hop_length=self.hop_length,
             window='hann',
             center=True
         )
-        spec_right = librosa.stft(
+        spec_right = self._stft(
             audio[1],
             n_fft=self.n_fft,
             hop_length=self.hop_length,
@@ -560,9 +664,7 @@ class VocalSeparationService:
             center=True
         )
         
-        
-        # scipy.signal.stft 产生 n_fft//2+1 个频率bins
-        # 但 MDX-Net 模型需要 n_fft//2 个bins（去掉最高频）
+        # MDX-Net 模型需要 n_fft//2 个bins（去掉最高频）
         if spec_left.shape[0] > self.model_freq_bins:
             spec_left = spec_left[:self.model_freq_bins, :]
             spec_right = spec_right[:self.model_freq_bins, :]
@@ -678,15 +780,15 @@ class VocalSeparationService:
             padding = expected_freq_bins - vocal_spec.shape[1]
             vocal_spec = np.pad(vocal_spec, ((0, 0), (0, padding), (0, 0)), mode='constant')
         
-        # ISTFT 重建音频 (使用 librosa，与 UVR 完全一致)
-        vocals_left = librosa.istft(
+        # ISTFT 重建音频 (手动实现，与 librosa 完全一致)
+        vocals_left = self._istft(
             vocal_spec[0],
             hop_length=self.hop_length,
             window='hann',
             center=True,
             length=audio.shape[1]  # 指定输出长度，避免长度不匹配
         )
-        vocals_right = librosa.istft(
+        vocals_right = self._istft(
             vocal_spec[1],
             hop_length=self.hop_length,
             window='hann',

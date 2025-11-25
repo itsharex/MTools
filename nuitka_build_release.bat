@@ -1,3 +1,4 @@
+@REM 发布版本 - 体积和性能优化
 @REM conda activate mytoolsbuild
 
 python -m nuitka ^
@@ -27,10 +28,18 @@ python -m nuitka ^
     --nofollow-import-to=tkinter ^
     --nofollow-import-to=unittest ^
     --nofollow-import-to=test ^
+    --nofollow-import-to=pytest ^
+    --nofollow-import-to=setuptools ^
+    --nofollow-import-to=distutils ^
+    --nofollow-import-to=wheel ^
+    --nofollow-import-to=pip ^
     --output-dir=dist ^
     --output-filename=mytools.exe ^
+    --jobs=8 ^
+    --lto=yes ^
     --enable-plugin=upx ^
     --onefile-no-compression ^
+    --disable-ccache=no ^
     --python-flag=-O ^
     --python-flag=no_site ^
     --python-flag=no_warnings ^

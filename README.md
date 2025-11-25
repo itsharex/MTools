@@ -1,132 +1,191 @@
-# MyTools - 多功能桌面应用程序
+# MyTools - 多功能桌面工具箱
 
-## 项目简介
+<div align="center">
 
-MyTools是一个集成了音视频处理、编程语言编码转换、图片处理等功能的多功能桌面应用程序。使用Python和Flet框架开发，遵循Material Design设计原则，提供现代化的用户界面和流畅的用户体验。
+一个功能丰富、界面现代化的跨平台桌面工具集
+
+</div>
+
+---
 
 ## 功能特性
 
-### 图片处理
-- **图片压缩**: 支持 JPEG、PNG、WebP、GIF、TIFF、BMP、ICO、AVIF、HEIC 等主流格式
-- **专业压缩**: 集成 mozjpeg 和 pngquant 专业压缩工具
-- **格式转换**: 支持 12+ 种图片格式互转
-- **批量处理**: 一次处理多个文件或整个文件夹
-- **三种模式**: 快速模式、标准模式、极限模式
+### 📷 图片处理
 
-### 音视频处理
-- 支持多种音视频格式转换
-- 音频剪辑和合并
-- 参数调整（比特率、采样率等）
+#### 图片压缩
+- 支持 12+ 种图片格式：JPEG、PNG、WebP、GIF、TIFF、BMP、ICO、AVIF、HEIC
+- 集成专业压缩引擎：mozjpeg（JPEG）、pngquant（PNG）
+- 三种压缩模式：
+  - **快速模式** - 速度优先，适合大批量处理
+  - **标准模式** - 质量与体积平衡
+  - **极限模式** - 最高压缩率，文件最小
+- 批量处理支持，可拖拽文件夹
 
-### 编码转换
+#### 格式转换
+- 支持所有主流图片格式互转
+- 保留 EXIF 信息
+- 批量转换
+
+#### 尺寸调整
+- 按百分比或固定尺寸缩放
+- 智能保持宽高比
+- 批量调整
+
+#### 图片裁剪
+- 可视化裁剪界面
+- 实时预览
+- 精确尺寸控制
+
+#### AI 智能抠图
+- 一键移除图片背景
+- 支持多种 AI 模型：
+  - u2net - 通用抠图（最佳质量）
+  - u2netp - 快速抠图
+  - u2net_human_seg - 人像抠图
+  - isnet-general-use - 通用场景
+  - isnet-anime - 动漫二次元
+- 支持 GIF 动图背景移除
+- 批量处理
+
+#### 拼图制作
+- 九宫格拼接
+- 横向拼接
+- 纵向拼接
+- 自定义间距和背景色
+
+---
+
+### 🎵 音频处理
+
+#### 格式转换
+- 支持格式：MP3、WAV、AAC、FLAC、OGG、M4A、WMA
+- 保持音质无损转换
+- 批量转换
+
+#### 音频压缩
+- 自定义比特率（128k - 320k）
+- 自定义采样率（44.1kHz、48kHz、96kHz）
+- 支持跟随原文件设置
+
+#### AI 人声分离 ⭐
+- **智能分离人声和伴奏**
+- 支持多种专业 UVR MDX-Net 模型：
+  - **Kim Vocal 2** - 通用人声分离
+  - **UVR MDX-NET Main** - 主力分离模型
+  - **UVR MDX-NET KARA 2** - 卡拉OK伴奏制作（低人声残留）
+  - **UVR MDX-NET Inst HQ 3** - 顶级伴奏分离（极低人声残留）
+  - 更多专业模型...
+- 输出设置：
+  - 格式：WAV（无损）、FLAC（无损压缩）、MP3、OGG
+  - 采样率：跟随原文件或自定义
+  - 质量：跟随原文件或自定义比特率
+- 批量处理支持
+- 应用场景：
+  - 制作卡拉OK伴奏
+  - 提取纯人声
+  - 音乐创作/混音
+  - 翻唱制作
+
+---
+
+### 🎬 视频处理
+
+#### 格式转换
+- 支持格式：MP4、AVI、MKV、MOV、FLV、WebM、WMV
+- 批量转换
+
+#### 视频压缩
+- H.264 / H.265 编码
+- CRF 质量控制
+- 自定义分辨率
+- 批量压缩
+
+#### 提取音频
+- 从视频中提取音轨
+- 支持多种音频格式输出
+- 批量提取
+
+---
+
+### 🛠️ 开发工具
+
+#### 编码转换
 - 自动检测文件编码
-- 支持UTF-8、GBK、GB2312等编码转换
-- 批量编码转换
+- 支持编码：UTF-8、GBK、GB2312、Big5、Shift-JIS 等
+- 批量转换
+- 解决乱码问题
 
-### 代码格式化
-- 支持Python、Java、C++等多种语言
-- 自动调整代码缩进和风格
-- 批量格式化项目
+#### Base64 工具
+- 图片转 Base64
+- Base64 转图片
+- 支持 Data URI 格式
 
-### 应用设置
-- 数据存储目录管理（遵循平台规范）
-- 支持自定义数据存储位置
-- 主题跟随系统设置
+#### 代码格式化
+- JSON 美化/压缩
+- XML 格式化
+- SQL 格式化
 
-## 技术栈
+---
 
-- **核心语言**: Python 3.9+
-- **UI框架**: Flet (遵循Material Design)
-- **音视频处理**: ffmpeg-python
-- **图片处理**: Pillow + mozjpeg + pngquant
-- **编码转换**: chardet
+### ⚙️ 其他功能
 
-## 安装依赖
+#### FFmpeg 管理
+- 自动下载和配置 FFmpeg
+- 内置终端界面
+- 版本管理
+
+#### 全局搜索
+- 快捷键 `Ctrl+K` 快速搜索工具
+- 支持中英文关键词
+- 模糊搜索
+
+#### 设置
+- 自定义数据存储位置
+- 输出目录管理
+- 跟随系统主题
+
+---
+
+## 界面特性
+
+- **Material Design 3** 设计语言
+- **深色模式** - 跟随系统
+- **毛玻璃效果** - 模糊背景
+- **流畅动画** - 现代化交互
+- **响应式布局** - 适配不同屏幕
+
+---
+
+## 快速开始
+
+### 安装依赖
 
 ```bash
 pip install -r requirements.txt
 ```
 
-## 运行应用
+### 运行应用
 
 ```bash
 flet run src/main.py
 ```
 
-## 打包应用
+### 打包发布（Windows）
 
 ```bash
-flet pack src/main.py
+nuitka_build.bat
 ```
 
-## 项目结构
 
-```
-mytools/
-├── src/                    # 源代码目录
-│   ├── main.py            # 应用入口点
-│   ├── assets/            # 静态资源
-│   ├── components/        # 可复用UI组件
-│   │   ├── custom_title_bar.py   # 自定义标题栏
-│   │   └── feature_card.py       # 功能卡片
-│   ├── views/             # 页面视图
-│   │   ├── main_view.py          # 主视图
-│   │   ├── image_view.py         # 图片处理视图
-│   │   ├── audio_view.py         # 音频处理视图
-│   │   ├── video_view.py         # 视频处理视图
-│   │   ├── encoding_view.py      # 编码转换视图
-│   │   ├── code_format_view.py   # 代码格式化视图
-│   │   └── settings_view.py      # 设置视图
-│   ├── utils/             # 工具函数
-│   │   └── file_utils.py         # 文件操作工具
-│   ├── services/          # 业务逻辑服务
-│   │   └── config_service.py     # 配置管理服务
-│   ├── models/            # 数据模型
-│   └── constants/         # 常量定义
-│       └── app_config.py         # 应用配置常量
-├── storage/               # 数据存储目录（可自定义）
-│   ├── data/             # 数据文件
-│   └── temp/             # 临时文件
-├── requirements.txt       # 依赖列表
-├── pyproject.toml         # 项目配置
-├── README.md              # 项目说明
-└── 开发准则.md            # 开发规范
-```
+## 技术栈
 
-## 数据存储
+- Python 3.11
+- Flet UI 框架
+- FFmpeg 音视频处理
+- Pillow + mozjpeg + pngquant 图片处理
+- ONNX Runtime AI 推理
+- librosa 音频分析
 
-应用数据默认遵循各平台的规范存储：
+---
 
-- **Windows**: `%APPDATA%\MyTools`
-- **macOS**: `~/Library/Application Support/MyTools`
-- **Linux**: `~/.local/share/MyTools`
-
-你也可以在设置页面中自定义数据存储位置。
-
-## 图片压缩
-
-本应用集成了专业的图片压缩工具：
-
-### 支持的格式
-
-| 格式 | 扩展名 | 专业工具 | 压缩效果 |
-|------|--------|----------|----------|
-| JPEG | .jpg, .jpeg | mozjpeg | 减小 50-70% |
-| PNG | .png | pngquant | 减小 60-80% |
-| WebP | .webp | Pillow | 减小 40-60% |
-| GIF | .gif | Pillow | 支持动图 |
-| TIFF | .tiff, .tif | Pillow | LZW 压缩 |
-| BMP | .bmp | Pillow | 基础压缩 |
-| ICO | .ico | Pillow | 图标格式 |
-| AVIF | .avif | Pillow | 现代格式 |
-| HEIC/HEIF | .heic, .heif | Pillow | Apple 格式 |
-
-### 压缩模式
-
-- **快速模式**: 使用 Pillow，速度最快，适合大批量处理
-- **标准模式**: 使用 mozjpeg/pngquant，压缩率高，质量好
-- **极限模式**: 最高压缩率，文件最小，适合对体积要求严格的场景
-
-## 开发准则
-
-请参考[开发准则.md](开发准则.md)了解项目的开发规范和设计原则。
+Made with ❤️ by Flet
