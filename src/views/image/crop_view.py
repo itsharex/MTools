@@ -116,11 +116,11 @@ class ImageCropView(ft.Container):
         # 创建UI组件
         self._build_ui()
         
-        # 注册键盘事件
-        self.page.on_keyboard_event = self._on_keyboard
-        
-        # 注册窗口大小变化事件
-        self.page.on_resize = self._on_window_resize
+        # 注册键盘事件（仅当 page 可用时）
+        if self.page:
+            self.page.on_keyboard_event = self._on_keyboard
+            # 注册窗口大小变化事件
+            self.page.on_resize = self._on_window_resize
     
     def _build_ui(self) -> None:
         """构建用户界面。"""
@@ -724,8 +724,14 @@ class ImageCropView(ft.Container):
 
     def _update_max_canvas_constraints(self) -> None:
         """根据窗口大小更新画布的最大宽高限制。"""
-        window_width: int = int(self.page.width or WINDOW_WIDTH)
-        window_height: int = int(self.page.height or WINDOW_HEIGHT)
+        # 保护检查：确保 page 不为 None
+        if not self.page:
+            # 如果 page 为 None，使用默认值
+            window_width = WINDOW_WIDTH
+            window_height = WINDOW_HEIGHT
+        else:
+            window_width: int = int(self.page.width or WINDOW_WIDTH)
+            window_height: int = int(self.page.height or WINDOW_HEIGHT)
 
         # 左侧区域大约占比 62%，减去外边距和安全余量
         available_width: int = int(window_width * 0.62)
