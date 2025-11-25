@@ -301,7 +301,7 @@ class MainView(ft.Column):
             )
             tools.append(tool_info)
         
-        search_dialog = ToolSearchDialog(self.page, tools)
+        search_dialog = ToolSearchDialog(self.page, tools, self.config_service)
         self.page.overlay.append(search_dialog)
         search_dialog.open = True
         self.page.update()

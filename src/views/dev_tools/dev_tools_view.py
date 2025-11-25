@@ -206,4 +206,21 @@ class DevToolsView(ft.Container):
             self._safe_page_update()
             return True
         return False
+    
+    def open_tool(self, tool_name: str) -> None:
+        """根据工具名称打开对应的工具。
+        
+        Args:
+            tool_name: 工具名称，如 "encoding", "code_format", "base64_to_image" 等
+        """
+        # 工具名称到方法的映射
+        tool_map = {
+            "encoding": self._open_encoding_convert,
+            "code_format": self._open_code_format,
+            "base64_to_image": self._open_base64_to_image,
+        }
+        
+        # 查找并调用对应的方法
+        if tool_name in tool_map:
+            tool_map[tool_name](None)  # 传递 None 作为事件参数
 

@@ -652,3 +652,31 @@ class ImageView(ft.Container):
             self._safe_page_update()
             return True
         return False
+    
+    def open_tool(self, tool_name: str) -> None:
+        """根据工具名称打开对应的工具。
+        
+        Args:
+            tool_name: 工具名称，如 "compress", "resize", "format" 等
+        """
+        # 工具名称到方法的映射
+        tool_map = {
+            "compress": self._open_compress_dialog,
+            "resize": self._open_resize_dialog,
+            "format": self._open_format_dialog,
+            "crop": self._open_crop_dialog,
+            "rotate": self._open_rotate_dialog,
+            "background": self._open_background_dialog,
+            "watermark": self._open_watermark_dialog,
+            "info": self._open_info_dialog,
+            "exif": self._open_remove_exif_dialog,
+            "qrcode": self._open_qrcode_dialog,
+            "to_base64": self._open_to_base64_dialog,
+            "gif": self._open_gif_adjustment_dialog,
+            "puzzle.merge": self._open_merge_dialog,
+            "puzzle.split": self._open_split_dialog,
+        }
+        
+        # 查找并调用对应的方法
+        if tool_name in tool_map:
+            tool_map[tool_name](None)  # 传递 None 作为事件参数
