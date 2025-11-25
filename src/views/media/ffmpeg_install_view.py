@@ -158,7 +158,7 @@ class FFmpegInstallView(ft.Container):
             e: 控件事件对象
         """
         if self.on_back:
-            self.on_back()
+            self.on_back(e)
     
     def _on_auto_install_ffmpeg(self, e: ft.ControlEvent) -> None:
         """自动安装FFmpeg按钮点击事件。

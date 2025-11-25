@@ -381,53 +381,39 @@ class SettingsView(ft.Container):
         """
         gpu_options = []
         
-        try:
-            # 方法1: 尝试使用nvidia-smi (NVIDIA GPU)
-            import subprocess
-            result = subprocess.run(
-                ['nvidia-smi', '--query-gpu=index,name,memory.total', '--format=csv,noheader'],
-                capture_output=True,
-                text=True,
-                timeout=3,
-                creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0
-            )
-            if result.returncode == 0 and result.stdout.strip():
-                lines = result.stdout.strip().split('\n')
-                for line in lines:
-                    parts = line.split(',')
-                    if len(parts) >= 2:
-                        gpu_id = parts[0].strip()
-                        gpu_name = parts[1].strip()
-                        memory = parts[2].strip() if len(parts) >= 3 else ""
-                        
-                        label = f"GPU {gpu_id}: {gpu_name}"
-                        if memory:
-                            label += f" ({memory})"
-                        if gpu_id == "0":
-                            label = f"🎮 {label} - 主GPU"
-                        
-                        gpu_options.append(ft.dropdown.Option(gpu_id, label))
-                
-                if gpu_options:
-                    return gpu_options
-        except Exception:
-            pass
-        
-        # 方法2: 尝试使用DirectML检测 (Windows AMD/Intel/NVIDIA)
+        # 方法1: 尝试使用ONNX Runtime检测GPU
         try:
             import onnxruntime as ort
             available_providers = ort.get_available_providers()
             
-            if 'DmlExecutionProvider' in available_providers:
+            if 'CUDAExecutionProvider' in available_providers:
+                # CUDA支持多GPU，但需要nvidia-smi来获取详细信息
+                # 打包后可能没有nvidia-smi，所以提供通用选项
+                gpu_options = [
+                    ft.dropdown.Option("0", "🎮 GPU 0 - NVIDIA CUDA (主GPU)"),
+                    ft.dropdown.Option("1", "GPU 1 - NVIDIA CUDA"),
+                    ft.dropdown.Option("2", "GPU 2 - NVIDIA CUDA"),
+                    ft.dropdown.Option("3", "GPU 3 - NVIDIA CUDA"),
+                ]
+                return gpu_options
+            elif 'DmlExecutionProvider' in available_providers:
                 # DirectML通常只能访问默认GPU
                 gpu_options = [
                     ft.dropdown.Option("0", "🎮 GPU 0 - DirectML (默认GPU)"),
                 ]
                 return gpu_options
+            elif 'ROCMExecutionProvider' in available_providers:
+                # AMD ROCm支持多GPU
+                gpu_options = [
+                    ft.dropdown.Option("0", "🎮 GPU 0 - AMD ROCm (主GPU)"),
+                    ft.dropdown.Option("1", "GPU 1 - AMD ROCm"),
+                    ft.dropdown.Option("2", "GPU 2 - AMD ROCm"),
+                ]
+                return gpu_options
         except Exception:
             pass
         
-        # 方法3: 默认选项
+        # 方法2: 默认选项（如果ONNX Runtime未检测到GPU）
         return [
             ft.dropdown.Option("0", "🎮 GPU 0 - 默认GPU"),
             ft.dropdown.Option("1", "GPU 1"),
@@ -732,31 +718,37 @@ class SettingsView(ft.Container):
             on_change=self._on_gpu_acceleration_change,
         )
 
-        # 检测GPU编码器
-        from services import FFmpegService
-
-        ffmpeg_service = FFmpegService(self.config_service)
-        gpu_info = ffmpeg_service.detect_gpu_encoders()
-
-        if gpu_info.get("available"):
-            encoders = gpu_info.get("encoders", [])
-            vendor_tags: set[str] = set()
-            for enc in encoders:
-                if "nvenc" in enc:
-                    vendor_tags.add("NVIDIA")
-                elif "amf" in enc:
-                    vendor_tags.add("AMD")
-                elif "qsv" in enc:
-                    vendor_tags.add("Intel")
-            encoder_text = "、".join(vendor_tags) if vendor_tags else "已检测到GPU编码器"
+        # 检测ONNX Runtime的GPU支持（用于AI功能：智能抠图、人声分离）
+        try:
+            import onnxruntime as ort
+            available_providers = ort.get_available_providers()
+            
+            gpu_providers = []
+            if 'CUDAExecutionProvider' in available_providers:
+                gpu_providers.append("NVIDIA CUDA")
+            if 'DmlExecutionProvider' in available_providers:
+                gpu_providers.append("DirectML")
+            if 'ROCMExecutionProvider' in available_providers:
+                gpu_providers.append("AMD ROCm")
+            if 'CoreMLExecutionProvider' in available_providers:
+                gpu_providers.append("Apple CoreML")
+            
+            if gpu_providers:
+                provider_text = "、".join(gpu_providers)
+                status_text = ft.Text(
+                    f"检测到GPU加速支持: {provider_text}",
+                    size=12,
+                    color=ft.Colors.GREEN,
+                )
+            else:
+                status_text = ft.Text(
+                    "未检测到GPU加速支持，将使用CPU模式",
+                    size=12,
+                    color=ft.Colors.ON_SURFACE_VARIANT,
+                )
+        except Exception:
             status_text = ft.Text(
-                f"检测到GPU编码器: {encoder_text}",
-                size=12,
-                color=ft.Colors.GREEN,
-            )
-        else:
-            status_text = ft.Text(
-                "未检测到GPU编码器，将使用CPU编码",
+                "未检测到GPU加速支持，将使用CPU模式",
                 size=12,
                 color=ft.Colors.ON_SURFACE_VARIANT,
             )

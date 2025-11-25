@@ -157,7 +157,11 @@ class VideoView(ft.Container):
             self.parent_container.content = self.vocal_separation_view
             self.page.update()
 
-    def _back_to_main(self) -> None:
-        """返回主视图。"""
+    def _back_to_main(self, e: ft.ControlEvent = None) -> None:
+        """返回主视图。
+        
+        Args:
+            e: 控件事件对象（可选）
+        """
         self.parent_container.content = self.main_view
         self.page.update()

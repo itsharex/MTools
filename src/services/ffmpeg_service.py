@@ -76,7 +76,8 @@ class FFmpegService:
                     capture_output=True,
                     encoding='utf-8',
                     errors='replace',
-                    timeout=5
+                    timeout=5,
+                    creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0
                 )
                 if result.returncode == 0:
                     return True, str(self.ffmpeg_exe)
@@ -90,7 +91,8 @@ class FFmpegService:
                 capture_output=True,
                 encoding='utf-8',
                 errors='replace',
-                timeout=5
+                timeout=5,
+                creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0
             )
             if result.returncode == 0:
                 return True, "系统ffmpeg"
@@ -116,7 +118,8 @@ class FFmpegService:
                 capture_output=True,
                 encoding='utf-8',
                 errors='replace',
-                timeout=5
+                timeout=5,
+                creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0
             )
             if result.returncode == 0:
                 return "ffmpeg"  # 系统PATH中的ffmpeg
@@ -142,7 +145,8 @@ class FFmpegService:
                 capture_output=True,
                 encoding='utf-8',
                 errors='replace',
-                timeout=5
+                timeout=5,
+                creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0
             )
             if result.returncode == 0:
                 return "ffprobe"  # 系统PATH中的ffprobe
@@ -586,7 +590,8 @@ class FFmpegService:
                 capture_output=True,
                 encoding='utf-8',
                 errors='replace',
-                timeout=5
+                timeout=5,
+                creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0
             )
             
             if result.returncode != 0:
@@ -673,7 +678,8 @@ class FFmpegService:
                         capture_output=True,
                         encoding='utf-8',
                         errors='replace',
-                        timeout=5
+                        timeout=5,
+                        creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0
                     )
                     if result.returncode == 0:
                         # 提取版本号（第一行）

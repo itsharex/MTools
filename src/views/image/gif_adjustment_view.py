@@ -96,6 +96,23 @@ class GifAdjustmentView(ft.Container):
     
     def _build_ui(self) -> None:
         """构建用户界面。"""
+        # 检查 FFmpeg 是否可用
+        is_ffmpeg_available, ffmpeg_message = self.ffmpeg_service.is_ffmpeg_available()
+        
+        # 如果 FFmpeg 不可用，显示安装视图
+        if not is_ffmpeg_available:
+            # 只有当有父容器时才显示安装视图，否则显示常规界面但禁用实况图功能
+            if self.parent_container:
+                self.padding = ft.padding.all(0)
+                self.content = FFmpegInstallView(
+                    self.page,
+                    self.ffmpeg_service,
+                    on_installed=self._on_ffmpeg_installed_rebuild,
+                    on_back=self._on_back_click,
+                    tool_name="GIF / 实况图调整"
+                )
+                return
+        
         # 顶部：标题和返回按钮
         header: ft.Row = ft.Row(
             controls=[
@@ -720,18 +737,6 @@ class GifAdjustmentView(ft.Container):
         # 生成新的文件ID
         import time
         self.current_file_id = f"{file_path}_{time.time()}"
-        
-        # 检查 FFmpeg 是否可用
-        is_available, message = self.ffmpeg_service.is_ffmpeg_available()
-        print(f"[_load_live_photo_file] FFmpeg 可用性: {is_available}, 消息: {message}")
-        
-        if not is_available:
-            # 保存待处理的文件
-            self.pending_file = file_path
-            print(f"[_load_live_photo_file] FFmpeg 不可用，跳转到安装界面")
-            # 跳转到 FFmpeg 安装界面
-            self._show_ffmpeg_install_view()
-            return
         
         # 显示加载提示
         self._show_snackbar("正在检测实况图...", ft.Colors.BLUE)
@@ -1721,7 +1726,10 @@ class GifAdjustmentView(ft.Container):
         
         # 切换到安装视图
         self.parent_container.content = self.ffmpeg_install_view
-        self.parent_container.update()
+        try:
+            self.page.update()
+        except:
+            pass
     
     def _on_ffmpeg_installed(self) -> None:
         """FFmpeg 安装完成回调。"""
@@ -1730,7 +1738,10 @@ class GifAdjustmentView(ft.Container):
         # 返回到 GIF 调整视图
         if self.parent_container:
             self.parent_container.content = self
-            self.parent_container.update()
+            try:
+                self.page.update()
+            except:
+                pass
         
         # 如果有待处理的文件，自动加载
         if self.pending_file:
@@ -1755,15 +1766,50 @@ class GifAdjustmentView(ft.Container):
             timer.daemon = True
             timer.start()
     
-    def _on_ffmpeg_install_back(self) -> None:
-        """从 FFmpeg 安装视图返回。"""
+    def _on_ffmpeg_installed_rebuild(self) -> None:
+        """FFmpeg 安装完成后重建界面。"""
+        print("[_on_ffmpeg_installed_rebuild] FFmpeg 安装完成，重建界面...")
+        
+        # 重置 padding
+        self.padding = ft.padding.only(
+            left=PADDING_MEDIUM,
+            right=PADDING_MEDIUM,
+            top=PADDING_MEDIUM,
+            bottom=PADDING_MEDIUM
+        )
+        
+        # 重新构建界面
+        self._build_ui()
+        
+        # 更新显示
+        if self.parent_container:
+            self.parent_container.content = self
+            try:
+                self.page.update()
+                print("[_on_ffmpeg_installed_rebuild] 界面重建成功")
+                self._show_snackbar("FFmpeg 安装成功！可以使用实况图功能了", ft.Colors.GREEN)
+            except Exception as ex:
+                print(f"[_on_ffmpeg_installed_rebuild] 页面更新失败: {ex}")
+                import traceback
+                traceback.print_exc()
+    
+    def _on_ffmpeg_install_back(self, e: ft.ControlEvent = None) -> None:
+        """从 FFmpeg 安装视图返回。
+        
+        Args:
+            e: 控件事件对象（可选）
+        """
+        print("[_on_ffmpeg_install_back] 返回按钮被点击")
+        
         # 清除待处理文件
         self.pending_file = None
         
-        # 返回到 GIF 调整视图
-        if self.parent_container:
-            self.parent_container.content = self
-            self.parent_container.update()
+        # 直接返回到上一级（图片工具主界面）
+        if self.on_back:
+            print("[_on_ffmpeg_install_back] 调用 on_back 回调")
+            self.on_back()
+        else:
+            print("[_on_ffmpeg_install_back] 警告: on_back 回调未设置")
     
     def _clear_preview_tasks(self) -> None:
         """清除所有预览相关的任务。"""

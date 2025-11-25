@@ -172,8 +172,12 @@ class ImagePuzzleView(ft.Container):
         self.parent_container.content = self.merge_view
         self.parent_container.update()
     
-    def _back_to_main(self) -> None:
-        """返回主菜单。"""
+    def _back_to_main(self, e: ft.ControlEvent = None) -> None:
+        """返回主菜单。
+        
+        Args:
+            e: 控件事件对象（可选）
+        """
         # 清除子视图状态
         self.current_sub_view = None
         

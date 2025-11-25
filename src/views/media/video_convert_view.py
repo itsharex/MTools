@@ -69,7 +69,7 @@ class VideoConvertView(ft.Container):
             self.content = FFmpegInstallView(
                 self.page,
                 self.ffmpeg_service,
-                on_back=lambda: self.on_back() if self.on_back else None
+                on_back=lambda e=None: self.on_back() if self.on_back else None
             )
             return
         

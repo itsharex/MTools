@@ -608,8 +608,12 @@ class ImageView(ft.Container):
         self.parent_container.content = self.watermark_view
         self._safe_page_update()
     
-    def _back_to_main(self) -> None:
-        """返回主界面。"""
+    def _back_to_main(self, e: ft.ControlEvent = None) -> None:
+        """返回主界面。
+        
+        Args:
+            e: 控件事件对象（可选）
+        """
         # 销毁当前子视图（而不是保留）
         if self.current_sub_view_type:
             view_map = {

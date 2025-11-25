@@ -20,6 +20,7 @@ from constants import (
     VOCAL_SEPARATION_MODELS,
 )
 from services import ConfigService, VocalSeparationService, FFmpegService
+from views.media.ffmpeg_install_view import FFmpegInstallView
 from utils import format_file_size
 
 
@@ -77,6 +78,18 @@ class VideoVocalSeparationView(ft.Container):
     
     def _build_ui(self) -> None:
         """构建用户界面。"""
+        # 检查 FFmpeg 是否可用
+        is_ffmpeg_available, _ = self.ffmpeg_service.is_ffmpeg_available()
+        if not is_ffmpeg_available:
+            # 显示 FFmpeg 安装视图
+            self.padding = ft.padding.all(0)
+            self.content = FFmpegInstallView(
+                self.page,
+                self.ffmpeg_service,
+                on_back=self._on_back_click,
+                tool_name="视频人声分离"
+            )
+            return
         
         # 顶部：标题和返回按钮
         header = ft.Row(
