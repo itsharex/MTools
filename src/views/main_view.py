@@ -10,7 +10,7 @@ import flet as ft
 
 from components import CustomTitleBar, ToolInfo, ToolSearchDialog
 from services import ConfigService, EncodingService, ImageService, FFmpegService
-from tool_registry import register_all_tools
+from utils.tool_registry import register_all_tools
 from utils import get_all_tools
 from views.media import AudioView, VideoView
 from views.dev_tools import DevToolsView

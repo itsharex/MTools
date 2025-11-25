@@ -428,8 +428,8 @@ class AudioView(ft.Container):
         """
         # 工具名称到方法的映射
         tool_map = {
-            "format": self._open_format_convert,
-            "compress": self._open_compress,
+            "format": self._open_format_dialog,
+            "compress": self._open_compress_dialog,
             "vocal_extraction": self._open_vocal_extraction,
         }
         
