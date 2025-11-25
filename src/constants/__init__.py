@@ -51,7 +51,9 @@ from .app_config import (
 from .model_config import (
     BACKGROUND_REMOVAL_MODELS,
     DEFAULT_MODEL_KEY,
+    DEFAULT_VOCAL_MODEL_KEY,
     ModelInfo,
+    VOCAL_SEPARATION_MODELS,
 )
 
 __all__ = [
@@ -102,6 +104,8 @@ __all__ = [
     "ICON_SIZE_XLARGE",
     "BACKGROUND_REMOVAL_MODELS",
     "DEFAULT_MODEL_KEY",
+    "DEFAULT_VOCAL_MODEL_KEY",
     "ModelInfo",
+    "VOCAL_SEPARATION_MODELS",
 ]
 

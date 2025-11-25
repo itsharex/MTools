@@ -21,6 +21,7 @@ class ModelInfo:
         performance: 性能描述
         filename: 文件名
         version: 版本号
+        invert_output: 是否反转输出 (True=模型输出伴奏, False=模型输出人声)
     """
     name: str
     display_name: str
@@ -30,6 +31,7 @@ class ModelInfo:
     performance: str
     filename: str
     version: str = "1.4"
+    invert_output: bool = False  # 默认模型输出人声
 
 
 # 所有可用的背景移除模型
@@ -128,4 +130,120 @@ BACKGROUND_REMOVAL_MODELS: Final[dict[str, ModelInfo]] = {
 
 # 默认模型（使用原本的 RMBG 1.4 量化版模型）
 DEFAULT_MODEL_KEY: Final[str] = "rmbg_1.4_quantized"
+
+
+# 人声分离模型配置
+VOCAL_SEPARATION_MODELS: Final[dict[str, ModelInfo]] = {
+    "kim_vocal_2": ModelInfo(
+        name="kim_vocal_2",
+        display_name="Kim Vocal 2（推荐）",
+        url="https://modelscope.cn/models/pengzhendong/uvr-mdx-net/resolve/master/Kim_Vocal_2.onnx",
+        size_mb=50,
+        quality="高质量人声分离 - 专为人声优化",
+        performance="速度快、人声清晰、乐器残留少",
+        filename="Kim_Vocal_2.onnx",
+        version="1.0"
+    ),
+    "uvr_mdx_net_voc_ft": ModelInfo(
+        name="uvr_mdx_net_voc_ft",
+        display_name="UVR MDX-NET Voc FT",
+        url="https://modelscope.cn/models/pengzhendong/uvr-mdx-net/resolve/master/UVR_MDXNET_KARA_2.onnx",
+        size_mb=50,
+        quality="高质量卡拉OK伴奏制作",
+        performance="适合提取清晰人声、制作卡拉OK",
+        filename="UVR_MDXNET_KARA_2.onnx",
+        version="1.0",
+        invert_output=True  # 此模型输出伴奏，需要反转
+    ),
+    "uvr_mdx_net_inst_main": ModelInfo(
+        name="uvr_mdx_net_inst_main",
+        display_name="UVR MDX-NET Main",
+        url="https://modelscope.cn/models/pengzhendong/uvr-mdx-net/resolve/master/UVR_MDXNET_Main.onnx",
+        size_mb=50,
+        quality="通用场景 - 稳定可靠",
+        performance="适合各类音乐风格、兼容性强、不易出错",
+        filename="UVR_MDXNET_Main.onnx",
+        version="1.0"
+    ),
+    "uvr_mdx_net_inst_1": ModelInfo(
+        name="uvr_mdx_net_inst_1",
+        display_name="UVR MDX-NET Inst 1",
+        url="https://modelscope.cn/models/pengzhendong/uvr-mdx-net/resolve/master/UVR-MDX-NET-Inst_1.onnx",
+        size_mb=50,
+        quality="纯伴奏提取 - 保留乐器细节",
+        performance="伴奏质量高、适合音乐制作",
+        filename="UVR-MDX-NET-Inst_1.onnx",
+        version="1.0",
+        invert_output=True  # 此模型输出伴奏
+    ),
+    "uvr_mdx_net_inst_2": ModelInfo(
+        name="uvr_mdx_net_inst_2",
+        display_name="UVR MDX-NET Inst 2",
+        url="https://modelscope.cn/models/pengzhendong/uvr-mdx-net/resolve/master/UVR-MDX-NET-Inst_2.onnx",
+        size_mb=50,
+        quality="伴奏提取 - 平衡版",
+        performance="人声与伴奏分离均衡",
+        filename="UVR-MDX-NET-Inst_2.onnx",
+        version="1.0",
+        invert_output=True  # 此模型输出伴奏
+    ),
+    "uvr_mdx_net_inst_3": ModelInfo(
+        name="uvr_mdx_net_inst_3",
+        display_name="UVR MDX-NET Inst 3",
+        url="https://modelscope.cn/models/pengzhendong/uvr-mdx-net/resolve/master/UVR-MDX-NET-Inst_3.onnx",
+        size_mb=50,
+        quality="伴奏提取 - 增强版",
+        performance="更干净的伴奏分离",
+        filename="UVR-MDX-NET-Inst_3.onnx",
+        version="1.0",
+        invert_output=True  # 此模型输出伴奏
+    ),
+    "uvr_mdx_net_inst_hq_1": ModelInfo(
+        name="uvr_mdx_net_inst_hq_1",
+        display_name="UVR MDX-NET Inst HQ 1",
+        url="https://modelscope.cn/models/pengzhendong/uvr-mdx-net/resolve/master/UVR-MDX-NET-Inst_HQ_1.onnx",
+        size_mb=50,
+        quality="高质量伴奏提取",
+        performance="HQ版本、音质更佳",
+        filename="UVR-MDX-NET-Inst_HQ_1.onnx",
+        version="1.0",
+        invert_output=True  # 此模型输出伴奏
+    ),
+    "uvr_mdx_net_inst_hq_2": ModelInfo(
+        name="uvr_mdx_net_inst_hq_2",
+        display_name="UVR MDX-NET Inst HQ 2",
+        url="https://modelscope.cn/models/pengzhendong/uvr-mdx-net/resolve/master/UVR-MDX-NET-Inst_HQ_2.onnx",
+        size_mb=50,
+        quality="高质量伴奏提取 - 改进版",
+        performance="比 HQ 1 更好的分离效果",
+        filename="UVR-MDX-NET-Inst_HQ_2.onnx",
+        version="1.0",
+        invert_output=True  # 此模型输出伴奏
+    ),
+    "uvr_mdx_net_inst_hq_3": ModelInfo(
+        name="uvr_mdx_net_inst_hq_3",
+        display_name="UVR MDX-NET Inst HQ 3（高质量）",
+        url="https://modelscope.cn/models/pengzhendong/uvr-mdx-net/resolve/master/UVR-MDX-NET-Inst_HQ_3.onnx",
+        size_mb=50,
+        quality="顶级伴奏提取质量",
+        performance="最佳音质、伴奏最干净",
+        filename="UVR-MDX-NET-Inst_HQ_3.onnx",
+        version="1.0",
+        invert_output=True  # 此模型输出伴奏
+    ),
+    "kim_inst": ModelInfo(
+        name="kim_inst",
+        display_name="Kim Inst",
+        url="https://modelscope.cn/models/pengzhendong/uvr-mdx-net/resolve/master/Kim_Inst.onnx",
+        size_mb=50,
+        quality="Kim系列 - 伴奏专用",
+        performance="与Kim Vocal 2配套使用",
+        filename="Kim_Inst.onnx",
+        version="1.0",
+        invert_output=True  # 此模型输出伴奏
+    ),
+}
+
+# 默认人声分离模型
+DEFAULT_VOCAL_MODEL_KEY: Final[str] = "kim_vocal_2"
 

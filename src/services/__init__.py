@@ -6,6 +6,14 @@ from .config_service import ConfigService
 from .encoding_service import EncodingService
 from .ffmpeg_service import FFmpegService
 from .image_service import ImageService
+from .vocal_separation_service import VocalSeparationService
 
-__all__ = ["AudioService", "ConfigService", "EncodingService", "FFmpegService", "ImageService"]
+__all__ = [
+    "AudioService",
+    "ConfigService", 
+    "EncodingService",
+    "FFmpegService",
+    "ImageService",
+    "VocalSeparationService",
+]
 

@@ -161,6 +161,15 @@ def register_all_tools():
         tool_id="audio.compress",
     )
     
+    register_tool_manual(
+        name="人声提取",
+        description="AI智能分离人声和伴奏",
+        category="音频处理",
+        keywords=["人声", "伴奏", "分离", "提取", "vocal", "instrumental", "karaoke", "卡拉OK", "AI", "音轨"],
+        icon="MUSIC_NOTE",
+        tool_id="audio.vocal_extraction",
+    )
+    
     # ==================== 视频处理工具 ====================
     
     register_tool_manual(

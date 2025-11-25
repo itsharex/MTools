@@ -64,6 +64,7 @@ class AudioView(ft.Container):
         # 创建子视图（延迟创建）
         self.format_view: Optional[AudioFormatView] = None
         self.compress_view: Optional[AudioCompressView] = None
+        self.vocal_extraction_view = None  # 人声提取视图
         self.ffmpeg_install_view: Optional[FFmpegInstallView] = None
         
         # 记录当前显示的视图（用于状态恢复）
@@ -105,6 +106,13 @@ class AudioView(ft.Container):
                     description="调整比特率和采样率压缩音频",
                     gradient_colors=("#FA709A", "#FEE140"),
                     on_click=self._open_compress_dialog,
+                ),
+                FeatureCard(
+                    icon=ft.Icons.MUSIC_NOTE,
+                    title="人声提取",
+                    description="AI智能分离人声和伴奏",
+                    gradient_colors=("#4FACFE", "#00F2FE"),
+                    on_click=self._open_vocal_extraction,
                 ),
             ],
             wrap=True,  # 自动换行
@@ -350,6 +358,33 @@ class AudioView(ft.Container):
         # 返回主界面
         self._back_to_main()
     
+    def _open_vocal_extraction(self, e: ft.ControlEvent) -> None:
+        """打开人声提取视图。
+        
+        Args:
+            e: 控件事件对象
+        """
+        if not self.parent_container:
+            return
+        
+        # 创建人声提取视图（如果还没创建）
+        if self.vocal_extraction_view is None:
+            from views.media.vocal_extraction_view import VocalExtractionView
+            self.vocal_extraction_view = VocalExtractionView(
+                self.page,
+                self.config_service,
+                self.ffmpeg_service,
+                on_back=self._back_to_main
+            )
+        
+        # 记录当前子视图
+        self.current_sub_view = self.vocal_extraction_view
+        self.current_sub_view_type = "vocal_extraction"
+        
+        # 切换到人声提取视图
+        self.parent_container.content = self.vocal_extraction_view
+        self._safe_page_update()
+    
     def _back_to_main(self) -> None:
         """返回主界面。"""
         # 销毁当前子视图（而不是保留）
@@ -357,6 +392,7 @@ class AudioView(ft.Container):
             view_map = {
                 "format": "format_view",
                 "compress": "compress_view",
+                "vocal_extraction": "vocal_extraction_view",
                 "ffmpeg_install": "ffmpeg_install_view",
             }
             view_attr = view_map.get(self.current_sub_view_type)
@@ -394,6 +430,7 @@ class AudioView(ft.Container):
         tool_map = {
             "format": self._open_format_convert,
             "compress": self._open_compress,
+            "vocal_extraction": self._open_vocal_extraction,
         }
         
         # 查找并调用对应的方法
