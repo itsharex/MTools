@@ -3,7 +3,7 @@
 
 python -m nuitka ^
     --standalone ^
-    --windows-icon-from-ico=src/assets/icon2.png ^
+    --windows-icon-from-ico=src/assets/icon.ico ^
     --assume-yes-for-downloads ^
     --include-data-dir=bin=bin ^
     --include-data-files=bin/windows/mozjpeg/shared/Release/cjpeg.exe=bin/windows/mozjpeg/shared/Release/cjpeg.exe ^
@@ -25,8 +25,8 @@ python -m nuitka ^
     --nofollow-import-to=distutils ^
     --nofollow-import-to=wheel ^
     --nofollow-import-to=pip ^
-    --output-dir=dist ^
-    --output-filename=mytools.exe ^
+    --output-dir=dist/dev ^
+    --output-filename=MyTools.exe ^
     --jobs=8 ^
     --low-memory ^
     --remove-output ^

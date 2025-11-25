@@ -4,6 +4,7 @@
 python -m nuitka ^
     --standalone ^
     --windows-console-mode=attach ^
+    --windows-icon-from-ico=src/assets/icon.ico ^
     --assume-yes-for-downloads ^
     --include-data-dir=bin=bin ^
     --include-data-dir=src/assets=src/assets ^
@@ -17,8 +18,8 @@ python -m nuitka ^
     --nofollow-import-to=pip ^
     --nofollow-import-to=IPython ^
     --nofollow-import-to=matplotlib ^
-    --output-dir=dist ^
-    --output-filename=mytools_test.exe ^
+    --output-dir=dist/fast ^
+    --output-filename=MyTools.exe ^
     --jobs=8 ^
     --low-memory ^
     --remove-output ^

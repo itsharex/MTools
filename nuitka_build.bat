@@ -3,7 +3,7 @@
 python -m nuitka ^
     --standalone ^
     --windows-console-mode=disable ^
-    --windows-icon-from-ico=src/assets/icon2.png ^
+    --windows-icon-from-ico=src/assets/icon.ico ^
     --product-name="MyTools" ^
     --file-version=0.1.0.0 ^
     --product-version=0.1.0 ^
@@ -27,8 +27,15 @@ python -m nuitka ^
     --nofollow-import-to=tkinter ^
     --nofollow-import-to=unittest ^
     --nofollow-import-to=test ^
-    --output-dir=dist ^
-    --output-filename=mytools.exe ^
+    --nofollow-import-to=pytest ^
+    --nofollow-import-to=setuptools ^
+    --nofollow-import-to=distutils ^
+    --nofollow-import-to=wheel ^
+    --nofollow-import-to=pip ^
+    --nofollow-import-to=IPython ^
+    --nofollow-import-to=matplotlib ^
+    --output-dir=dist/release ^
+    --output-filename=MyTools.exe ^
     --enable-plugin=upx ^
     --onefile-no-compression ^
     --python-flag=-O ^
