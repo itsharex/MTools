@@ -256,11 +256,17 @@ class ImageEnhanceModelInfo(ModelInfo):
     Attributes:
         data_url: 权重数据文件的下载链接（用于大型模型）
         data_filename: 权重数据文件名
-        scale: 放大倍数
+        scale: 放大倍数（默认倍率）
+        min_scale: 最小支持的放大倍率
+        max_scale: 最大支持的放大倍率
+        support_custom_scale: 是否支持自定义放大倍率
     """
     data_url: str = ""
     data_filename: str = ""
     scale: int = 4
+    min_scale: float = 1.0
+    max_scale: float = 4.0
+    support_custom_scale: bool = True
 
 
 IMAGE_ENHANCE_MODELS: Final[dict[str, ImageEnhanceModelInfo]] = {
@@ -271,11 +277,30 @@ IMAGE_ENHANCE_MODELS: Final[dict[str, ImageEnhanceModelInfo]] = {
         data_url="https://www.modelscope.cn/models/yiminger/MyTools_Models/resolve/master/models/Real-ESRGAN/x4-plus/model.data",
         size_mb=67,
         quality="高质量图像超分辨率",
-        performance="4倍放大、适合真实照片",
+        performance="4倍放大、适合真实照片、通用场景",
         filename="model.onnx",
         data_filename="model.data",
         version="x4plus",
-        scale=4
+        scale=4,
+        min_scale=1.0,
+        max_scale=4.0,
+        support_custom_scale=True
+    ),
+    "realesrgan_x4_v3": ImageEnhanceModelInfo(
+        name="realesrgan_x4_v3",
+        display_name="Real-ESRGAN x4 V3（动漫）",
+        url="https://www.modelscope.cn/models/yiminger/MyTools_Models/resolve/master/models/Real-ESRGAN/x4_v3_float/model.onnx",
+        data_url="https://www.modelscope.cn/models/yiminger/MyTools_Models/resolve/master/models/Real-ESRGAN/x4_v3_float/model.data",
+        size_mb=5,
+        quality="动漫/插画专用超分辨率",
+        performance="4倍放大、针对动漫和插画优化",
+        filename="model.onnx",
+        data_filename="model.data",
+        version="x4_v3",
+        scale=4,
+        min_scale=1.0,
+        max_scale=4.0,
+        support_custom_scale=True
     ),
 }
 

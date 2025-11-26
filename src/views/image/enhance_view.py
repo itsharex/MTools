@@ -317,6 +317,112 @@ class ImageEnhanceView(ft.Container):
             on_change=self._on_auto_load_change,
         )
         
+        # 放大倍率设置
+        saved_scale = self.config_service.get_config_value("enhance_scale", self.current_model.scale)
+        self.scale_slider: ft.Slider = ft.Slider(
+            min=self.current_model.min_scale,
+            max=self.current_model.max_scale,
+            divisions=int((self.current_model.max_scale - self.current_model.min_scale) * 10),
+            value=saved_scale,
+            label="{value}x",
+            on_change=self._on_scale_change,
+        )
+        
+        self.scale_value_text: ft.Text = ft.Text(
+            f"{saved_scale:.1f}x",
+            size=13,
+            weight=ft.FontWeight.W_500,
+            color=ft.Colors.PRIMARY,
+        )
+        
+        scale_control: ft.Container = ft.Container(
+            content=ft.Column(
+                controls=[
+                    ft.Row(
+                        controls=[
+                            ft.Text("放大倍率:", size=13, weight=ft.FontWeight.W_500),
+                            self.scale_value_text,
+                        ],
+                        spacing=PADDING_SMALL,
+                    ),
+                    self.scale_slider,
+                    ft.Text(
+                        f"范围: {self.current_model.min_scale}x - {self.current_model.max_scale}x",
+                        size=11,
+                        color=ft.Colors.ON_SURFACE_VARIANT,
+                    ),
+                ],
+                spacing=PADDING_SMALL // 2,
+            ),
+            padding=PADDING_MEDIUM,
+            border=ft.border.all(1, ft.Colors.OUTLINE_VARIANT),
+            border_radius=BORDER_RADIUS_MEDIUM,
+            bgcolor=ft.Colors.with_opacity(0.03, ft.Colors.PRIMARY),
+        )
+        
+        # 图像增强参数
+        saved_denoise = self.config_service.get_config_value("enhance_denoise_strength", 0)
+        self.denoise_slider: ft.Slider = ft.Slider(
+            min=0,
+            max=100,
+            divisions=10,
+            value=saved_denoise,
+            label="{value}%",
+            on_change=self._on_denoise_change,
+        )
+        
+        saved_sharpen = self.config_service.get_config_value("enhance_sharpen_strength", 0)
+        self.sharpen_slider: ft.Slider = ft.Slider(
+            min=0,
+            max=100,
+            divisions=10,
+            value=saved_sharpen,
+            label="{value}%",
+            on_change=self._on_sharpen_change,
+        )
+        
+        saved_quality = self.config_service.get_config_value("enhance_output_quality", 95)
+        self.quality_slider: ft.Slider = ft.Slider(
+            min=60,
+            max=100,
+            divisions=8,
+            value=saved_quality,
+            label="{value}%",
+            on_change=self._on_quality_change,
+        )
+        
+        enhance_params: ft.Container = ft.Container(
+            content=ft.Column(
+                controls=[
+                    ft.Text("增强参数:", size=13, weight=ft.FontWeight.W_500),
+                    ft.Container(height=PADDING_SMALL // 2),
+                    
+                    # 降噪强度
+                    ft.Text("降噪强度:", size=12),
+                    self.denoise_slider,
+                    ft.Text("减少图像噪点（0=关闭，推荐20-40）", size=10, color=ft.Colors.ON_SURFACE_VARIANT),
+                    
+                    ft.Container(height=PADDING_SMALL),
+                    
+                    # 锐化强度
+                    ft.Text("锐化强度:", size=12),
+                    self.sharpen_slider,
+                    ft.Text("增强细节清晰度（0=关闭，推荐10-30）", size=10, color=ft.Colors.ON_SURFACE_VARIANT),
+                    
+                    ft.Container(height=PADDING_SMALL),
+                    
+                    # 输出质量
+                    ft.Text("输出质量:", size=12),
+                    self.quality_slider,
+                    ft.Text("保存质量（推荐90-95，100=无损）", size=10, color=ft.Colors.ON_SURFACE_VARIANT),
+                ],
+                spacing=PADDING_SMALL // 2,
+            ),
+            padding=PADDING_MEDIUM,
+            border=ft.border.all(1, ft.Colors.OUTLINE_VARIANT),
+            border_radius=BORDER_RADIUS_MEDIUM,
+        )
+        
         # 处理选项
         self.output_mode_radio: ft.RadioGroup = ft.RadioGroup(
             content=ft.Column(
@@ -353,6 +459,11 @@ class ImageEnhanceView(ft.Container):
                     ft.Container(height=PADDING_SMALL),
                     model_status_row,
                     self.auto_load_checkbox,
+                    ft.Container(height=PADDING_SMALL),
+                    scale_control,
+                    ft.Container(height=PADDING_SMALL),
+                    enhance_params,
+                    ft.Container(height=PADDING_SMALL),
                     self.output_mode_radio,
                     ft.Row(
                         controls=[
@@ -363,6 +474,7 @@ class ImageEnhanceView(ft.Container):
                     ),
                 ],
                 spacing=PADDING_MEDIUM // 2,
+                scroll=ft.ScrollMode.AUTO,  # 添加滚动支持
             ),
             padding=PADDING_MEDIUM,
             border=ft.border.all(1, ft.Colors.OUTLINE_VARIANT),
@@ -380,7 +492,7 @@ class ImageEnhanceView(ft.Container):
                 ft.Container(
                     content=process_options,
                     expand=2,
-                    height=380,
+                    height=380,  # 保持高度，内部Column可滚动
                 ),
             ],
             spacing=PADDING_LARGE,
@@ -625,6 +737,9 @@ class ImageEnhanceView(ft.Container):
             device_info = "未知设备"
             if self.enhancer:
                 device_info = self.enhancer.get_device_info()
+                # 设置当前的放大倍率
+                current_scale = self.scale_slider.value
+                self.enhancer.set_scale(current_scale)
             
             self._update_model_status("ready", f"模型就绪 ({device_info})")
             self._update_process_button()
@@ -828,8 +943,20 @@ class ImageEnhanceView(ft.Container):
         self.model_info_text.value = f"放大: {self.current_model.scale}x | {self.current_model.quality} | {self.current_model.performance}"
         self.model_info_text.update()
         
+        # 更新倍率滑块范围
+        self.scale_slider.min = self.current_model.min_scale
+        self.scale_slider.max = self.current_model.max_scale
+        self.scale_slider.divisions = int((self.current_model.max_scale - self.current_model.min_scale) * 10)
+        # 重置为模型默认倍率
+        self.scale_slider.value = self.current_model.scale
+        self.scale_value_text.value = f"{self.current_model.scale:.1f}x"
+        self.config_service.set_config_value("enhance_scale", self.current_model.scale)
+        self.scale_slider.update()
+        self.scale_value_text.update()
+        
         self._check_model_status()
         self._update_process_button()
+        self._update_file_list()  # 更新文件列表以显示新的放大倍率
         self._show_snackbar(f"已切换到: {self.current_model.display_name}", ft.Colors.GREEN)
     
     def _on_auto_load_change(self, e: ft.ControlEvent) -> None:
@@ -841,6 +968,37 @@ class ImageEnhanceView(ft.Container):
             if not self.data_path or self.data_path.exists():
                 self._update_model_status("loading", "正在加载模型...")
                 threading.Thread(target=self._load_model_async, daemon=True).start()
+    
+    def _on_scale_change(self, e: ft.ControlEvent) -> None:
+        """放大倍率滑块变化事件。"""
+        scale = self.scale_slider.value
+        self.scale_value_text.value = f"{scale:.1f}x"
+        self.scale_value_text.update()
+        
+        # 保存到配置
+        self.config_service.set_config_value("enhance_scale", scale)
+        
+        # 如果模型已加载，更新增强器的倍率
+        if self.enhancer:
+            self.enhancer.set_scale(scale)
+        
+        # 更新文件列表显示（刷新预览尺寸）
+        self._update_file_list()
+    
+    def _on_denoise_change(self, e: ft.ControlEvent) -> None:
+        """降噪强度滑块变化事件。"""
+        strength = self.denoise_slider.value
+        self.config_service.set_config_value("enhance_denoise_strength", strength)
+    
+    def _on_sharpen_change(self, e: ft.ControlEvent) -> None:
+        """锐化强度滑块变化事件。"""
+        strength = self.sharpen_slider.value
+        self.config_service.set_config_value("enhance_sharpen_strength", strength)
+    
+    def _on_quality_change(self, e: ft.ControlEvent) -> None:
+        """输出质量滑块变化事件。"""
+        quality = self.quality_slider.value
+        self.config_service.set_config_value("enhance_output_quality", quality)
     
     def _on_load_model(self, e: ft.ControlEvent) -> None:
         """加载模型按钮点击事件。"""
@@ -1032,10 +1190,11 @@ class ImageEnhanceView(ft.Container):
                     icon_color = ft.Colors.RED
                 else:
                     size_str = format_file_size(file_info['file_size'])
-                    # 计算增强后的大小
-                    enhanced_width = file_info['width'] * self.current_model.scale
-                    enhanced_height = file_info['height'] * self.current_model.scale
-                    info_text = f"{file_info['width']}×{file_info['height']} → {enhanced_width}×{enhanced_height} · {size_str}"
+                    # 计算增强后的大小（使用当前倍率）
+                    current_scale = self.scale_slider.value
+                    enhanced_width = int(file_info['width'] * current_scale)
+                    enhanced_height = int(file_info['height'] * current_scale)
+                    info_text = f"{file_info['width']}×{file_info['height']} → {enhanced_width}×{enhanced_height} ({current_scale:.1f}x) · {size_str}"
                     icon_color = ft.Colors.PRIMARY
                 
                 file_item: ft.Container = ft.Container(
@@ -1152,10 +1311,34 @@ class ImageEnhanceView(ft.Container):
                     
                     # 读取图片
                     from PIL import Image
+                    import cv2
+                    import numpy as np
+                    
                     image = Image.open(file_path)
                     
                     # 增强图像
                     result = self.enhancer.enhance_image(image)
+                    
+                    # 应用后处理（如果启用）
+                    denoise_strength = int(self.denoise_slider.value)
+                    sharpen_strength = int(self.sharpen_slider.value)
+                    
+                    if denoise_strength > 0 or sharpen_strength > 0:
+                        # 转换为numpy数组进行处理
+                        result_np = np.array(result)
+                        result_np = cv2.cvtColor(result_np, cv2.COLOR_RGB2BGR)
+                        
+                        # 应用降噪
+                        if denoise_strength > 0:
+                            result_np = self.image_service.apply_denoise(result_np, denoise_strength)
+                        
+                        # 应用锐化
+                        if sharpen_strength > 0:
+                            result_np = self.image_service.apply_sharpen(result_np, sharpen_strength)
+                        
+                        # 转换回PIL
+                        result_np = cv2.cvtColor(result_np, cv2.COLOR_BGR2RGB)
+                        result = Image.fromarray(result_np)
                     
                     # 生成输出文件名
                     if self.output_mode_radio.value == "new":
@@ -1165,8 +1348,18 @@ class ImageEnhanceView(ft.Container):
                         output_filename = f"{file_path.stem}_enhanced{file_path.suffix}"
                         output_path = output_dir / output_filename
                     
+                    # 获取输出质量
+                    quality = int(self.quality_slider.value)
+                    
                     # 保存结果
-                    result.save(output_path, quality=95, optimize=True)
+                    if output_path.suffix.lower() in ['.jpg', '.jpeg']:
+                        result.save(output_path, quality=quality, optimize=True)
+                    elif output_path.suffix.lower() == '.png':
+                        result.save(output_path, optimize=True, compress_level=9)
+                    elif output_path.suffix.lower() == '.webp':
+                        result.save(output_path, quality=quality, method=6)
+                    else:
+                        result.save(output_path, quality=quality, optimize=True)
                     
                     success_count += 1
                     

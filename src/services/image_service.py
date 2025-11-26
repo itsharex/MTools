@@ -1566,6 +1566,51 @@ class ImageService:
         result = jpeg_data[:2] + app1_segment + jpeg_data[2:]
         
         return result
+    
+    @staticmethod
+    def apply_denoise(image: np.ndarray, strength: int) -> np.ndarray:
+        """应用降噪处理。
+        
+        Args:
+            image: 输入图像 (BGR格式)
+            strength: 降噪强度 (0-100)
+        
+        Returns:
+            处理后的图像
+        """
+        if strength <= 0:
+            return image
+        
+        # 将强度映射到合适的范围
+        h = int(strength * 0.1)  # 0-10
+        if h <= 0:
+            return image
+        
+        # 使用非局部均值降噪（保留细节）
+        return cv2.fastNlMeansDenoisingColored(image, None, h, h, 7, 21)
+    
+    @staticmethod
+    def apply_sharpen(image: np.ndarray, strength: int) -> np.ndarray:
+        """应用锐化处理。
+        
+        Args:
+            image: 输入图像 (BGR格式)
+            strength: 锐化强度 (0-100)
+        
+        Returns:
+            处理后的图像
+        """
+        if strength <= 0:
+            return image
+        
+        # 将强度映射到合适的范围
+        amount = strength / 100.0  # 0-1
+        
+        # 使用 Unsharp Mask 算法
+        gaussian = cv2.GaussianBlur(image, (0, 0), 2.0)
+        sharpened = cv2.addWeighted(image, 1.0 + amount, gaussian, -amount, 0)
+        
+        return sharpened
 
 
 class BackgroundRemover:
@@ -1921,7 +1966,8 @@ class ImageEnhancer:
         
         self.input_name: str = self.sess.get_inputs()[0].name
         self.output_name: str = self.sess.get_outputs()[0].name
-        self.scale: int = scale
+        self.model_scale: int = scale  # 模型的原生放大倍率
+        self.current_scale: float = float(scale)  # 当前实际使用的放大倍率（可自定义）
         
         # 获取模型的输入尺寸要求
         input_shape = self.sess.get_inputs()[0].shape
@@ -1936,6 +1982,27 @@ class ImageEnhancer:
         
         # 记录实际使用的执行提供者
         self.device_info = self.sess.get_providers()[0]
+    
+    def set_scale(self, scale: float) -> None:
+        """设置自定义放大倍率。
+        
+        Args:
+            scale: 放大倍率（1.0-4.0），支持小数
+        
+        Raises:
+            ValueError: 如果倍率超出范围
+        """
+        if scale < 1.0 or scale > self.model_scale:
+            raise ValueError(f"放大倍率必须在 1.0 到 {self.model_scale} 之间")
+        self.current_scale = scale
+    
+    def get_scale(self) -> float:
+        """获取当前放大倍率。
+        
+        Returns:
+            当前放大倍率
+        """
+        return self.current_scale
     
     def is_using_gpu(self) -> bool:
         """返回是否正在使用GPU加速。
@@ -2096,19 +2163,19 @@ class ImageEnhancer:
         weight_map = np.zeros((output_h, output_w, channels), dtype=np.float32)
         
         # 创建权重矩阵（用于平滑拼接边界）
-        tile_size = self.tile_size * self.scale
-        overlap = self.tile_overlap * self.scale
+        tile_size = self.tile_size * self.model_scale
+        overlap = self.tile_overlap * self.model_scale
         
         for processed_tile, y_start, y_end, x_start, x_end in tiles:
-            # 计算输出位置
-            out_y_start = y_start * self.scale
-            out_y_end = y_end * self.scale
-            out_x_start = x_start * self.scale
-            out_x_end = x_end * self.scale
+            # 计算输出位置（使用模型原生倍率）
+            out_y_start = y_start * self.model_scale
+            out_y_end = y_end * self.model_scale
+            out_x_start = x_start * self.model_scale
+            out_x_end = x_end * self.model_scale
             
             # 获取实际tile尺寸（可能小于tile_size）
-            actual_h = (y_end - y_start) * self.scale
-            actual_w = (x_end - x_start) * self.scale
+            actual_h = (y_end - y_start) * self.model_scale
+            actual_w = (x_end - x_start) * self.model_scale
             
             # 裁剪处理后的tile到实际大小
             processed_tile = processed_tile[:actual_h, :actual_w]
@@ -2168,8 +2235,8 @@ class ImageEnhancer:
                 
                 result_np = self._process_tile(padded)
                 
-                # 裁剪到实际输出尺寸
-                result_np = result_np[:h * self.scale, :w * self.scale]
+                # 裁剪到实际输出尺寸（使用模型原生倍率）
+                result_np = result_np[:h * self.model_scale, :w * self.model_scale]
             else:
                 # 大图像需要分块处理
                 tiles = self._split_into_tiles(image_np)
@@ -2180,10 +2247,18 @@ class ImageEnhancer:
                     processed_tile = self._process_tile(tile)
                     processed_tiles.append((processed_tile, y_start, y_end, x_start, x_end))
                 
-                # 合并tiles
-                output_h = h * self.scale
-                output_w = w * self.scale
+                # 合并tiles（使用模型原生倍率）
+                output_h = h * self.model_scale
+                output_w = w * self.model_scale
                 result_np = self._merge_tiles(processed_tiles, output_h, output_w)
+            
+            # 如果自定义倍率不等于模型倍率，需要进行缩放
+            if abs(self.current_scale - self.model_scale) > 0.01:
+                # 计算目标尺寸
+                target_h = int(h * self.current_scale)
+                target_w = int(w * self.current_scale)
+                # 使用高质量插值进行缩放
+                result_np = cv2.resize(result_np, (target_w, target_h), interpolation=cv2.INTER_LANCZOS4)
             
             # 转换回PIL图像（BGR -> RGB）
             result_rgb = cv2.cvtColor(result_np, cv2.COLOR_BGR2RGB)
