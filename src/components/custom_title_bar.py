@@ -17,6 +17,7 @@ from constants import (
     PADDING_SMALL,
 )
 from services import ConfigService
+from services.weather_service import WeatherService
 
 
 class CustomTitleBar(ft.Container):
@@ -40,6 +41,10 @@ class CustomTitleBar(ft.Container):
         self.page: ft.Page = page
         self.config_service: Optional[ConfigService] = config_service
         
+        # 初始化天气服务
+        self.weather_service: WeatherService = WeatherService()
+        self.weather_data: Optional[dict] = None
+        
         # 获取用户设置的主题色
         if self.config_service:
             self.theme_color: str = self.config_service.get_config_value("theme_color", "#667EEA")
@@ -48,6 +53,9 @@ class CustomTitleBar(ft.Container):
         
         # 构建标题栏
         self._build_title_bar()
+        
+        # 异步加载天气数据
+        self.page.run_task(self._load_weather_data)
     
     def _build_title_bar(self) -> None:
         """构建标题栏UI。"""
@@ -76,7 +84,34 @@ class CustomTitleBar(ft.Container):
             expand=True,
         )
         
-        # 右侧：主题切换 + 窗口控制按钮
+        # 右侧：天气 + 主题切换 + 窗口控制按钮
+        
+        # 天气显示组件
+        self.weather_icon: ft.Icon = ft.Icon(
+            name=ft.Icons.WB_CLOUDY,
+            size=18,
+            color=ft.Colors.WHITE,
+        )
+        
+        self.weather_text: ft.Text = ft.Text(
+            value="加载中...",
+            size=12,
+            color=ft.Colors.WHITE,
+        )
+        
+        self.weather_container: ft.Container = ft.Container(
+            content=ft.Row(
+                controls=[
+                    self.weather_icon,
+                    self.weather_text,
+                ],
+                spacing=4,
+                alignment=ft.MainAxisAlignment.CENTER,
+            ),
+            padding=ft.padding.symmetric(horizontal=8),
+            tooltip="天气信息",
+        )
+        
         self.theme_icon: ft.IconButton = ft.IconButton(
             icon=ft.Icons.LIGHT_MODE_OUTLINED,
             icon_color=ft.Colors.WHITE,
@@ -124,12 +159,8 @@ class CustomTitleBar(ft.Container):
         
         right_section: ft.Row = ft.Row(
             controls=[
+                self.weather_container,
                 self.theme_icon,
-                ft.VerticalDivider(
-                    width=1,
-                    thickness=1,
-                    color=ft.Colors.with_opacity(0.2, ft.Colors.WHITE),
-                ),
                 minimize_button,
                 self.maximize_button,
                 close_button,
@@ -252,6 +283,146 @@ class CustomTitleBar(ft.Container):
                 self.config_service.set_config_value("window_width", self.page.window.width)
                 self.config_service.set_config_value("window_height", self.page.window.height)
         
+        # 关闭天气服务
+        if self.weather_service:
+            import asyncio
+            try:
+                asyncio.create_task(self.weather_service.close())
+            except:
+                pass
+        
         # 关闭窗口
         self.page.window.close()
+    
+    async def _load_weather_data(self):
+        """加载天气数据"""
+        try:
+            # 显示加载状态
+            self.weather_text.value = "加载中..."
+            self.weather_icon.name = ft.Icons.REFRESH
+            self.page.update()
+            
+            # 获取用户设置的城市
+            preferred_city = None
+            if self.config_service:
+                preferred_city = self.config_service.get_config_value("weather_city", None)
+            
+            # 获取天气数据
+            weather = await self.weather_service.get_current_location_weather(preferred_city)
+            
+            if weather:
+                self.weather_data = weather
+                # 更新显示
+                temp = weather.get('temperature')
+                condition = weather.get('condition', '未知')
+                icon_name = weather.get('icon', 'WB_CLOUDY')
+                
+                if temp is not None:
+                    self.weather_text.value = f"{temp}°C"
+                else:
+                    self.weather_text.value = condition
+                
+                # 更新图标
+                self.weather_icon.name = getattr(ft.Icons, icon_name, ft.Icons.WB_CLOUDY)
+                
+                # 更新 tooltip
+                location = weather.get('location', '未知')
+                feels_like = weather.get('feels_like')
+                humidity = weather.get('humidity')
+                
+                tooltip_parts = [f"{location}: {condition}"]
+                if temp is not None:
+                    tooltip_parts.append(f"温度: {temp}°C")
+                if feels_like is not None:
+                    tooltip_parts.append(f"体感: {feels_like}°C")
+                if humidity is not None:
+                    tooltip_parts.append(f"湿度: {humidity}%")
+                
+                self.weather_container.tooltip = "\n".join(tooltip_parts)
+            else:
+                self.weather_text.value = "获取失败"
+                self.weather_icon.name = ft.Icons.ERROR_OUTLINE
+                self.weather_container.tooltip = "天气数据获取失败"
+            
+            self.page.update()
+            
+        except Exception as e:
+            print(f"加载天气数据失败: {e}")
+            self.weather_text.value = "加载失败"
+            self.weather_icon.name = ft.Icons.ERROR_OUTLINE
+            self.weather_container.tooltip = f"错误: {str(e)}"
+            self.page.update()
+    
+    def _show_city_dialog(self, e: ft.ControlEvent = None):
+        """显示城市设置对话框"""
+        # 获取当前设置的城市
+        current_city = ""
+        if self.config_service:
+            current_city = self.config_service.get_config_value("weather_city", "")
+        
+        # 创建输入框
+        city_input = ft.TextField(
+            label="城市名称",
+            hint_text="例如: 北京、上海、广州",
+            value=current_city,
+            autofocus=True,
+        )
+        
+        def save_city(e):
+            city = city_input.value.strip()
+            if city:
+                # 保存到配置
+                if self.config_service:
+                    self.config_service.set_config_value("weather_city", city)
+                # 关闭对话框
+                dialog.open = False
+                self.page.update()
+                # 重新加载天气
+                self.page.run_task(self._load_weather_data)
+            else:
+                city_input.error_text = "请输入城市名称"
+                self.page.update()
+        
+        def clear_city(e):
+            # 清除城市设置，使用自动定位
+            if self.config_service:
+                self.config_service.set_config_value("weather_city", "")
+            dialog.open = False
+            self.page.update()
+            # 重新加载天气
+            self.page.run_task(self._load_weather_data)
+        
+        def close_dialog(e):
+            dialog.open = False
+            self.page.update()
+        
+        # 创建对话框
+        dialog = ft.AlertDialog(
+            title=ft.Text("设置天气城市"),
+            content=ft.Container(
+                content=ft.Column(
+                    controls=[
+                        city_input,
+                        ft.Text(
+                            "提示: 留空则自动根据 IP 定位",
+                            size=12,
+                            color=ft.Colors.GREY_600,
+                        ),
+                    ],
+                    tight=True,
+                    spacing=10,
+                ),
+                width=300,
+            ),
+            actions=[
+                ft.TextButton("清除并自动定位", on_click=clear_city),
+                ft.TextButton("取消", on_click=close_dialog),
+                ft.FilledButton("确定", on_click=save_city),
+            ],
+            actions_alignment=ft.MainAxisAlignment.END,
+        )
+        
+        self.page.dialog = dialog
+        dialog.open = True
+        self.page.update()
 
