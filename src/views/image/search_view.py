@@ -15,7 +15,7 @@ import asyncio
 from pathlib import Path
 from typing import Optional, Dict, List, Any, Callable
 
-from constants import PADDING_LARGE, PADDING_MEDIUM
+from constants import PADDING_LARGE, PADDING_MEDIUM, PADDING_SMALL
 from services.sogou_search_service import SogouSearchService
 
 
@@ -52,11 +52,21 @@ class ImageSearchView(ft.Container):
         
         # 图片预览
         self.image_preview = ft.Image(
-            width=300,
-            height=300,
-            fit=ft.ImageFit.CONTAIN,
+            width=120,
+            height=120,
+            fit=ft.ImageFit.COVER,
             border_radius=ft.border_radius.all(8),
+        )
+        
+        # 图片预览容器（控制显示/隐藏）
+        self.image_preview_container = ft.Container(
+            content=self.image_preview,
+            width=120,
+            height=120,
+            border=ft.border.all(1, ft.Colors.OUTLINE_VARIANT),
+            border_radius=8,
             visible=False,
+            alignment=ft.alignment.center,
         )
         
         # 图片路径显示
@@ -66,7 +76,6 @@ class ImageSearchView(ft.Container):
             color=ft.Colors.ON_SURFACE_VARIANT,
             max_lines=1,
             overflow=ft.TextOverflow.ELLIPSIS,
-            width=400,
         )
         
         # 文件选择器
@@ -77,9 +86,9 @@ class ImageSearchView(ft.Container):
         self.url_input = ft.TextField(
             label="图片URL",
             hint_text="输入图片URL地址",
-            width=400,
             height=60,
             on_submit=lambda e: self._upload_from_url(),
+            expand=True,
         )
         
         # 上传按钮
@@ -87,7 +96,7 @@ class ImageSearchView(ft.Container):
             "选择本地图片",
             icon=ft.Icons.UPLOAD_FILE,
             on_click=lambda e: self.file_picker.pick_files(
-                allowed_extensions=["jpg", "jpeg", "png", "gif", "bmp"],
+                allowed_extensions=["jpg", "jpeg", "png", "gif", "bmp", "webp"],
                 dialog_title="选择要搜索的图片"
             ),
         )
@@ -100,10 +109,19 @@ class ImageSearchView(ft.Container):
         
         # 搜索按钮
         self.search_btn = ft.ElevatedButton(
-            "开始搜索",
-            icon=ft.Icons.SEARCH,
+            content=ft.Row(
+                controls=[
+                    ft.Icon(ft.Icons.SEARCH, size=18),
+                    ft.Text("开始搜索", size=14, weight=ft.FontWeight.W_500),
+                ],
+                alignment=ft.MainAxisAlignment.CENTER,
+                spacing=6,
+            ),
             on_click=lambda e: self.page.run_task(self._perform_search),
             disabled=True,
+            style=ft.ButtonStyle(
+                padding=ft.padding.symmetric(horizontal=PADDING_LARGE, vertical=PADDING_MEDIUM),
+            ),
         )
         
         # 进度提示
@@ -116,8 +134,8 @@ class ImageSearchView(ft.Container):
         
         # 搜索结果容器
         self.results_container = ft.Column(
-            spacing=10,
-            scroll=ft.ScrollMode.AUTO,
+            spacing=PADDING_MEDIUM,
+            scroll=ft.ScrollMode.ADAPTIVE,
             expand=True,
         )
         
@@ -150,70 +168,65 @@ class ImageSearchView(ft.Container):
             visible=False,
         )
         
-        # 主布局
-        self.content = ft.Column(
+        # 主布局 - 可滚动内容区域
+        scrollable_content = ft.Column(
             controls=[
-                # 标题栏和返回按钮
-                ft.Container(
-                    content=ft.Row(
-                        controls=[
-                            ft.IconButton(
-                                icon=ft.Icons.ARROW_BACK,
-                                tooltip="返回",
-                                on_click=self._handle_back,
-                            ) if self.on_back else ft.Container(),
-                            ft.Icon(ft.Icons.IMAGE_SEARCH, size=28),
-                            ft.Text("图片搜索", size=24, weight=ft.FontWeight.BOLD),
-                        ],
-                        spacing=10,
-                    ),
-                    padding=ft.padding.only(bottom=20),
-                ),
-                
                 # 上传区域
                 ft.Container(
                     content=ft.Column(
                         controls=[
-                            ft.Text("上传图片", size=16, weight=ft.FontWeight.W_500),
+                            ft.Text("上传图片", size=14, weight=ft.FontWeight.W_500),
                             ft.Divider(height=1),
                             
-                            # 本地上传
+                            # 主要上传区域：左边预览图，右边控制面板
                             ft.Row(
                                 controls=[
-                                    self.upload_local_btn,
-                                    self.image_path_text,
+                                    # 左侧：预览图
+                                    self.image_preview_container,
+                                    
+                                    # 右侧：控制面板
+                                    ft.Column(
+                                        controls=[
+                                            # 本地上传
+                                            ft.Row(
+                                                controls=[
+                                                    self.upload_local_btn,
+                                                    ft.Container(
+                                                        content=self.image_path_text,
+                                                        expand=True,
+                                                    ),
+                                                ],
+                                                spacing=PADDING_SMALL,
+                                            ),
+                                            
+                                            # URL上传
+                                            ft.Row(
+                                                controls=[
+                                                    self.url_input,
+                                                    self.upload_url_btn,
+                                                ],
+                                                spacing=PADDING_SMALL,
+                                            ),
+                                            
+                                            # 搜索按钮
+                                            ft.Container(
+                                                content=self.search_btn,
+                                                alignment=ft.alignment.center,
+                                            ),
+                                        ],
+                                        spacing=PADDING_SMALL,
+                                        expand=True,
+                                    ),
                                 ],
-                                spacing=10,
-                            ),
-                            
-                            # URL上传
-                            ft.Row(
-                                controls=[
-                                    self.url_input,
-                                    self.upload_url_btn,
-                                ],
-                                spacing=10,
-                            ),
-                            
-                            # 图片预览
-                            ft.Container(
-                                content=self.image_preview,
-                                alignment=ft.alignment.center,
-                                padding=10,
-                            ),
-                            
-                            # 搜索按钮
-                            ft.Container(
-                                content=self.search_btn,
-                                alignment=ft.alignment.center,
-                                padding=10,
+                                spacing=PADDING_MEDIUM,
+                                vertical_alignment=ft.CrossAxisAlignment.START,
                             ),
                         ],
-                        spacing=10,
+                        spacing=PADDING_SMALL,
                     ),
-                    border=ft.border.all(1, ft.Colors.OUTLINE),
+                    border=ft.border.all(1, ft.Colors.OUTLINE_VARIANT),
                     border_radius=8,
-                    padding=15,
+                    padding=PADDING_MEDIUM,
                 ),
                 
                 # 进度提示
@@ -224,29 +237,106 @@ class ImageSearchView(ft.Container):
                             self.status_text,
                         ],
                         alignment=ft.MainAxisAlignment.CENTER,
-                        spacing=10,
+                        spacing=PADDING_MEDIUM,
                     ),
-                    padding=10,
+                    padding=PADDING_SMALL,
+                    visible=False,
+                    ref=ft.Ref[ft.Container](),
                 ),
                 
-                # 搜索结果
+                # 搜索结果和分页控件容器 - 占满剩余空间
                 ft.Container(
-                    content=self.results_container,
-                    border=ft.border.all(1, ft.Colors.OUTLINE),
-                    border_radius=8,
-                    padding=15,
+                    content=ft.Column(
+                        controls=[
+                            # 搜索结果标题
+                            ft.Text("搜索结果", size=14, weight=ft.FontWeight.W_500),
+                            
+                            # 搜索结果
+                            ft.Container(
+                                content=self.results_container,
+                                border=ft.border.all(1, ft.Colors.OUTLINE_VARIANT),
+                                border_radius=8,
+                                padding=PADDING_MEDIUM,
+                                expand=True,
+                            ),
+                            
+                            # 分页控件
+                            self.pagination_row,
+                        ],
+                        spacing=PADDING_SMALL,
+                        expand=True,
+                    ),
                     expand=True,
                 ),
-                
-                # 分页控件
-                self.pagination_row,
             ],
-            spacing=15,
-            scroll=ft.ScrollMode.AUTO,
+            spacing=PADDING_MEDIUM,
             expand=True,
         )
         
+        # 标题栏
+        header = ft.Row(
+            controls=[
+                ft.IconButton(
+                    icon=ft.Icons.ARROW_BACK,
+                    tooltip="返回",
+                    on_click=self._handle_back,
+                ) if self.on_back else ft.Container(),
+                ft.Text("图片搜索", size=28, weight=ft.FontWeight.BOLD),
+            ],
+            spacing=PADDING_MEDIUM,
+        )
+        
+        # 主内容
+        self.content = ft.Column(
+            controls=[
+                header,  # 固定在顶部
+                ft.Divider(),  # 固定的分隔线
+                scrollable_content,  # 可滚动内容
+            ],
+            spacing=0,
+            expand=True,
+        )
+        
+        # 保存进度容器的引用以便后续控制可见性
+        self.progress_container = ft.Container(
+            content=ft.Row(
+                controls=[
+                    self.progress_ring,
+                    self.status_text,
+                ],
+                alignment=ft.MainAxisAlignment.CENTER,
+                spacing=PADDING_MEDIUM,
+            ),
+            padding=PADDING_MEDIUM,
+            visible=False,
+        )
+        
+        # 更新可滚动内容，使用保存的引用
+        scrollable_content.controls[1] = self.progress_container
+        
         self.expand = True
+        
+        # 初始化搜索结果为空状态
+        self._init_empty_results()
+    
+    def _init_empty_results(self):
+        """初始化空状态的搜索结果"""
+        self.results_container.controls.clear()
+        self.results_container.controls.append(
+            ft.Container(
+                content=ft.Column(
+                    controls=[
+                        ft.Icon(ft.Icons.IMAGE_SEARCH, size=64, color=ft.Colors.ON_SURFACE_VARIANT),
+                        ft.Text("上传图片开始搜索", size=16, color=ft.Colors.ON_SURFACE_VARIANT),
+                        ft.Text("支持本地图片或网络图片URL", size=12, color=ft.Colors.ON_SURFACE_VARIANT),
+                    ],
+                    horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                    alignment=ft.MainAxisAlignment.CENTER,
+                ),
+                alignment=ft.alignment.center,
+                expand=True,
+            )
+        )
         
     def _on_file_picked(self, e: ft.FilePickerResultEvent):
         """处理文件选择"""
@@ -257,7 +347,7 @@ class ImageSearchView(ft.Container):
             
             # 显示图片预览
             self.image_preview.src = file_path
-            self.image_preview.visible = True
+            self.image_preview_container.visible = True
             
             # 启用搜索按钮
             self.search_btn.disabled = False
@@ -283,7 +373,7 @@ class ImageSearchView(ft.Container):
         
         # 显示图片预览
         self.image_preview.src = url
-        self.image_preview.visible = True
+        self.image_preview_container.visible = True
         
         # 启用搜索按钮
         self.search_btn.disabled = False
@@ -306,6 +396,7 @@ class ImageSearchView(ft.Container):
         print(f"准备搜索图片: {self.current_image_path}")
         self.is_searching = True
         self.search_btn.disabled = True
+        self.progress_container.visible = True
         self.progress_ring.visible = True
         self.status_text.value = "正在上传图片..."
         self.page.update()
@@ -341,6 +432,7 @@ class ImageSearchView(ft.Container):
         finally:
             self.is_searching = False
             self.search_btn.disabled = False
+            self.progress_container.visible = False
             self.progress_ring.visible = False
             self.status_text.value = ""
             self.page.update()
@@ -376,14 +468,25 @@ class ImageSearchView(ft.Container):
             
         if not items:
             self.results_container.controls.append(
-                ft.Text("未找到相关结果", size=16, color=ft.Colors.ON_SURFACE_VARIANT)
+                ft.Container(
+                    content=ft.Column(
+                        controls=[
+                            ft.Icon(ft.Icons.SEARCH_OFF, size=48, color=ft.Colors.ON_SURFACE_VARIANT),
+                            ft.Text("未找到相关结果", size=16, color=ft.Colors.ON_SURFACE_VARIANT),
+                        ],
+                        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                        alignment=ft.MainAxisAlignment.CENTER,
+                    ),
+                    height=200,
+                    alignment=ft.alignment.center,
+                )
             )
             self.page.update()
             return
             
         # 创建结果卡片
-        for item in items:
-            card = self._create_result_card(item)
+        for idx, item in enumerate(items):
+            card = self._create_result_card(item, idx)
             if card:
                 self.results_container.controls.append(card)
                 
@@ -396,44 +499,63 @@ class ImageSearchView(ft.Container):
         
         self.page.update()
         
-    def _create_result_card(self, item: Dict) -> Optional[ft.Container]:
+    def _create_result_card(self, item: Dict, index: int) -> Optional[ft.Container]:
         """创建结果卡片"""
         try:
             # 搜狗返回的数据结构
             # thumbUrl: 缩略图URL
-            # picUrl: 原图URL
+            # pic_url: 原图URL
             # title: 标题
-            # fromUrl: 来源URL
+            # page_url: 来源URL
             
             # 提取图片URL
-            img_url = item.get("thumbUrl", "") or item.get("picUrl", "")
+            thumb_url = item.get("thumbUrl", "") or item.get("thumb_url", "")
+            pic_url = item.get("pic_url", "") or item.get("picUrl", "")
             
             # 提取标题
             title = item.get("title", "无标题")
             
             # 提取链接
-            link = item.get("fromUrl", "")
+            page_url = item.get("page_url", "") or item.get("fromUrl", "")
             
-            # 提取尺寸信息
+            # 提取尺寸和大小信息
             width = item.get("width", "")
             height = item.get("height", "")
-            size_text = f"{width}x{height}" if width and height else ""
+            size = item.get("size", "")
             
             # 创建卡片
             return ft.Container(
                 content=ft.Row(
                     controls=[
+                        # 序号
+                        ft.Container(
+                            content=ft.Text(
+                                str(index + 1),
+                                size=14,
+                                weight=ft.FontWeight.W_500,
+                                color=ft.Colors.ON_SURFACE_VARIANT,
+                            ),
+                            width=35,
+                            alignment=ft.alignment.center,
+                        ),
+                        
                         # 缩略图
                         ft.Container(
                             content=ft.Image(
-                                src=img_url if img_url else None,
-                                width=120,
-                                height=120,
+                                src=thumb_url if thumb_url else pic_url,
+                                width=100,
+                                height=100,
                                 fit=ft.ImageFit.COVER,
                                 border_radius=8,
+                            ) if (thumb_url or pic_url) else ft.Icon(
+                                ft.Icons.BROKEN_IMAGE,
+                                size=100,
+                                color=ft.Colors.ON_SURFACE_VARIANT,
                             ),
-                            width=120,
-                            height=120,
+                            width=100,
+                            height=100,
+                            border=ft.border.all(1, ft.Colors.OUTLINE_VARIANT),
+                            border_radius=8,
                         ),
                         
                         # 信息区
@@ -449,42 +571,66 @@ class ImageSearchView(ft.Container):
                                         overflow=ft.TextOverflow.ELLIPSIS,
                                     ),
                                     
-                                    # 尺寸信息
-                                    ft.Text(
-                                        value=size_text,
-                                        size=12,
-                                        color=ft.Colors.ON_SURFACE_VARIANT,
-                                    ) if size_text else ft.Container(),
-                                    
-                                    # 链接按钮
+                                    # 尺寸和文件大小信息
                                     ft.Row(
                                         controls=[
-                                            ft.TextButton(
-                                                "查看来源",
-                                                icon=ft.Icons.OPEN_IN_NEW,
-                                                on_click=lambda e, url=link: self._open_url(url),
-                                            ) if link else ft.Container(),
-                                            ft.TextButton(
-                                                "查看原图",
-                                                icon=ft.Icons.IMAGE,
-                                                on_click=lambda e, url=item.get("picUrl", ""): self._open_url(url),
-                                            ) if item.get("picUrl") else ft.Container(),
+                                            ft.Icon(ft.Icons.PHOTO_SIZE_SELECT_ACTUAL, size=12, color=ft.Colors.ON_SURFACE_VARIANT),
+                                            ft.Text(f"{width} × {height}", size=11, color=ft.Colors.ON_SURFACE_VARIANT),
+                                            ft.Text("•", size=11, color=ft.Colors.ON_SURFACE_VARIANT),
+                                            ft.Icon(ft.Icons.INSERT_DRIVE_FILE, size=12, color=ft.Colors.ON_SURFACE_VARIANT),
+                                            ft.Text(size if size else "未知", size=11, color=ft.Colors.ON_SURFACE_VARIANT),
                                         ],
-                                        spacing=5,
+                                        spacing=4,
+                                    ),
+                                    
+                                    # 操作按钮
+                                    ft.Row(
+                                        controls=[
+                                            ft.ElevatedButton(
+                                                content=ft.Row(
+                                                    controls=[
+                                                        ft.Icon(ft.Icons.COPY, size=16),
+                                                        ft.Text("复制图片URL", size=12),
+                                                    ],
+                                                    spacing=4,
+                                                ),
+                                                on_click=lambda e, url=pic_url: self._copy_to_clipboard(url, "图片URL"),
+                                                style=ft.ButtonStyle(
+                                                    padding=ft.padding.symmetric(horizontal=12, vertical=8),
+                                                ),
+                                            ) if pic_url else ft.Container(),
+                                            ft.ElevatedButton(
+                                                content=ft.Row(
+                                                    controls=[
+                                                        ft.Icon(ft.Icons.OPEN_IN_NEW, size=16),
+                                                        ft.Text("打开网页", size=12),
+                                                    ],
+                                                    spacing=4,
+                                                ),
+                                                on_click=lambda e, url=page_url: self._open_url(url),
+                                                style=ft.ButtonStyle(
+                                                    padding=ft.padding.symmetric(horizontal=12, vertical=8),
+                                                ),
+                                            ) if page_url else ft.Container(),
+                                        ],
+                                        spacing=8,
+                                        wrap=True,
                                     ),
                                 ],
-                                spacing=5,
+                                spacing=8,
                                 expand=True,
                             ),
                             expand=True,
                             padding=10,
                         ),
                     ],
-                    spacing=10,
+                    spacing=12,
+                    vertical_alignment=ft.CrossAxisAlignment.START,
                 ),
-                border=ft.border.all(1, ft.Colors.OUTLINE),
+                border=ft.border.all(1, ft.Colors.OUTLINE_VARIANT),
                 border_radius=8,
-                padding=10,
+                padding=PADDING_MEDIUM,
+                bgcolor=ft.Colors.with_opacity(0.03, ft.Colors.ON_SURFACE) if index % 2 == 0 else None,
             )
             
         except Exception as e:
@@ -495,6 +641,25 @@ class ImageSearchView(ft.Container):
         """打开URL"""
         if url:
             self.page.launch_url(url)
+    
+    def _copy_to_clipboard(self, text: str, label: str = "内容"):
+        """复制文本到剪贴板"""
+        if text:
+            self.page.set_clipboard(text)
+            self._show_snackbar(f"{label}已复制到剪贴板", ft.Colors.GREEN)
+        else:
+            self._show_snackbar(f"{label}为空，无法复制", ft.Colors.ORANGE)
+    
+    def _show_snackbar(self, message: str, color: str):
+        """显示消息提示"""
+        snackbar = ft.SnackBar(
+            content=ft.Text(message, color=ft.Colors.WHITE),
+            bgcolor=color,
+            duration=2000,
+        )
+        self.page.overlay.append(snackbar)
+        snackbar.open = True
+        self.page.update()
     
     def _handle_back(self, e: ft.ControlEvent = None):
         """处理返回按钮点击"""
