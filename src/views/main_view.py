@@ -12,7 +12,7 @@ from components import CustomTitleBar, ToolInfo, ToolSearchDialog
 from services import ConfigService, EncodingService, ImageService, FFmpegService
 from utils.tool_registry import register_all_tools
 from utils import get_all_tools
-from views.media import AudioView, VideoView
+from views.media import MediaView
 from views.dev_tools import DevToolsView
 from views.others import OthersView
 from views.image import ImageView
@@ -55,8 +55,7 @@ class MainView(ft.Column):
         # 创建各功能视图
         self.image_view: Optional[ImageView] = None
         self.dev_tools_view: Optional[DevToolsView] = None
-        self.audio_view: Optional[AudioView] = None
-        self.video_view: VideoView = VideoView(page, self.config_service, self.ffmpeg_service)
+        self.media_view: Optional[MediaView] = None  # 统一的媒体处理视图
         self.settings_view: SettingsView = SettingsView(page, self.config_service)
         
         # 创建UI组件
@@ -89,14 +88,9 @@ class MainView(ft.Column):
                     label="图片处理",
                 ),
                 ft.NavigationRailDestination(
-                    icon=ft.Icons.AUDIOTRACK_OUTLINED,
-                    selected_icon=ft.Icons.AUDIOTRACK_ROUNDED,
-                    label="音频处理",
-                ),
-                ft.NavigationRailDestination(
-                    icon=ft.Icons.VIDEO_LIBRARY_OUTLINED,
-                    selected_icon=ft.Icons.VIDEO_LIBRARY_ROUNDED,
-                    label="视频处理",
+                    icon=ft.Icons.PERM_MEDIA_OUTLINED,
+                    selected_icon=ft.Icons.PERM_MEDIA_ROUNDED,
+                    label="媒体处理",
                 ),
                 ft.NavigationRailDestination(
                     icon=ft.Icons.DEVELOPER_MODE_OUTLINED,
@@ -157,10 +151,10 @@ class MainView(ft.Column):
             height=float('inf'),  # 占满可用高度
         )
         
-        # 创建图片视图、音频视图、视频视图、开发工具视图和其他工具视图，并传递容器引用
+        # 创建图片视图、媒体视图、开发工具视图和其他工具视图，并传递容器引用
         self.image_view = ImageView(self.page, self.config_service, self.image_service, self.content_container)
-        self.audio_view = AudioView(self.page, self.config_service, self.content_container)
-        self.video_view = VideoView(self.page, self.config_service, self.ffmpeg_service, self.content_container)
+        self.media_view = MediaView(self.page, self.config_service, self.content_container)
+        
         self.dev_tools_view = DevToolsView(self.page, self.config_service, self.encoding_service, self.content_container)
         self.others_view = OthersView(self.page, self.config_service, self.content_container)
         
@@ -224,17 +218,15 @@ class MainView(ft.Column):
             if not restored:
                 self.content_container.content = view
         elif selected_index == 1:
-            view = self.audio_view
-            # 尝试恢复音频处理页面的状态
+            # 媒体处理（统一视图）
+            view = self.media_view
+            # 尝试恢复媒体处理页面的状态
             if hasattr(view, 'restore_state'):
                 restored = view.restore_state()
             
             if not restored:
                 self.content_container.content = view
         elif selected_index == 2:
-            view = self.video_view
-            self.content_container.content = view
-        elif selected_index == 3:
             view = self.dev_tools_view
             # 尝试恢复开发工具页面的状态
             if hasattr(view, 'restore_state'):
@@ -242,7 +234,7 @@ class MainView(ft.Column):
             
             if not restored:
                 self.content_container.content = view
-        elif selected_index == 4:
+        elif selected_index == 3:
             view = self.others_view
             # 尝试恢复其他工具页面的状态
             if hasattr(view, 'restore_state'):
@@ -284,23 +276,38 @@ class MainView(ft.Column):
             # 调用图片视图的方法打开子工具
             if hasattr(self.image_view, 'open_tool'):
                 self.image_view.open_tool(tool_name)
-        elif category == "audio":
+        elif category == "audio" or category == "video":
+            # 音频和视频都属于媒体处理
             self.navigation_rail.selected_index = 1
-            self.content_container.content = self.audio_view
-            if hasattr(self.audio_view, 'open_tool'):
-                self.audio_view.open_tool(tool_name)
-        elif category == "video":
-            self.navigation_rail.selected_index = 2
-            self.content_container.content = self.video_view
-            # 视频视图使用 _open_view 方法
-            self.video_view._open_view(tool_name)
+            self.content_container.content = self.media_view
+            # 媒体视图使用 _open_view 方法
+            if hasattr(self.media_view, '_open_view'):
+                # 根据原始分类和工具名转换为媒体视图的view_name
+                if category == "audio":
+                    if tool_name == "format":
+                        self.media_view._open_view('audio_format')
+                    elif tool_name == "compress":
+                        self.media_view._open_view('audio_compress')
+                    elif tool_name == "vocal_extraction":
+                        self.media_view._open_view('vocal_extraction')
+                elif category == "video":
+                    if tool_name == "compress":
+                        self.media_view._open_view('video_compress')
+                    elif tool_name == "convert":
+                        self.media_view._open_view('video_convert')
+                    elif tool_name == "extract_audio":
+                        self.media_view._open_view('video_extract_audio')
+                    elif tool_name == "vocal_separation":
+                        self.media_view._open_view('video_vocal_separation')
+                    elif tool_name == "watermark":
+                        self.media_view._open_view('video_watermark')
         elif category == "dev":
-            self.navigation_rail.selected_index = 3
+            self.navigation_rail.selected_index = 2
             self.content_container.content = self.dev_tools_view
             if hasattr(self.dev_tools_view, 'open_tool'):
                 self.dev_tools_view.open_tool(tool_name)
         elif category == "others":
-            self.navigation_rail.selected_index = 4
+            self.navigation_rail.selected_index = 3
             self.content_container.content = self.others_view
             if hasattr(self.others_view, 'open_tool'):
                 self.others_view.open_tool(tool_name)

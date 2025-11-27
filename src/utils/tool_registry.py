@@ -159,12 +159,12 @@ def register_all_tools():
         tool_id="image.search",
     )
     
-    # ==================== 音频处理工具 ====================
+    # ==================== 媒体处理工具 ====================
     
     register_tool_manual(
         name="音频格式转换",
         description="转换音频格式(MP3/WAV/AAC等)",
-        category="音频处理",
+        category="媒体处理",
         keywords=["音频", "声音", "音乐", "格式", "转换", "audio", "sound", "music", "convert", "mp3", "wav", "aac", "flac", "ogg", "m4a"],
         icon="AUDIO_FILE_ROUNDED",
         tool_id="audio.format",
@@ -173,7 +173,7 @@ def register_all_tools():
     register_tool_manual(
         name="音频压缩",
         description="压缩音频文件大小",
-        category="音频处理",
+        category="媒体处理",
         keywords=["音频", "声音", "音乐", "压缩", "减小", "比特率", "采样率", "compress", "bitrate", "quality"],
         icon="COMPRESS",
         tool_id="audio.compress",
@@ -182,18 +182,16 @@ def register_all_tools():
     register_tool_manual(
         name="人声提取",
         description="AI智能分离人声和伴奏",
-        category="音频处理",
+        category="媒体处理",
         keywords=["人声", "伴奏", "分离", "提取", "vocal", "instrumental", "karaoke", "卡拉OK", "AI", "音轨"],
         icon="MUSIC_NOTE",
         tool_id="audio.vocal_extraction",
     )
     
-    # ==================== 视频处理工具 ====================
-    
     register_tool_manual(
         name="视频压缩",
         description="减小视频文件大小",
-        category="视频处理",
+        category="媒体处理",
         keywords=["视频", "压缩", "减小", "优化", "crf", "分辨率", "video", "compress", "reduce", "optimize"],
         icon="COMPRESS",
         tool_id="video.compress",
@@ -202,7 +200,7 @@ def register_all_tools():
     register_tool_manual(
         name="视频格式转换",
         description="转换视频格式(MP4/AVI/MKV等)",
-        category="视频处理",
+        category="媒体处理",
         keywords=["视频", "格式", "转换", "video", "convert", "format", "mp4", "avi", "mkv", "mov", "flv", "wmv", "webm"],
         icon="VIDEO_FILE_ROUNDED",
         tool_id="video.convert",
@@ -211,7 +209,7 @@ def register_all_tools():
     register_tool_manual(
         name="提取音频",
         description="从视频中提取音频轨道",
-        category="视频处理",
+        category="媒体处理",
         keywords=["提取", "导出", "分离", "音频", "声音", "视频", "extract", "export", "audio", "sound", "mp3"],
         icon="AUDIO_FILE_ROUNDED",
         tool_id="video.extract_audio",
@@ -220,7 +218,7 @@ def register_all_tools():
     register_tool_manual(
         name="视频人声分离",
         description="分离视频中的人声和背景音",
-        category="视频处理",
+        category="媒体处理",
         keywords=["人声", "伴奏", "背景音", "分离", "视频", "音频", "vocal", "instrumental", "separation", "AI", "消音", "卡拉OK", "伴唱"],
         icon="GRAPHIC_EQ",
         tool_id="video.vocal_separation",
@@ -229,7 +227,7 @@ def register_all_tools():
     register_tool_manual(
         name="视频添加水印",
         description="为视频添加文字或图片水印",
-        category="视频处理",
+        category="媒体处理",
         keywords=["水印", "视频", "文字", "图片", "添加", "overlay", "logo", "stamp"],
         icon="BRANDING_WATERMARK",
         tool_id="video.watermark",
@@ -255,12 +253,12 @@ def register_all_tools():
     )
     
     register_tool_manual(
-        name="代码格式化",
-        description="格式化代码(JSON/XML/SQL等)",
+        name="JSON 查看器",
+        description="格式化并以树形结构查看 JSON",
         category="开发工具",
-        keywords=["代码", "格式化", "美化", "JSON", "XML", "SQL", "format", "beautify", "pretty", "indent"],
-        icon="CODE",
-        tool_id="dev.code_format",
+        keywords=["JSON", "格式化", "查看", "树形", "解析", "prettify", "format", "viewer", "tree"],
+        icon="DATA_OBJECT",
+        tool_id="dev.json_viewer",
     )
 
     # ==================== 其他工具 ====================

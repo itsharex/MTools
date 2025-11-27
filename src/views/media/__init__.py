@@ -5,14 +5,12 @@
 """
 
 from views.media.audio_format_view import AudioFormatView
-from views.media.audio_view import AudioView
 from views.media.ffmpeg_install_view import FFmpegInstallView
-from views.media.video_view import VideoView
+from views.media.media_view import MediaView
 
 __all__ = [
-    'AudioView',
     'AudioFormatView',
     'FFmpegInstallView',
-    'VideoView',
+    'MediaView',
 ]
 

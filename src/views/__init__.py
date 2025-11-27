@@ -7,15 +7,14 @@
 from views.main_view import MainView
 from views.settings_view import SettingsView
 from views.image import ImageView
-from views.media import AudioView, VideoView
+from views.media import MediaView
 from views.dev_tools import DevToolsView
 
 __all__ = [
     'MainView',
     'SettingsView',
     'ImageView',
-    'AudioView',
-    'VideoView',
+    'MediaView',
     'DevToolsView',
 ]
 

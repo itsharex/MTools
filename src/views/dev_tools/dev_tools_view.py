@@ -233,12 +233,12 @@ class DevToolsView(ft.Container):
         """根据工具名称打开对应的工具。
         
         Args:
-            tool_name: 工具名称，如 "encoding", "code_format", "base64_to_image" 等
+            tool_name: 工具名称，如 "encoding", "json_viewer", "base64_to_image" 等
         """
         # 工具名称到方法的映射
         tool_map = {
             "encoding": self._open_encoding_convert,
-            "code_format": self._open_code_format,
+            "json_viewer": self._open_json_viewer,
             "base64_to_image": self._open_base64_to_image,
         }
         

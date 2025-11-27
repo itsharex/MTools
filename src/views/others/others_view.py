@@ -193,6 +193,10 @@ class OthersView(ft.Container):
     
     def _restore_main_view(self) -> None:
         """恢复到主视图。"""
+        # 销毁当前子视图（虽然others视图每次都创建新实例，但为了一致性还是清理）
+        # 注意：others视图的子视图没有保存为实例变量，每次都是新创建的
+        # 所以这里主要是清理引用
+        
         # 清除子视图状态
         self.current_sub_view = None
         self.current_sub_view_type = None
