@@ -15,7 +15,7 @@ from constants import (
     PADDING_XLARGE,
 )
 from services import ConfigService, EncodingService
-from views.encoding import EncodingConvertView
+from views.dev_tools.encoding_convert_view import EncodingConvertView
 
 
 class DevToolsView(ft.Container):
@@ -58,7 +58,6 @@ class DevToolsView(ft.Container):
         
         # 创建子视图（延迟创建）
         self.encoding_convert_view: Optional[EncodingConvertView] = None
-        self.code_format_view: Optional[ft.Container] = None
         self.base64_to_image_view: Optional[ft.Container] = None
         
         # 记录当前显示的视图（用于状态恢复）
@@ -98,13 +97,13 @@ class DevToolsView(ft.Container):
                     gradient_colors=("#667EEA", "#764BA2"),
                     on_click=self._open_encoding_convert,
                 ),
-                # 代码格式化
+                # JSON 查看器
                 FeatureCard(
-                    icon=ft.Icons.AUTO_FIX_HIGH_ROUNDED,
-                    title="代码格式化",
-                    description="格式化和美化代码",
+                    icon=ft.Icons.DATA_OBJECT,
+                    title="JSON 查看器",
+                    description="格式化并以树形结构查看 JSON",
                     gradient_colors=("#FA8BFF", "#2BD2FF"),
-                    on_click=self._open_code_format,
+                    on_click=self._open_json_viewer,
                 ),
                 # Base64转图片
                 FeatureCard(
@@ -153,24 +152,24 @@ class DevToolsView(ft.Container):
             self.parent_container.content = self.encoding_convert_view
         self._safe_page_update()
     
-    def _open_code_format(self, e: ft.ControlEvent) -> None:
-        """打开代码格式化。"""
+    def _open_json_viewer(self, e: ft.ControlEvent) -> None:
+        """打开 JSON 查看器。"""
         # 隐藏搜索按钮
         self._hide_search_button()
         
-        if self.code_format_view is None:
-            from views.code_format.detail_view import CodeFormatDetailView
-            self.code_format_view = CodeFormatDetailView(
-                self.page,
-                self.config_service,
-                on_back=self._back_to_main
-            )
+        from views.dev_tools.json_viewer_view import JsonViewerView
         
-        # 切换到代码格式化视图
+        json_viewer = JsonViewerView(
+            self.page,
+            self.config_service,
+            on_back=self._back_to_main
+        )
+        
+        # 切换到 JSON 查看器视图
         if self.parent_container:
-            self.current_sub_view = self.code_format_view
-            self.current_sub_view_type = "code_format"
-            self.parent_container.content = self.code_format_view
+            self.current_sub_view = json_viewer
+            self.current_sub_view_type = "json_viewer"
+            self.parent_container.content = json_viewer
         self._safe_page_update()
     
     def _open_base64_to_image(self, e: ft.ControlEvent) -> None:
@@ -199,7 +198,6 @@ class DevToolsView(ft.Container):
         if self.current_sub_view_type:
             view_map = {
                 "encoding_convert": "encoding_convert_view",
-                "code_format": "code_format_view",
                 "base64_to_image": "base64_to_image_view",
             }
             view_attr = view_map.get(self.current_sub_view_type)
