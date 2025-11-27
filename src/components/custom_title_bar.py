@@ -287,9 +287,23 @@ class CustomTitleBar(ft.Container):
         if self.weather_service:
             import asyncio
             try:
-                asyncio.create_task(self.weather_service.close())
-            except:
-                pass
+                # 获取当前事件循环
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    # 如果循环正在运行，创建任务
+                    asyncio.create_task(self.weather_service.close())
+                else:
+                    # 如果循环未运行，直接运行协程
+                    loop.run_until_complete(self.weather_service.close())
+            except Exception as ex:
+                # 如果上述方法都失败，尝试创建新的事件循环
+                try:
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    loop.run_until_complete(self.weather_service.close())
+                    loop.close()
+                except:
+                    pass
         
         # 关闭窗口
         self.page.window.close()

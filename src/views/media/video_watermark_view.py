@@ -203,6 +203,38 @@ class VideoWatermarkView(ft.Container):
             color=ft.Colors.ON_SURFACE_VARIANT,
         )
         
+        # 图片水印大小设置
+        self.image_size_mode_radio = ft.RadioGroup(
+            content=ft.Row(
+                controls=[
+                    ft.Radio(value="original", label="原始大小"),
+                    ft.Radio(value="scale", label="缩放比例"),
+                    ft.Radio(value="fixed", label="固定宽度"),
+                ],
+                spacing=PADDING_MEDIUM,
+            ),
+            value="original",
+            on_change=self._on_image_size_mode_change,
+        )
+        
+        self.image_scale_slider = ft.Slider(
+            min=10,
+            max=200,
+            divisions=19,
+            value=100,
+            label="{value}%",
+            disabled=True,
+        )
+        
+        self.image_width_field = ft.TextField(
+            label="宽度 (像素)",
+            hint_text="如: 200",
+            value="200",
+            width=150,
+            disabled=True,
+            keyboard_type=ft.KeyboardType.NUMBER,
+        )
+        
         self.image_watermark_container = ft.Container(
             content=ft.Column(
                 controls=[
@@ -223,7 +255,7 @@ class VideoWatermarkView(ft.Container):
                             controls=[
                                 ft.Icon(ft.Icons.INFO_OUTLINE, size=14, color=ft.Colors.ON_SURFACE_VARIANT),
                                 ft.Text(
-                                    "支持格式: PNG (推荐透明背景), JPG",
+                                    "支持格式: PNG (推荐透明背景), JPG, GIF (动态水印)",
                                     size=11,
                                     color=ft.Colors.ON_SURFACE_VARIANT,
                                 ),
@@ -232,6 +264,13 @@ class VideoWatermarkView(ft.Container):
                         ),
                         margin=ft.margin.only(top=4),
                     ),
+                    ft.Container(height=PADDING_SMALL),
+                    ft.Text("图片大小", size=12),
+                    self.image_size_mode_radio,
+                    ft.Container(height=PADDING_SMALL),
+                    ft.Text("缩放比例", size=12),
+                    self.image_scale_slider,
+                    self.image_width_field,
                 ],
                 spacing=PADDING_SMALL,
             ),
@@ -283,7 +322,7 @@ class VideoWatermarkView(ft.Container):
                     ft.Container(height=PADDING_SMALL),
                     self.position_dropdown,
                     ft.Container(height=PADDING_SMALL),
-                    ft.Text("透明度", size=12),
+                    ft.Text("不透明度", size=12),
                     self.opacity_slider,
                     ft.Text("边距", size=12),
                     self.margin_slider,
@@ -472,6 +511,23 @@ class VideoWatermarkView(ft.Container):
         self.text_watermark_container.update()
         self.image_watermark_container.update()
     
+    def _on_image_size_mode_change(self, e: ft.ControlEvent) -> None:
+        """图片大小模式改变事件。"""
+        mode = e.control.value
+        
+        if mode == "original":
+            self.image_scale_slider.disabled = True
+            self.image_width_field.disabled = True
+        elif mode == "scale":
+            self.image_scale_slider.disabled = False
+            self.image_width_field.disabled = True
+        else:  # fixed
+            self.image_scale_slider.disabled = True
+            self.image_width_field.disabled = False
+        
+        self.image_scale_slider.update()
+        self.image_width_field.update()
+    
     def _on_select_watermark_image(self, e: ft.ControlEvent) -> None:
         """选择水印图片按钮点击事件。"""
         def on_file_picked(result: ft.FilePickerResultEvent) -> None:
@@ -486,7 +542,7 @@ class VideoWatermarkView(ft.Container):
         
         file_picker.pick_files(
             dialog_title="选择水印图片",
-            allowed_extensions=["png", "jpg", "jpeg", "PNG", "JPG", "JPEG"],
+            allowed_extensions=["png", "jpg", "jpeg", "gif", "PNG", "JPG", "JPEG", "GIF"],
             allow_multiple=False,
         )
     
@@ -701,15 +757,6 @@ class VideoWatermarkView(ft.Container):
             margin = int(self.margin_slider.value)
             opacity = self.opacity_slider.value / 100.0
             
-            # 位置映射
-            position_map = {
-                "top_left": f"{margin}:{margin}",
-                "top_right": f"W-w-{margin}:{margin}",
-                "bottom_left": f"{margin}:H-h-{margin}",
-                "bottom_right": f"W-w-{margin}:H-h-{margin}",
-                "center": "(W-w)/2:(H-h)/2",
-            }
-            
             # 构建输入
             stream = ffmpeg.input(str(input_path))
             
@@ -725,7 +772,16 @@ class VideoWatermarkView(ft.Container):
                 # 转义特殊字符
                 text = text.replace(":", "\\:").replace("'", "\\'").replace(",", "\\,")
                 
-                x_pos, y_pos = position_map[position].split(':')
+                # 为 drawtext 构建位置表达式
+                # drawtext 中使用: main_w/main_h=视频尺寸, text_w/text_h=文本框尺寸
+                text_position_map = {
+                    "top_left": (margin, margin),
+                    "top_right": (f"main_w-text_w-{margin}", margin),
+                    "bottom_left": (margin, f"main_h-text_h-{margin}"),
+                    "bottom_right": (f"main_w-text_w-{margin}", f"main_h-text_h-{margin}"),
+                    "center": ("(main_w-text_w)/2", "(main_h-text_h)/2"),
+                }
+                x_pos, y_pos = text_position_map[position]
                 
                 # 应用文字滤镜
                 stream = ffmpeg.drawtext(
@@ -733,8 +789,8 @@ class VideoWatermarkView(ft.Container):
                     text=text,
                     fontsize=font_size,
                     fontcolor=f"{color}@{opacity}",
-                    x=x_pos,
-                    y=y_pos
+                    x=str(x_pos),
+                    y=str(y_pos)
                 )
                 
                 # 检测GPU编码器
@@ -773,14 +829,53 @@ class VideoWatermarkView(ft.Container):
                 # 读取水印图片
                 watermark = ffmpeg.input(str(self.watermark_image_path))
                 
+                # 调整图片大小
+                size_mode = self.image_size_mode_radio.value
+                if size_mode == "scale":
+                    # 按比例缩放
+                    scale_percent = int(self.image_scale_slider.value) / 100.0
+                    watermark = ffmpeg.filter(watermark, 'scale', f"iw*{scale_percent}", f"ih*{scale_percent}")
+                elif size_mode == "fixed":
+                    # 固定宽度，高度按比例
+                    try:
+                        width = int(self.image_width_field.value)
+                        watermark = ffmpeg.filter(watermark, 'scale', width, -1)
+                    except (ValueError, TypeError):
+                        return False, "请输入有效的宽度值"
+                # original 模式不做处理
+                
                 # 如果需要调整透明度
                 if opacity < 1.0:
                     watermark = ffmpeg.filter(watermark, 'format', 'rgba')
                     watermark = ffmpeg.filter(watermark, 'colorchannelmixer', aa=opacity)
                 
-                # 应用overlay滤镜
-                x_pos, y_pos = position_map[position].split(':')
-                stream = ffmpeg.overlay(stream, watermark, x=x_pos, y=y_pos)
+                # 为 overlay 构建位置表达式 (使用 main_w, main_h, overlay_w, overlay_h)
+                overlay_position_map = {
+                    "top_left": (margin, margin),
+                    "top_right": (f"main_w-overlay_w-{margin}", margin),
+                    "bottom_left": (margin, f"main_h-overlay_h-{margin}"),
+                    "bottom_right": (f"main_w-overlay_w-{margin}", f"main_h-overlay_h-{margin}"),
+                    "center": ("(main_w-overlay_w)/2", "(main_h-overlay_h)/2"),
+                }
+                x_pos, y_pos = overlay_position_map[position]
+                
+                # 检查是否是 GIF 文件
+                is_gif = self.watermark_image_path.suffix.lower() == '.gif'
+                
+                # 应用 overlay 滤镜
+                if is_gif:
+                    # GIF 需要循环播放，使用 shortest=1 让水印循环到视频结束
+                    stream = ffmpeg.overlay(
+                        stream, 
+                        watermark, 
+                        x=str(x_pos), 
+                        y=str(y_pos),
+                        shortest=1,
+                        repeatlast=0  # 不重复最后一帧，而是循环
+                    )
+                else:
+                    # 静态图片
+                    stream = ffmpeg.overlay(stream, watermark, x=str(x_pos), y=str(y_pos))
                 
                 # 检测GPU编码器
                 gpu_encoder = self.ffmpeg_service.get_preferred_gpu_encoder()

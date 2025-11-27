@@ -143,6 +143,19 @@ class ImageWatermarkView(ft.Container):
         # 初始化空状态
         self._init_empty_file_list()
         
+        # 水印类型选择（文字/图片）
+        self.watermark_type_radio = ft.RadioGroup(
+            content=ft.Row(
+                controls=[
+                    ft.Radio(value="text", label="文字水印"),
+                    ft.Radio(value="image", label="图片水印"),
+                ],
+                spacing=PADDING_MEDIUM,
+            ),
+            value="text",
+            on_change=self._on_watermark_type_change,
+        )
+        
         # 水印设置
         self.watermark_text_field = ft.TextField(
             label="水印文字",
@@ -220,6 +233,88 @@ class ImageWatermarkView(ft.Container):
                     self.tile_spacing_h_slider,
                     ft.Text("垂直间距", size=12),
                     self.tile_spacing_v_slider,
+                ],
+                spacing=PADDING_SMALL,
+            ),
+            visible=False,
+        )
+        
+        # 图片水印设置
+        self.watermark_image_path: Optional[Path] = None
+        self.watermark_image_text = ft.Text(
+            "未选择水印图片",
+            size=12,
+            color=ft.Colors.ON_SURFACE_VARIANT,
+        )
+        
+        # 图片水印大小设置
+        self.image_size_mode_radio = ft.RadioGroup(
+            content=ft.Row(
+                controls=[
+                    ft.Radio(value="original", label="原始大小"),
+                    ft.Radio(value="scale", label="缩放比例"),
+                    ft.Radio(value="fixed", label="固定宽度"),
+                ],
+                spacing=PADDING_MEDIUM,
+            ),
+            value="original",
+            on_change=self._on_image_size_mode_change,
+        )
+        
+        self.image_scale_slider = ft.Slider(
+            min=10,
+            max=200,
+            divisions=19,
+            value=100,
+            label="{value}%",
+            disabled=True,
+        )
+        
+        self.image_width_field = ft.TextField(
+            label="宽度 (像素)",
+            hint_text="如: 200",
+            value="200",
+            width=150,
+            disabled=True,
+            keyboard_type=ft.KeyboardType.NUMBER,
+        )
+        
+        self.image_watermark_container = ft.Container(
+            content=ft.Column(
+                controls=[
+                    ft.Row(
+                        controls=[
+                            ft.ElevatedButton(
+                                text="选择水印图片",
+                                icon=ft.Icons.IMAGE,
+                                on_click=self._on_select_watermark_image,
+                            ),
+                            self.watermark_image_text,
+                        ],
+                        spacing=PADDING_MEDIUM,
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                    ),
+                    ft.Container(
+                        content=ft.Row(
+                            controls=[
+                                ft.Icon(ft.Icons.INFO_OUTLINE, size=14, color=ft.Colors.ON_SURFACE_VARIANT),
+                                ft.Text(
+                                    "支持格式: PNG (推荐透明背景), JPG, GIF (动态水印)",
+                                    size=11,
+                                    color=ft.Colors.ON_SURFACE_VARIANT,
+                                ),
+                            ],
+                            spacing=4,
+                        ),
+                        margin=ft.margin.only(top=4),
+                    ),
+                    ft.Container(height=PADDING_SMALL),
+                    ft.Text("图片大小", size=12),
+                    self.image_size_mode_radio,
+                    ft.Container(height=PADDING_SMALL),
+                    ft.Text("缩放比例", size=12),
+                    self.image_scale_slider,
+                    self.image_width_field,
                 ],
                 spacing=PADDING_SMALL,
             ),
@@ -421,34 +516,50 @@ class ImageWatermarkView(ft.Container):
                 controls=[
                     ft.Text("水印设置", size=16, weight=ft.FontWeight.BOLD),
                     ft.Container(height=PADDING_SMALL),
-                    self.watermark_text_field,
+                    ft.Text("水印类型", size=12),
+                    self.watermark_type_radio,
                     ft.Container(height=PADDING_SMALL),
-                    ft.Text("水印模式", size=12),
-                    self.watermark_mode_radio,
-                    ft.Container(height=PADDING_SMALL),
-                    self.single_position_container,
-                    self.tile_settings_container,
-                    ft.Container(height=PADDING_SMALL),
-                    ft.Text("字体", size=12),
-                    self.font_dropdown,
-                    self.custom_font_container,
-                    ft.Container(height=PADDING_SMALL),
-                    ft.Text("文字颜色", size=12),
-                    ft.Row(
-                        controls=[
-                            self.color_preview,
-                            self.color_field,
-                            color_picker_button,
-                        ],
-                        spacing=PADDING_MEDIUM,
-                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                    # 文字水印设置区域
+                    ft.Container(
+                        content=ft.Column(
+                            controls=[
+                                self.watermark_text_field,
+                                ft.Container(height=PADDING_SMALL),
+                                ft.Text("水印模式", size=12),
+                                self.watermark_mode_radio,
+                                ft.Container(height=PADDING_SMALL),
+                                self.single_position_container,
+                                self.tile_settings_container,
+                                ft.Container(height=PADDING_SMALL),
+                                ft.Text("字体", size=12),
+                                self.font_dropdown,
+                                self.custom_font_container,
+                                ft.Container(height=PADDING_SMALL),
+                                ft.Text("文字颜色", size=12),
+                                ft.Row(
+                                    controls=[
+                                        self.color_preview,
+                                        self.color_field,
+                                        color_picker_button,
+                                    ],
+                                    spacing=PADDING_MEDIUM,
+                                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                                ),
+                                ft.Container(height=PADDING_SMALL),
+                                ft.Text("字体大小模式", size=12),
+                                self.font_size_mode_radio,
+                                self.font_size_fixed_container,
+                                self.font_size_auto_container,
+                            ],
+                            spacing=PADDING_SMALL,
+                        ),
+                        visible=True,
+                        ref=ft.Ref[ft.Container](),
                     ),
-                    ft.Container(height=PADDING_SMALL),
-                    ft.Text("字体大小模式", size=12),
-                    self.font_size_mode_radio,
-                    self.font_size_fixed_container,
-                    self.font_size_auto_container,
-                    ft.Text("透明度", size=12),
+                    # 图片水印设置区域
+                    self.image_watermark_container,
+                    # 通用设置（透明度和边距）
+                    ft.Text("不透明度", size=12),
                     self.opacity_slider,
                     self.margin_container,
                 ],
@@ -458,6 +569,9 @@ class ImageWatermarkView(ft.Container):
             border=ft.border.all(1, ft.Colors.OUTLINE),
             border_radius=8,
         )
+        
+        # 保存文字水印容器引用
+        self.text_watermark_container = watermark_section.content.controls[5]
         
         # 输出设置
         self.output_format_dropdown = ft.Dropdown(
@@ -877,6 +991,61 @@ class ImageWatermarkView(ft.Container):
             )
         )
     
+    def _on_watermark_type_change(self, e: ft.ControlEvent) -> None:
+        """水印类型改变事件。"""
+        watermark_type = e.control.value
+        
+        if watermark_type == "text":
+            self.text_watermark_container.visible = True
+            self.image_watermark_container.visible = False
+        else:
+            self.text_watermark_container.visible = False
+            self.image_watermark_container.visible = True
+        
+        self.text_watermark_container.update()
+        self.image_watermark_container.update()
+    
+    def _on_select_watermark_image(self, e: ft.ControlEvent) -> None:
+        """选择水印图片按钮点击事件。"""
+        def on_file_picked(result: ft.FilePickerResultEvent) -> None:
+            if result.files and len(result.files) > 0:
+                self.watermark_image_path = Path(result.files[0].path)
+                self.watermark_image_text.value = self.watermark_image_path.name
+                self.watermark_image_text.update()
+                
+                # 更新预览
+                self._update_preview()
+        
+        file_picker = ft.FilePicker(on_result=on_file_picked)
+        self.page.overlay.append(file_picker)
+        self.page.update()
+        
+        file_picker.pick_files(
+            dialog_title="选择水印图片",
+            allowed_extensions=["png", "jpg", "jpeg", "gif", "PNG", "JPG", "JPEG", "GIF"],
+            allow_multiple=False,
+        )
+    
+    def _on_image_size_mode_change(self, e: ft.ControlEvent) -> None:
+        """图片大小模式改变事件。"""
+        mode = e.control.value
+        
+        if mode == "original":
+            self.image_scale_slider.disabled = True
+            self.image_width_field.disabled = True
+        elif mode == "scale":
+            self.image_scale_slider.disabled = False
+            self.image_width_field.disabled = True
+        else:  # fixed
+            self.image_scale_slider.disabled = True
+            self.image_width_field.disabled = False
+        
+        self.image_scale_slider.update()
+        self.image_width_field.update()
+        
+        # 更新预览
+        self._update_preview()
+    
     def _on_mode_change(self, e: ft.ControlEvent) -> None:
         """水印模式改变事件。"""
         mode = e.control.value
@@ -1209,10 +1378,18 @@ class ImageWatermarkView(ft.Container):
             self._show_message("请先选择图片文件", ft.Colors.ERROR)
             return
         
-        watermark_text = self.watermark_text_field.value.strip()
-        if not watermark_text:
-            self._show_message("请输入水印文字", ft.Colors.ERROR)
-            return
+        watermark_type = self.watermark_type_radio.value
+        
+        # 检查水印内容
+        if watermark_type == "text":
+            watermark_text = self.watermark_text_field.value.strip()
+            if not watermark_text:
+                self._show_message("请输入水印文字", ft.Colors.ERROR)
+                return
+        else:
+            if not self.watermark_image_path or not self.watermark_image_path.exists():
+                self._show_message("请选择水印图片", ft.Colors.ERROR)
+                return
         
         try:
             # 使用第一个文件生成预览
@@ -1221,9 +1398,6 @@ class ImageWatermarkView(ft.Container):
             if not preview_file.exists():
                 self._show_message("文件不存在", ft.Colors.ERROR)
                 return
-            
-            # 使用当前选择的颜色
-            text_color = self.current_color
             
             # 读取图片
             img = Image.open(preview_file)
@@ -1239,85 +1413,157 @@ class ImageWatermarkView(ft.Container):
             opacity = int(self.opacity_slider.value * 255 / 100)
             watermark_mode = self.watermark_mode_radio.value
             
-            # 单个水印模式的设置
-            margin = int(self.margin_slider.value)
-            position = self.position_dropdown.value
+            if watermark_type == "text":
+                # 文字水印处理
+                watermark_text = self.watermark_text_field.value.strip()
+                text_color = self.current_color
+                
+                # 单个水印模式的设置
+                margin = int(self.margin_slider.value)
+                position = self.position_dropdown.value
+                
+                # 平铺水印模式的设置
+                tile_angle = int(self.tile_angle_slider.value)
+                tile_spacing_h = int(self.tile_spacing_h_slider.value)
+                tile_spacing_v = int(self.tile_spacing_v_slider.value)
+                
+                # 计算字体大小（根据模式：固定或自适应）
+                font_size = self._calculate_font_size(img_width)
+                
+                # 创建文字层
+                txt_layer = Image.new('RGBA', img.size, (255, 255, 255, 0))
+                draw = ImageDraw.Draw(txt_layer)
+                
+                # 加载选择的字体
+                font = self._get_font(font_size)
+                
+                # 获取文字大小
+                bbox = draw.textbbox((0, 0), watermark_text, font=font)
+                text_width = bbox[2] - bbox[0]
+                text_height = bbox[3] - bbox[1]
+                
+                text_color_with_alpha = text_color + (opacity,)
+                
+                if watermark_mode == "single":
+                    # 单个水印模式
+                    if position == "top_left":
+                        x, y = margin, margin
+                    elif position == "top_center":
+                        x, y = (img_width - text_width) // 2, margin
+                    elif position == "top_right":
+                        x, y = img_width - text_width - margin, margin
+                    elif position == "middle_left":
+                        x, y = margin, (img_height - text_height) // 2
+                    elif position == "center":
+                        x, y = (img_width - text_width) // 2, (img_height - text_height) // 2
+                    elif position == "middle_right":
+                        x, y = img_width - text_width - margin, (img_height - text_height) // 2
+                    elif position == "bottom_left":
+                        x, y = margin, img_height - text_height - margin
+                    elif position == "bottom_center":
+                        x, y = (img_width - text_width) // 2, img_height - text_height - margin
+                    else:  # bottom_right
+                        x, y = img_width - text_width - margin, img_height - text_height - margin
+                    
+                    # 绘制单个文字
+                    draw.text((x, y), watermark_text, font=font, fill=text_color_with_alpha)
+                
+                else:
+                    # 平铺水印模式
+                    # 创建一个临时图层用于旋转文字
+                    temp_layer = Image.new('RGBA', (text_width + 50, text_height + 50), (255, 255, 255, 0))
+                    temp_draw = ImageDraw.Draw(temp_layer)
+                    temp_draw.text((25, 25), watermark_text, font=font, fill=text_color_with_alpha)
+                    
+                    # 旋转文字
+                    if tile_angle != 0:
+                        temp_layer = temp_layer.rotate(tile_angle, expand=True)
+                    
+                    rotated_width, rotated_height = temp_layer.size
+                    
+                    # 计算需要平铺的行列数
+                    cols = (img_width // tile_spacing_h) + 2
+                    rows = (img_height // tile_spacing_v) + 2
+                    
+                    # 平铺水印
+                    for row in range(rows):
+                        for col in range(cols):
+                            x = col * tile_spacing_h - rotated_width // 2
+                            y = row * tile_spacing_v - rotated_height // 2
+                            
+                            # 确保在图片范围内
+                            if x + rotated_width > 0 and x < img_width and y + rotated_height > 0 and y < img_height:
+                                txt_layer.paste(temp_layer, (x, y), temp_layer)
+                
+                # 合并图层
+                preview_img = Image.alpha_composite(img, txt_layer)
             
-            # 平铺水印模式的设置
-            tile_angle = int(self.tile_angle_slider.value)
-            tile_spacing_h = int(self.tile_spacing_h_slider.value)
-            tile_spacing_v = int(self.tile_spacing_v_slider.value)
-            
-            # 计算字体大小（根据模式：固定或自适应）
-            font_size = self._calculate_font_size(img_width)
-            
-            # 创建文字层
-            txt_layer = Image.new('RGBA', img.size, (255, 255, 255, 0))
-            draw = ImageDraw.Draw(txt_layer)
-            
-            # 加载选择的字体
-            font = self._get_font(font_size)
-            
-            # 获取文字大小
-            bbox = draw.textbbox((0, 0), watermark_text, font=font)
-            text_width = bbox[2] - bbox[0]
-            text_height = bbox[3] - bbox[1]
-            
-            text_color_with_alpha = text_color + (opacity,)
-            
-            if watermark_mode == "single":
-                # 单个水印模式
+            else:
+                # 图片水印处理
+                watermark_img = Image.open(self.watermark_image_path)
+                
+                # 转换为RGBA模式
+                if watermark_img.mode != 'RGBA':
+                    watermark_img = watermark_img.convert('RGBA')
+                
+                # 调整图片水印大小
+                size_mode = self.image_size_mode_radio.value
+                if size_mode == "scale":
+                    # 按比例缩放
+                    scale_percent = int(self.image_scale_slider.value) / 100.0
+                    new_width = int(watermark_img.width * scale_percent)
+                    new_height = int(watermark_img.height * scale_percent)
+                    watermark_img = watermark_img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+                elif size_mode == "fixed":
+                    # 固定宽度，高度按比例
+                    try:
+                        width = int(self.image_width_field.value)
+                        ratio = width / watermark_img.width
+                        height = int(watermark_img.height * ratio)
+                        watermark_img = watermark_img.resize((width, height), Image.Resampling.LANCZOS)
+                    except (ValueError, TypeError):
+                        pass  # 保持原始大小
+                # original 模式不做处理
+                
+                # 调整透明度
+                if opacity < 255:
+                    alpha = watermark_img.split()[3]
+                    alpha = Image.eval(alpha, lambda a: int(a * opacity / 255))
+                    watermark_img.putalpha(alpha)
+                
+                # 创建水印层
+                txt_layer = Image.new('RGBA', img.size, (255, 255, 255, 0))
+                
+                # 只支持单个水印模式（图片水印不支持平铺）
+                margin = int(self.margin_slider.value)
+                position = self.position_dropdown.value
+                
+                wm_width, wm_height = watermark_img.size
+                
                 if position == "top_left":
                     x, y = margin, margin
                 elif position == "top_center":
-                    x, y = (img_width - text_width) // 2, margin
+                    x, y = (img_width - wm_width) // 2, margin
                 elif position == "top_right":
-                    x, y = img_width - text_width - margin, margin
+                    x, y = img_width - wm_width - margin, margin
                 elif position == "middle_left":
-                    x, y = margin, (img_height - text_height) // 2
+                    x, y = margin, (img_height - wm_height) // 2
                 elif position == "center":
-                    x, y = (img_width - text_width) // 2, (img_height - text_height) // 2
+                    x, y = (img_width - wm_width) // 2, (img_height - wm_height) // 2
                 elif position == "middle_right":
-                    x, y = img_width - text_width - margin, (img_height - text_height) // 2
+                    x, y = img_width - wm_width - margin, (img_height - wm_height) // 2
                 elif position == "bottom_left":
-                    x, y = margin, img_height - text_height - margin
+                    x, y = margin, img_height - wm_height - margin
                 elif position == "bottom_center":
-                    x, y = (img_width - text_width) // 2, img_height - text_height - margin
+                    x, y = (img_width - wm_width) // 2, img_height - wm_height - margin
                 else:  # bottom_right
-                    x, y = img_width - text_width - margin, img_height - text_height - margin
+                    x, y = img_width - wm_width - margin, img_height - wm_height - margin
                 
-                # 绘制单个文字
-                draw.text((x, y), watermark_text, font=font, fill=text_color_with_alpha)
-            
-            else:
-                # 平铺水印模式
-                # 创建一个临时图层用于旋转文字
-                temp_layer = Image.new('RGBA', (text_width + 50, text_height + 50), (255, 255, 255, 0))
-                temp_draw = ImageDraw.Draw(temp_layer)
-                temp_draw.text((25, 25), watermark_text, font=font, fill=text_color_with_alpha)
+                # 粘贴水印图片
+                txt_layer.paste(watermark_img, (x, y), watermark_img)
                 
-                # 旋转文字
-                if tile_angle != 0:
-                    temp_layer = temp_layer.rotate(tile_angle, expand=True)
-                
-                rotated_width, rotated_height = temp_layer.size
-                
-                # 计算需要平铺的行列数
-                cols = (img_width // tile_spacing_h) + 2
-                rows = (img_height // tile_spacing_v) + 2
-                
-                # 平铺水印
-                for row in range(rows):
-                    for col in range(cols):
-                        x = col * tile_spacing_h - rotated_width // 2
-                        y = row * tile_spacing_v - rotated_height // 2
-                        
-                        # 确保在图片范围内
-                        if x + rotated_width > 0 and x < img_width and y + rotated_height > 0 and y < img_height:
-                            txt_layer.paste(temp_layer, (x, y), temp_layer)
-            
-            # 合并图层
-            preview_img = Image.alpha_composite(img, txt_layer)
+                # 合并图层
+                preview_img = Image.alpha_composite(img, txt_layer)
             
             # 调整预览图片大小
             preview_img.thumbnail((400, 400), Image.Resampling.LANCZOS)
@@ -1352,10 +1598,18 @@ class ImageWatermarkView(ft.Container):
             self._show_message("请先选择图片文件", ft.Colors.ERROR)
             return
         
-        watermark_text = self.watermark_text_field.value.strip()
-        if not watermark_text:
-            self._show_message("请输入水印文字", ft.Colors.ERROR)
-            return
+        watermark_type = self.watermark_type_radio.value
+        
+        # 检查水印内容
+        if watermark_type == "text":
+            watermark_text = self.watermark_text_field.value.strip()
+            if not watermark_text:
+                self._show_message("请输入水印文字", ft.Colors.ERROR)
+                return
+        else:
+            if not self.watermark_image_path or not self.watermark_image_path.exists():
+                self._show_message("请选择水印图片", ft.Colors.ERROR)
+                return
         
         # 显示进度
         self.progress_text.visible = True
@@ -1365,18 +1619,13 @@ class ImageWatermarkView(ft.Container):
         self.page.update()
         
         try:
-            # 使用当前选择的颜色
-            text_color = self.current_color
-            
             # 获取设置
             opacity = int(self.opacity_slider.value * 255 / 100)
             watermark_mode = self.watermark_mode_radio.value
-            
-            # 单个水印模式的设置
             margin = int(self.margin_slider.value)
             position = self.position_dropdown.value
             
-            # 平铺水印模式的设置
+            # 平铺水印模式的设置（文字水印专用）
             tile_angle = int(self.tile_angle_slider.value)
             tile_spacing_h = int(self.tile_spacing_h_slider.value)
             tile_spacing_v = int(self.tile_spacing_v_slider.value)
@@ -1404,73 +1653,137 @@ class ImageWatermarkView(ft.Container):
                     # 获取图片尺寸
                     img_width, img_height = img.size
                     
-                    # 计算字体大小（根据模式：固定或自适应）
-                    font_size = self._calculate_font_size(img_width)
-                    
-                    # 创建文字层
+                    # 创建水印层
                     txt_layer = Image.new('RGBA', img.size, (255, 255, 255, 0))
-                    draw = ImageDraw.Draw(txt_layer)
                     
-                    # 加载选择的字体
-                    font = self._get_font(font_size)
+                    if watermark_type == "text":
+                        # 文字水印处理
+                        watermark_text = self.watermark_text_field.value.strip()
+                        text_color = self.current_color
+                        
+                        # 计算字体大小（根据模式：固定或自适应）
+                        font_size = self._calculate_font_size(img_width)
+                        
+                        draw = ImageDraw.Draw(txt_layer)
+                        
+                        # 加载选择的字体
+                        font = self._get_font(font_size)
+                        
+                        # 获取文字大小
+                        bbox = draw.textbbox((0, 0), watermark_text, font=font)
+                        text_width = bbox[2] - bbox[0]
+                        text_height = bbox[3] - bbox[1]
+                        
+                        text_color_with_alpha = text_color + (opacity,)
+                        
+                        if watermark_mode == "single":
+                            # 单个水印模式
+                            if position == "top_left":
+                                x, y = margin, margin
+                            elif position == "top_center":
+                                x, y = (img_width - text_width) // 2, margin
+                            elif position == "top_right":
+                                x, y = img_width - text_width - margin, margin
+                            elif position == "middle_left":
+                                x, y = margin, (img_height - text_height) // 2
+                            elif position == "center":
+                                x, y = (img_width - text_width) // 2, (img_height - text_height) // 2
+                            elif position == "middle_right":
+                                x, y = img_width - text_width - margin, (img_height - text_height) // 2
+                            elif position == "bottom_left":
+                                x, y = margin, img_height - text_height - margin
+                            elif position == "bottom_center":
+                                x, y = (img_width - text_width) // 2, img_height - text_height - margin
+                            else:  # bottom_right
+                                x, y = img_width - text_width - margin, img_height - text_height - margin
+                            
+                            # 绘制单个文字
+                            draw.text((x, y), watermark_text, font=font, fill=text_color_with_alpha)
+                        
+                        else:
+                            # 平铺水印模式
+                            # 创建一个临时图层用于旋转文字
+                            temp_layer = Image.new('RGBA', (text_width + 50, text_height + 50), (255, 255, 255, 0))
+                            temp_draw = ImageDraw.Draw(temp_layer)
+                            temp_draw.text((25, 25), watermark_text, font=font, fill=text_color_with_alpha)
+                            
+                            # 旋转文字
+                            if tile_angle != 0:
+                                temp_layer = temp_layer.rotate(tile_angle, expand=True)
+                            
+                            rotated_width, rotated_height = temp_layer.size
+                            
+                            # 计算需要平铺的行列数
+                            cols = (img_width // tile_spacing_h) + 2
+                            rows = (img_height // tile_spacing_v) + 2
+                            
+                            # 平铺水印
+                            for row in range(rows):
+                                for col in range(cols):
+                                    x = col * tile_spacing_h - rotated_width // 2
+                                    y = row * tile_spacing_v - rotated_height // 2
+                                    
+                                    # 确保在图片范围内
+                                    if x + rotated_width > 0 and x < img_width and y + rotated_height > 0 and y < img_height:
+                                        txt_layer.paste(temp_layer, (x, y), temp_layer)
                     
-                    # 获取文字大小
-                    bbox = draw.textbbox((0, 0), watermark_text, font=font)
-                    text_width = bbox[2] - bbox[0]
-                    text_height = bbox[3] - bbox[1]
-                    
-                    text_color_with_alpha = text_color + (opacity,)
-                    
-                    if watermark_mode == "single":
-                        # 单个水印模式
+                    else:
+                        # 图片水印处理
+                        watermark_img = Image.open(self.watermark_image_path)
+                        
+                        # 转换为RGBA模式
+                        if watermark_img.mode != 'RGBA':
+                            watermark_img = watermark_img.convert('RGBA')
+                        
+                        # 调整图片水印大小
+                        size_mode = self.image_size_mode_radio.value
+                        if size_mode == "scale":
+                            # 按比例缩放
+                            scale_percent = int(self.image_scale_slider.value) / 100.0
+                            new_width = int(watermark_img.width * scale_percent)
+                            new_height = int(watermark_img.height * scale_percent)
+                            watermark_img = watermark_img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+                        elif size_mode == "fixed":
+                            # 固定宽度，高度按比例
+                            try:
+                                width = int(self.image_width_field.value)
+                                ratio = width / watermark_img.width
+                                height = int(watermark_img.height * ratio)
+                                watermark_img = watermark_img.resize((width, height), Image.Resampling.LANCZOS)
+                            except (ValueError, TypeError):
+                                pass  # 保持原始大小
+                        # original 模式不做处理
+                        
+                        # 调整透明度
+                        if opacity < 255:
+                            alpha = watermark_img.split()[3]
+                            alpha = Image.eval(alpha, lambda a: int(a * opacity / 255))
+                            watermark_img.putalpha(alpha)
+                        
+                        # 只支持单个水印模式（图片水印不支持平铺）
+                        wm_width, wm_height = watermark_img.size
+                        
                         if position == "top_left":
                             x, y = margin, margin
                         elif position == "top_center":
-                            x, y = (img_width - text_width) // 2, margin
+                            x, y = (img_width - wm_width) // 2, margin
                         elif position == "top_right":
-                            x, y = img_width - text_width - margin, margin
+                            x, y = img_width - wm_width - margin, margin
                         elif position == "middle_left":
-                            x, y = margin, (img_height - text_height) // 2
+                            x, y = margin, (img_height - wm_height) // 2
                         elif position == "center":
-                            x, y = (img_width - text_width) // 2, (img_height - text_height) // 2
+                            x, y = (img_width - wm_width) // 2, (img_height - wm_height) // 2
                         elif position == "middle_right":
-                            x, y = img_width - text_width - margin, (img_height - text_height) // 2
+                            x, y = img_width - wm_width - margin, (img_height - wm_height) // 2
                         elif position == "bottom_left":
-                            x, y = margin, img_height - text_height - margin
+                            x, y = margin, img_height - wm_height - margin
                         elif position == "bottom_center":
-                            x, y = (img_width - text_width) // 2, img_height - text_height - margin
+                            x, y = (img_width - wm_width) // 2, img_height - wm_height - margin
                         else:  # bottom_right
-                            x, y = img_width - text_width - margin, img_height - text_height - margin
+                            x, y = img_width - wm_width - margin, img_height - wm_height - margin
                         
-                        # 绘制单个文字
-                        draw.text((x, y), watermark_text, font=font, fill=text_color_with_alpha)
-                    
-                    else:
-                        # 平铺水印模式
-                        # 创建一个临时图层用于旋转文字
-                        temp_layer = Image.new('RGBA', (text_width + 50, text_height + 50), (255, 255, 255, 0))
-                        temp_draw = ImageDraw.Draw(temp_layer)
-                        temp_draw.text((25, 25), watermark_text, font=font, fill=text_color_with_alpha)
-                        
-                        # 旋转文字
-                        if tile_angle != 0:
-                            temp_layer = temp_layer.rotate(tile_angle, expand=True)
-                        
-                        rotated_width, rotated_height = temp_layer.size
-                        
-                        # 计算需要平铺的行列数
-                        cols = (img_width // tile_spacing_h) + 2
-                        rows = (img_height // tile_spacing_v) + 2
-                        
-                        # 平铺水印
-                        for row in range(rows):
-                            for col in range(cols):
-                                x = col * tile_spacing_h - rotated_width // 2
-                                y = row * tile_spacing_v - rotated_height // 2
-                                
-                                # 确保在图片范围内
-                                if x + rotated_width > 0 and x < img_width and y + rotated_height > 0 and y < img_height:
-                                    txt_layer.paste(temp_layer, (x, y), temp_layer)
+                        # 粘贴水印图片
+                        txt_layer.paste(watermark_img, (x, y), watermark_img)
                     
                     # 合并图层
                     watermarked = Image.alpha_composite(img, txt_layer)
