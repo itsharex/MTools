@@ -55,6 +55,364 @@ class JsonTreeNode(ft.Container):
         self.content_ref = ft.Ref[ft.Column]()
         
         self.content = self._build_view()
+    
+    def get_path_formats(self) -> Dict[str, str]:
+        """获取不同语言格式的路径。
+        
+        Returns:
+            包含不同格式路径的字典（去重后）
+        """
+        # 先生成所有格式
+        all_formats = {}
+        
+        # 简单点号格式: key.subkey (原始格式)
+        all_formats['简单格式'] = self.full_path
+        
+        # JavaScript 点号格式: data.key[0].subkey
+        js_dot_path = self._to_javascript_dot_path()
+        all_formats['JS/TS (点号)'] = js_dot_path
+        
+        # Python/Ruby 单引号括号格式: data['key'][0]['subkey']
+        python_path = self._to_python_path()
+        all_formats['Python/Ruby'] = python_path
+        
+        # JavaScript 括号格式: data['key'][0]['subkey']
+        js_bracket_path = self._to_javascript_bracket_path()
+        all_formats['JavaScript (括号)'] = js_bracket_path
+        
+        # C#/Go/Rust/Swift/Kotlin 双引号格式: data["key"][0]["subkey"]
+        csharp_path = self._to_csharp_path()
+        all_formats['C#/Go/Rust/Swift/Kotlin'] = csharp_path
+        
+        # PHP 格式: $data['key'][0]['subkey']
+        php_path = self._to_php_path()
+        all_formats['PHP'] = php_path
+        
+        # Java 格式: data.get("key").get(0).get("subkey")
+        java_path = self._to_java_path()
+        all_formats['Java'] = java_path
+        
+        # Ruby dig 格式: data.dig('key', 0, 'subkey')
+        ruby_dig_path = self._to_ruby_dig_path()
+        all_formats['Ruby (dig)'] = ruby_dig_path
+        
+        # JSONPath 格式: $.key[0].subkey
+        jsonpath = self._to_jsonpath()
+        all_formats['JSONPath'] = jsonpath
+        
+        # JSON Pointer 格式: /key/0/subkey
+        json_pointer = self._to_json_pointer()
+        all_formats['JSON Pointer'] = json_pointer
+        
+        # jq 格式: .key[0].subkey
+        jq_path = self._to_jq_path()
+        all_formats['jq'] = jq_path
+        
+        # 去重：只保留不同的路径值
+        unique_formats = {}
+        seen_values = {}
+        
+        for name, path_value in all_formats.items():
+            if path_value not in seen_values:
+                unique_formats[name] = path_value
+                seen_values[path_value] = name
+            else:
+                # 如果值已存在，合并名称
+                existing_name = seen_values[path_value]
+                if existing_name in unique_formats:
+                    # 合并名称（如果还没合并过）
+                    if '/' not in existing_name:
+                        # 只在第一次遇到重复时合并
+                        pass
+        
+        return unique_formats
+        formats['简单格式'] = self.full_path
+        
+        return formats
+    
+    def _to_python_path(self) -> str:
+        """转换为Python访问路径格式。"""
+        if not self.full_path:
+            return "data"
+        
+        parts = self._parse_path_parts()
+        path = "data"
+        for part in parts:
+            if part['type'] == 'key':
+                # 检查键名是否需要引号
+                key = part['value']
+                if key.isidentifier():
+                    path += f"['{key}']"
+                else:
+                    path += f"['{key}']"
+            else:  # index
+                path += f"[{part['value']}]"
+        return path
+    
+    def _to_javascript_dot_path(self) -> str:
+        """转换为JavaScript点号访问路径格式。"""
+        if not self.full_path:
+            return "data"
+        
+        parts = self._parse_path_parts()
+        path = "data"
+        for part in parts:
+            if part['type'] == 'key':
+                key = part['value']
+                # 检查是否可以用点号访问
+                if key.replace('_', '').replace('$', '').isalnum() and not key[0].isdigit():
+                    path += f".{key}"
+                else:
+                    path += f"['{key}']"
+            else:  # index
+                path += f"[{part['value']}]"
+        return path
+    
+    def _to_javascript_bracket_path(self) -> str:
+        """转换为JavaScript括号访问路径格式。"""
+        if not self.full_path:
+            return "data"
+        
+        parts = self._parse_path_parts()
+        path = "data"
+        for part in parts:
+            if part['type'] == 'key':
+                path += f"['{part['value']}']"
+            else:  # index
+                path += f"[{part['value']}]"
+        return path
+    
+    def _to_jsonpath(self) -> str:
+        """转换为JSONPath格式。"""
+        if not self.full_path:
+            return "$"
+        
+        parts = self._parse_path_parts()
+        path = "$"
+        for part in parts:
+            if part['type'] == 'key':
+                key = part['value']
+                # JSONPath 可以用点号或括号
+                if key.replace('_', '').isalnum() and not key[0].isdigit():
+                    path += f".{key}"
+                else:
+                    path += f"['{key}']"
+            else:  # index
+                path += f"[{part['value']}]"
+        return path
+    
+    def _to_json_pointer(self) -> str:
+        """转换为JSON Pointer格式 (RFC 6901)。"""
+        if not self.full_path:
+            return "/"
+        
+        parts = self._parse_path_parts()
+        path = ""
+        for part in parts:
+            if part['type'] == 'key':
+                # JSON Pointer 需要转义 ~ 和 /
+                key = part['value'].replace('~', '~0').replace('/', '~1')
+                path += f"/{key}"
+            else:  # index
+                path += f"/{part['value']}"
+        return path
+    
+    def _parse_path_parts(self) -> List[Dict[str, str]]:
+        """解析路径为部分列表。
+        
+        Returns:
+            部分列表，每个部分包含 type ('key' 或 'index') 和 value
+        """
+        parts = []
+        current = ""
+        i = 0
+        path = self.full_path
+        
+        while i < len(path):
+            if path[i] == '[':
+                # 保存之前的键名
+                if current:
+                    parts.append({'type': 'key', 'value': current})
+                    current = ""
+                
+                # 找到匹配的 ]
+                j = i + 1
+                while j < len(path) and path[j] != ']':
+                    j += 1
+                
+                # 提取数组索引
+                index = path[i+1:j]
+                parts.append({'type': 'index', 'value': index})
+                i = j + 1
+                
+                # 跳过后续的点号
+                if i < len(path) and path[i] == '.':
+                    i += 1
+            elif path[i] == '.':
+                # 保存之前的键名
+                if current:
+                    parts.append({'type': 'key', 'value': current})
+                    current = ""
+                i += 1
+            else:
+                current += path[i]
+                i += 1
+        
+        # 保存最后的键名
+        if current:
+            parts.append({'type': 'key', 'value': current})
+        
+        return parts
+    
+    def _to_ruby_path(self) -> str:
+        """转换为Ruby括号访问路径格式。"""
+        if not self.full_path:
+            return "data"
+        
+        parts = self._parse_path_parts()
+        path = "data"
+        for part in parts:
+            if part['type'] == 'key':
+                path += f"['{part['value']}']"
+            else:  # index
+                path += f"[{part['value']}]"
+        return path
+    
+    def _to_ruby_dig_path(self) -> str:
+        """转换为Ruby dig方法路径格式。"""
+        if not self.full_path:
+            return "data"
+        
+        parts = self._parse_path_parts()
+        if not parts:
+            return "data"
+        
+        args = []
+        for part in parts:
+            if part['type'] == 'key':
+                args.append(f"'{part['value']}'")
+            else:  # index
+                args.append(part['value'])
+        
+        return f"data.dig({', '.join(args)})"
+    
+    def _to_php_path(self) -> str:
+        """转换为PHP访问路径格式。"""
+        if not self.full_path:
+            return "$data"
+        
+        parts = self._parse_path_parts()
+        path = "$data"
+        for part in parts:
+            if part['type'] == 'key':
+                path += f"['{part['value']}']"
+            else:  # index
+                path += f"[{part['value']}]"
+        return path
+    
+    def _to_java_path(self) -> str:
+        """转换为Java访问路径格式（假设使用JSONObject/JSONArray）。"""
+        if not self.full_path:
+            return "data"
+        
+        parts = self._parse_path_parts()
+        path = "data"
+        for part in parts:
+            if part['type'] == 'key':
+                # Java通常使用 get() 或 getJSONObject() 等方法
+                path += f".get(\"{part['value']}\")"
+            else:  # index
+                path += f".get({part['value']})"
+        return path
+    
+    def _to_csharp_path(self) -> str:
+        """转换为C#访问路径格式。"""
+        if not self.full_path:
+            return "data"
+        
+        parts = self._parse_path_parts()
+        path = "data"
+        for part in parts:
+            if part['type'] == 'key':
+                path += f"[\"{part['value']}\"]"
+            else:  # index
+                path += f"[{part['value']}]"
+        return path
+    
+    def _to_go_path(self) -> str:
+        """转换为Go访问路径格式（简化版）。"""
+        if not self.full_path:
+            return "data"
+        
+        parts = self._parse_path_parts()
+        path = "data"
+        for part in parts:
+            if part['type'] == 'key':
+                path += f"[\"{part['value']}\"]"
+            else:  # index
+                path += f"[{part['value']}]"
+        return path
+    
+    def _to_rust_path(self) -> str:
+        """转换为Rust访问路径格式（假设使用serde_json）。"""
+        if not self.full_path:
+            return "data"
+        
+        parts = self._parse_path_parts()
+        path = "data"
+        for part in parts:
+            if part['type'] == 'key':
+                path += f"[\"{part['value']}\"]"
+            else:  # index
+                path += f"[{part['value']}]"
+        return path
+    
+    def _to_swift_path(self) -> str:
+        """转换为Swift访问路径格式。"""
+        if not self.full_path:
+            return "data"
+        
+        parts = self._parse_path_parts()
+        path = "data"
+        for part in parts:
+            if part['type'] == 'key':
+                path += f"[\"{part['value']}\"]"
+            else:  # index
+                path += f"[{part['value']}]"
+        return path
+    
+    def _to_kotlin_path(self) -> str:
+        """转换为Kotlin访问路径格式。"""
+        if not self.full_path:
+            return "data"
+        
+        parts = self._parse_path_parts()
+        path = "data"
+        for part in parts:
+            if part['type'] == 'key':
+                path += f"[\"{part['value']}\"]"
+            else:  # index
+                path += f"[{part['value']}]"
+        return path
+    
+    def _to_jq_path(self) -> str:
+        """转换为jq命令行工具路径格式。"""
+        if not self.full_path:
+            return "."
+        
+        parts = self._parse_path_parts()
+        path = ""
+        for part in parts:
+            if part['type'] == 'key':
+                key = part['value']
+                # jq 可以用点号或括号
+                if key.replace('_', '').isalnum() and not key[0].isdigit():
+                    path += f".{key}"
+                else:
+                    path += f'.["{key}"]'
+            else:  # index
+                path += f"[{part['value']}]"
+        return path
         
     def toggle_expand(self, e):
         """切换展开/收起状态。"""
@@ -292,8 +650,8 @@ class JsonTreeNode(ft.Container):
                 # 直接使用 global 坐标，但稍微调整一下
                 # 偏右下说明坐标太大了，需要减小
                 # 通常右键菜单应该在鼠标右下方一点点
-                x = global_x - 90  # 右边偏移一点点
-                y = global_y - 60  # 下边偏移一点点
+                x = global_x - 100
+                y = global_y - 60
                 
                 self.view.show_context_menu(x, y, self)
                 return
@@ -760,6 +1118,33 @@ class JsonViewerView(ft.Container):
         if not self.floating_menu_ref.current:
             return
         
+        # 用于跟踪当前显示的子菜单
+        self.current_submenu_ref = ft.Ref[ft.Container]()
+        
+        # 获取可用空间（更保守的计算，考虑标题栏、按钮栏等）
+        # 标题栏约40px，操作按钮栏约60px，上下padding共40px
+        header_and_controls_height = 140
+        view_width = self.page.width - PADDING_MEDIUM * 2 - 20  # 额外减去20px安全边距
+        view_height = self.page.height - header_and_controls_height - PADDING_MEDIUM * 2 - 20  # 额外减去20px安全边距
+        
+        # 主菜单尺寸和位置预计算
+        main_menu_width = 180
+        main_menu_height = 120  # 3个菜单项，每个约40px
+        main_menu_left = x
+        main_menu_top = y
+        
+        # 检查主菜单是否超出右边界
+        if main_menu_left + main_menu_width > view_width:
+            main_menu_left = max(10, view_width - main_menu_width - 10)
+        
+        # 检查主菜单是否超出底部边界
+        if main_menu_top + main_menu_height > view_height:
+            main_menu_top = max(10, view_height - main_menu_height - 10)
+        
+        # 确保不超出左边和顶部
+        main_menu_left = max(10, main_menu_left)
+        main_menu_top = max(10, main_menu_top)
+        
         def close_menu(e=None):
             if self.floating_menu_ref.current:
                 self.floating_menu_ref.current.visible = False
@@ -777,18 +1162,133 @@ class JsonViewerView(ft.Container):
             node._copy_to_clipboard(self.page, text)
             close_menu()
         
-        # 创建菜单项
+        def show_path_submenu(e):
+            """显示路径格式子菜单。"""
+            # 获取不同格式的路径
+            path_formats = node.get_path_formats()
+            
+            # 创建子菜单项
+            submenu_items = []
+            for format_name, path_value in path_formats.items():
+                submenu_items.append(
+                    ft.Container(
+                        content=ft.Column([
+                            ft.Text(format_name, size=12, weight=ft.FontWeight.BOLD),
+                            ft.Text(
+                                path_value if len(path_value) <= 60 else path_value[:57] + "...",
+                                size=11,
+                                color=ft.Colors.GREY_400,
+                            ),
+                        ], spacing=2, tight=True),
+                        padding=ft.padding.symmetric(horizontal=12, vertical=8),
+                        on_click=lambda _, p=path_value: copy_and_close(p),
+                        ink=True,
+                        border_radius=4,
+                        on_hover=lambda e: self._on_menu_item_hover(e),
+                    )
+                )
+                if format_name != list(path_formats.keys())[-1]:
+                    submenu_items.append(ft.Container(height=1, bgcolor=ft.Colors.OUTLINE_VARIANT))
+            
+            # 计算子菜单的智能位置
+            submenu_width = 280
+            # 更精确的高度估算：标题行(20) + 路径行(18) + padding(16) + 分隔线(1)
+            item_height = 55
+            submenu_height = len(path_formats) * item_height + 8  # +8 是容器padding
+            
+            # 默认在主菜单右侧显示（使用调整后的主菜单位置）
+            submenu_left = main_menu_left + main_menu_width + 10
+            submenu_top = main_menu_top - 5
+            
+            # 检查是否超出右边界
+            if submenu_left + submenu_width > view_width:
+                # 超出右边界，显示在主菜单左侧
+                submenu_left = main_menu_left - submenu_width - 10
+                # 如果左侧也不够，就尽量靠右但不超出
+                if submenu_left < 0:
+                    submenu_left = max(10, view_width - submenu_width - 10)
+            
+            # 计算可用的垂直空间
+            available_height = view_height - 60  # 留出上下边距
+            need_scroll = submenu_height > available_height
+            
+            # 检查是否超出底部边界
+            if submenu_top + submenu_height > view_height - 20:
+                if need_scroll:
+                    # 需要滚动时，调整到合适的位置
+                    submenu_top = max(20, min(submenu_top, view_height - available_height - 20))
+                else:
+                    # 不需要滚动，向上调整到能完整显示的位置
+                    submenu_top = max(20, view_height - submenu_height - 20)
+            
+            # 确保不超出顶部
+            if submenu_top < 20:
+                submenu_top = 20
+            
+            # 如果计算后的高度仍然可能超出，强制限制
+            max_allowed_height = view_height - submenu_top - 20
+            if submenu_height > max_allowed_height:
+                need_scroll = True
+                available_height = max_allowed_height
+            
+            # 创建子菜单容器
+            submenu = ft.Container(
+                ref=self.current_submenu_ref,
+                content=ft.Column(
+                    submenu_items, 
+                    spacing=0, 
+                    tight=True,
+                    scroll=ft.ScrollMode.AUTO if need_scroll else ft.ScrollMode.HIDDEN,  # 只在需要时启用滚动
+                ),
+                bgcolor=ft.Colors.SURFACE,
+                border=ft.border.all(1, ft.Colors.OUTLINE),
+                border_radius=8,
+                padding=4,
+                shadow=ft.BoxShadow(
+                    spread_radius=0,
+                    blur_radius=8,
+                    color=ft.Colors.with_opacity(0.2, ft.Colors.BLACK),
+                    offset=ft.Offset(0, 4),
+                ),
+                width=submenu_width,
+                height=min(submenu_height, available_height) if need_scroll else None,  # 只在需要时限制高度
+                left=submenu_left,
+                top=submenu_top,
+                visible=True,
+            )
+            
+            # 添加子菜单到 Stack
+            if self.floating_menu_ref.current and self.floating_menu_ref.current.content:
+                stack = self.floating_menu_ref.current.content
+                if isinstance(stack, ft.Stack):
+                    # 移除旧的子菜单（如果存在）
+                    stack.controls = [c for c in stack.controls if not (hasattr(c, 'ref') and c.ref == self.current_submenu_ref)]
+                    # 添加新的子菜单
+                    stack.controls.append(submenu)
+                    self.floating_menu_ref.current.update()
+        
+        def hide_path_submenu(e):
+            """隐藏路径格式子菜单。"""
+            if self.floating_menu_ref.current and self.floating_menu_ref.current.content:
+                stack = self.floating_menu_ref.current.content
+                if isinstance(stack, ft.Stack):
+                    # 移除子菜单
+                    stack.controls = [c for c in stack.controls if not (hasattr(c, 'ref') and c.ref == self.current_submenu_ref)]
+                    self.floating_menu_ref.current.update()
+        
+        # 创建主菜单项
         menu_items = ft.Column([
             ft.Container(
                 content=ft.Row([
                     ft.Icon(ft.Icons.COPY, size=16, color=ft.Colors.ON_SURFACE),
-                    ft.Text("复制路径", size=13),
+                    ft.Text("复制路径", size=13, expand=True),
+                    ft.Icon(ft.Icons.ARROW_RIGHT, size=16, color=ft.Colors.GREY_500),
                 ], spacing=8),
                 padding=ft.padding.symmetric(horizontal=12, vertical=8),
-                on_click=lambda _: copy_and_close(node.full_path),
+                on_click=lambda _: copy_and_close(node.full_path),  # 点击直接复制简单格式
                 ink=True,
                 border_radius=4,
-                on_hover=lambda e: self._on_menu_item_hover(e),
+                on_hover=lambda e: (self._on_menu_item_hover(e), show_path_submenu(e) if e.data == "true" else hide_path_submenu(e)),
             ),
             ft.Container(height=1, bgcolor=ft.Colors.OUTLINE_VARIANT),
             ft.Container(
@@ -800,7 +1300,7 @@ class JsonViewerView(ft.Container):
                 on_click=lambda _: copy_and_close(str(node.key)),
                 ink=True,
                 border_radius=4,
-                on_hover=lambda e: self._on_menu_item_hover(e),
+                on_hover=lambda e: (self._on_menu_item_hover(e), hide_path_submenu(e)),
             ),
             ft.Container(height=1, bgcolor=ft.Colors.OUTLINE_VARIANT),
             ft.Container(
@@ -812,11 +1312,11 @@ class JsonViewerView(ft.Container):
                 on_click=lambda _: copy_value_and_close(),
                 ink=True,
                 border_radius=4,
-                on_hover=lambda e: self._on_menu_item_hover(e),
+                on_hover=lambda e: (self._on_menu_item_hover(e), hide_path_submenu(e)),
             ),
         ], spacing=0, tight=True)
         
-        # 创建菜单容器（绝对定位）
+        # 创建菜单容器（使用预计算的位置）
         menu_container = ft.Container(
             content=menu_items,
             bgcolor=ft.Colors.SURFACE,
@@ -829,9 +1329,9 @@ class JsonViewerView(ft.Container):
                 color=ft.Colors.with_opacity(0.2, ft.Colors.BLACK),
                 offset=ft.Offset(0, 4),
             ),
-            width=180,
-            left=x,  # 在 Stack 中的绝对定位
-            top=y,
+            width=main_menu_width,
+            left=main_menu_left,
+            top=main_menu_top,
         )
         
         # 创建透明背景覆盖层（点击关闭菜单）
