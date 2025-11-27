@@ -213,10 +213,10 @@ class DevToolsView(ft.Container):
         # 先恢复容器内容
         if self.parent_container:
             self.parent_container.content = self
-            # 更新父容器而不是视图本身
-            self.parent_container.update()
+            # 使用安全的页面更新方法，而不是直接更新容器
+            self._safe_page_update()
         
-        # 显示搜索按钮并更新页面
+        # 显示搜索按钮
         self._show_search_button()
     
     def restore_state(self) -> bool:

@@ -143,7 +143,8 @@ class EncodingView(ft.Container):
         
         if self.parent_container:
             self.parent_container.content = self
-            self.parent_container.update()
+            # 使用安全的页面更新方法
+            self._safe_page_update()
     
     def restore_state(self) -> bool:
         """恢复视图状态（从其他页面切换回来时调用）。
@@ -154,6 +155,6 @@ class EncodingView(ft.Container):
         if self.parent_container and self.current_sub_view:
             # 如果之前在子视图中，恢复到子视图
             self.parent_container.content = self.current_sub_view
-            self.parent_container.update()
+            self._safe_page_update()
             return True
         return False

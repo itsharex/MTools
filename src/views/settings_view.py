@@ -5,9 +5,12 @@
 """
 
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Callable, Optional, List, Dict
+import threading
+import time
 
 import flet as ft
+import httpx
 
 from constants import (
     BORDER_RADIUS_MEDIUM,
@@ -49,8 +52,51 @@ class SettingsView(ft.Container):
             bottom=PADDING_MEDIUM
         )
         
+        # 必应壁纸相关变量
+        self.bing_wallpapers: List[Dict] = []  # 存储8张壁纸信息
+        self.current_wallpaper_index: int = 0  # 当前壁纸索引
+        self.auto_switch_timer: Optional[threading.Timer] = None  # 自动切换定时器
+        
         # 创建UI组件
         self._build_ui()
+        
+        # 恢复自动切换状态（如果之前已启用）
+        self._restore_auto_switch_state()
+    
+    def _restore_auto_switch_state(self) -> None:
+        """恢复自动切换状态（在初始化时调用）。"""
+        auto_switch_enabled = self.config_service.get_config_value("wallpaper_auto_switch", False)
+        current_bg = self.config_service.get_config_value("background_image", None)
+        
+        # 检查当前背景是否是必应壁纸URL（包含bing.com）
+        is_bing_wallpaper = current_bg and isinstance(current_bg, str) and "bing.com" in current_bg.lower()
+        
+        if auto_switch_enabled or is_bing_wallpaper:
+            # 如果启用了自动切换，或者当前使用的是必应壁纸，则自动获取壁纸列表
+            def fetch_wallpapers():
+                wallpapers = self._fetch_bing_wallpaper()
+                if wallpapers:
+                    self.bing_wallpapers = wallpapers
+                    
+                    # 尝试找到当前壁纸在列表中的位置
+                    if is_bing_wallpaper:
+                        for i, wp in enumerate(wallpapers):
+                            if wp["url"] == current_bg:
+                                self.current_wallpaper_index = i
+                                break
+                    
+                    # 更新UI
+                    self._update_wallpaper_info_ui()
+                    
+                    # 如果启用了自动切换，启动定时器
+                    if auto_switch_enabled:
+                        interval = self.config_service.get_config_value("wallpaper_switch_interval", 30)
+                        self._start_auto_switch(interval)
+            
+            # 使用后台线程获取，避免阻塞UI启动
+            import threading
+            thread = threading.Thread(target=fetch_wallpapers, daemon=True)
+            thread.start()
     
     def _build_ui(self) -> None:
         """构建用户界面。"""
@@ -477,8 +523,13 @@ class SettingsView(ft.Container):
         )
         
         # 背景图片设置
+        # 如果当前背景是必应壁纸，显示友好的提示文本
+        bg_text_display = current_bg_image if current_bg_image else "未设置"
+        if current_bg_image and isinstance(current_bg_image, str) and "bing.com" in current_bg_image.lower():
+            bg_text_display = "必应壁纸"  # 先显示"必应壁纸"，等信息加载后再更新具体标题
+        
         self.bg_image_text = ft.Text(
-            current_bg_image if current_bg_image else "未设置",
+            bg_text_display,
             size=12,
             color=ft.Colors.ON_SURFACE_VARIANT,
             max_lines=1,
@@ -534,12 +585,95 @@ class SettingsView(ft.Container):
             spacing=PADDING_SMALL,
         )
         
+        # 创建壁纸计数和信息文本控件
+        self.wallpaper_count_text = ft.Text(
+            "0 / 0",
+            size=12,
+            weight=ft.FontWeight.W_500,
+        )
+        
+        self.wallpaper_info_text = ft.Text(
+            "点击「获取壁纸」从必应获取精美壁纸",
+            size=11,
+            color=ft.Colors.ON_SURFACE_VARIANT,
+            max_lines=2,
+            overflow=ft.TextOverflow.ELLIPSIS,
+        )
+        
+        self.switch_interval_text = ft.Text(
+            f"{self.config_service.get_config_value('wallpaper_switch_interval', 30)} 分钟",
+            size=12,
+        )
+        
         bg_image_container = ft.Column(
             controls=[
                 bg_image_row,
                 bg_fit_row,
+                ft.Divider(height=PADDING_MEDIUM),
+                # 必应壁纸部分
+                ft.Text("必应壁纸", size=14, weight=ft.FontWeight.W_500),
+                ft.Row(
+                    controls=[
+                        ft.ElevatedButton(
+                            text="获取壁纸",
+                            icon=ft.Icons.CLOUD_DOWNLOAD,
+                            on_click=self._on_random_wallpaper,
+                            tooltip="从必应获取8张壁纸",
+                        ),
+                        ft.IconButton(
+                            icon=ft.Icons.ARROW_BACK,
+                            tooltip="上一张",
+                            on_click=self._previous_wallpaper,
+                        ),
+                        ft.IconButton(
+                            icon=ft.Icons.ARROW_FORWARD,
+                            tooltip="下一张",
+                            on_click=self._next_wallpaper,
+                        ),
+                    ],
+                    spacing=PADDING_SMALL,
+                ),
+                # 壁纸信息显示
+                ft.Container(
+                    content=ft.Column(
+                        controls=[
+                            ft.Row(
+                                controls=[
+                                    ft.Text("当前:", size=12),
+                                    self.wallpaper_count_text,
+                                ],
+                                spacing=PADDING_SMALL,
+                            ),
+                            self.wallpaper_info_text,
+                        ],
+                        spacing=PADDING_SMALL // 2,
+                    ),
+                    padding=PADDING_SMALL,
+                    border=ft.border.all(1, ft.Colors.OUTLINE),
+                    border_radius=BORDER_RADIUS_MEDIUM,
+                ),
+                # 自动切换设置
+                ft.Row(
+                    controls=[
+                        ft.Switch(
+                            label="自动切换",
+                            value=self.config_service.get_config_value("wallpaper_auto_switch", False),
+                            on_change=self._on_auto_switch_change,
+                        ),
+                        self.switch_interval_text,
+                    ],
+                    spacing=PADDING_SMALL,
+                ),
+                ft.Slider(
+                    min=5,
+                    max=120,
+                    divisions=23,
+                    value=self.config_service.get_config_value("wallpaper_switch_interval", 30),
+                    label="{value}分钟",
+                    on_change=self._on_switch_interval_change,
+                ),
                 ft.Text(
-                    "设置窗口背景图片（透明度20%），支持PNG、JPG、WEBP等格式",
+                    "启用自动切换后，壁纸会按设定的时间间隔自动轮换（5-120分钟）",
                     size=11,
                     color=ft.Colors.ON_SURFACE_VARIANT,
                 ),
@@ -582,8 +716,8 @@ class SettingsView(ft.Container):
         # 同时更新导航栏的透明度
         if hasattr(page, '_main_view') and hasattr(page._main_view, 'navigation_container'):
             # 根据窗口透明度调整导航栏背景透明度
-            # 窗口越透明，导航栏也应该越透明
-            nav_opacity = 0.85 * value  # 保持一定的可读性
+            # 调整为与窗口透明度一致，避免视觉差异过大
+            nav_opacity = 0.95 * value  # 从0.85改为0.95，让导航栏更接近窗口透明度
             page._main_view.navigation_container.bgcolor = ft.Colors.with_opacity(
                 nav_opacity, 
                 ft.Colors.SURFACE
@@ -695,6 +829,207 @@ class SettingsView(ft.Container):
             )
         
         page.update()
+
+    def _fetch_bing_wallpaper(self, n: int = 8) -> Optional[List[Dict]]:
+        """使用 httpx 从必应壁纸 API 获取最近 n 张壁纸的信息。
+
+        Args:
+            n: 获取最近 n 张壁纸（默认8）
+
+        Returns:
+            壁纸信息列表，每项包含 url、title、copyright 等字段，失败时返回 None
+        """
+        try:
+            api = f"https://www.bing.com/HPImageArchive.aspx?format=js&n={n}&mkt=zh-CN"
+            resp = httpx.get(api, timeout=10.0)
+            resp.raise_for_status()
+            data = resp.json()
+            images = data.get("images", [])
+            if not images:
+                return None
+            
+            # 处理图片URL，确保是完整的URL
+            wallpapers = []
+            for img in images:
+                url = img.get("url", "")
+                if url:
+                    # 如果是相对路径，拼接主域名
+                    if not url.startswith("http"):
+                        url = "https://www.bing.com" + url
+                    wallpapers.append({
+                        "url": url,
+                        "title": img.get("title", ""),
+                        "copyright": img.get("copyright", ""),
+                        "startdate": img.get("startdate", ""),
+                    })
+            
+            return wallpapers if wallpapers else None
+        except Exception:
+            return None
+
+    def _on_random_wallpaper(self, e: ft.ControlEvent) -> None:
+        """事件处理：从必应获取随机壁纸并应用。"""
+        # 显示提示
+        self._show_snackbar("正在从必应获取壁纸...", ft.Colors.BLUE)
+
+        # 直接同步请求（请求较快），若担心阻塞可改为后台线程
+        wallpapers = self._fetch_bing_wallpaper()
+        if wallpapers:
+            # 保存壁纸列表
+            self.bing_wallpapers = wallpapers
+            self.current_wallpaper_index = 0
+            
+            # 应用第一张壁纸
+            self._apply_wallpaper(0)
+            
+            # 更新UI
+            self._update_wallpaper_info_ui()
+            
+            self._show_snackbar(f"已获取{len(wallpapers)}张必应壁纸", ft.Colors.GREEN)
+            
+            # 如果自动切换已启用，启动定时器
+            auto_switch_enabled = self.config_service.get_config_value("wallpaper_auto_switch", False)
+            if auto_switch_enabled:
+                interval = self.config_service.get_config_value("wallpaper_switch_interval", 30)
+                self._start_auto_switch(interval)
+        else:
+            self._show_snackbar("获取壁纸失败，请检查网络或稍后重试", ft.Colors.RED)
+    
+    def _apply_wallpaper(self, index: int) -> None:
+        """应用指定索引的壁纸。
+        
+        Args:
+            index: 壁纸索引
+        """
+        if not self.bing_wallpapers or index < 0 or index >= len(self.bing_wallpapers):
+            return
+        
+        wallpaper = self.bing_wallpapers[index]
+        url = wallpaper["url"]
+        
+        # 更新UI文本（背景图片显示友好的标题）
+        try:
+            self.bg_image_text.value = f"必应壁纸: {wallpaper['title']}"
+            self.bg_image_text.update()
+        except Exception:
+            pass
+        
+        # 保存配置
+        self.config_service.set_config_value("background_image", url)
+        self.current_wallpaper_index = index
+        
+        # 立即应用
+        self._apply_background_image(url, self.bg_fit_dropdown.value)
+    
+    def _next_wallpaper(self, e: Optional[ft.ControlEvent] = None) -> None:
+        """切换到下一张壁纸。"""
+        if not self.bing_wallpapers:
+            self._show_snackbar("请先获取必应壁纸", ft.Colors.ORANGE)
+            return
+        
+        self.current_wallpaper_index = (self.current_wallpaper_index + 1) % len(self.bing_wallpapers)
+        self._apply_wallpaper(self.current_wallpaper_index)
+        self._update_wallpaper_info_ui()
+    
+    def _previous_wallpaper(self, e: Optional[ft.ControlEvent] = None) -> None:
+        """切换到上一张壁纸。"""
+        if not self.bing_wallpapers:
+            self._show_snackbar("请先获取必应壁纸", ft.Colors.ORANGE)
+            return
+        
+        self.current_wallpaper_index = (self.current_wallpaper_index - 1) % len(self.bing_wallpapers)
+        self._apply_wallpaper(self.current_wallpaper_index)
+        self._update_wallpaper_info_ui()
+    
+    def _update_wallpaper_info_ui(self) -> None:
+        """更新壁纸信息UI。"""
+        if not self.bing_wallpapers:
+            return
+        
+        try:
+            wallpaper = self.bing_wallpapers[self.current_wallpaper_index]
+            
+            # 更新壁纸计数显示
+            if hasattr(self, 'wallpaper_count_text'):
+                self.wallpaper_count_text.value = f"{self.current_wallpaper_index + 1} / {len(self.bing_wallpapers)}"
+                self.wallpaper_count_text.update()
+            
+            # 更新壁纸信息
+            if hasattr(self, 'wallpaper_info_text'):
+                self.wallpaper_info_text.value = f"{wallpaper['title']}\n{wallpaper['copyright']}"
+                self.wallpaper_info_text.update()
+            
+            # 更新背景图片文本显示（显示友好的标题而不是URL）
+            if hasattr(self, 'bg_image_text'):
+                self.bg_image_text.value = f"必应壁纸: {wallpaper['title']}"
+                self.bg_image_text.update()
+        except Exception as e:
+            # 如果更新失败，至少确保不显示"加载中"
+            print(f"更新壁纸UI信息失败: {e}")
+            if hasattr(self, 'bg_image_text'):
+                # 如果更新失败，显示通用的"必应壁纸"
+                if "加载中" in self.bg_image_text.value or self.bg_image_text.value.startswith("http"):
+                    self.bg_image_text.value = "必应壁纸"
+                    try:
+                        self.bg_image_text.update()
+                    except:
+                        pass
+    
+    def _on_auto_switch_change(self, e: ft.ControlEvent) -> None:
+        """自动切换开关改变事件。"""
+        enabled = e.control.value
+        self.config_service.set_config_value("wallpaper_auto_switch", enabled)
+        
+        if enabled:
+            # 启动自动切换
+            interval = self.config_service.get_config_value("wallpaper_switch_interval", 30)
+            self._start_auto_switch(interval)
+            self._show_snackbar(f"已启用自动切换壁纸，间隔{interval}分钟", ft.Colors.GREEN)
+        else:
+            # 停止自动切换
+            self._stop_auto_switch()
+            self._show_snackbar("已关闭自动切换壁纸", ft.Colors.ORANGE)
+    
+    def _on_switch_interval_change(self, e: ft.ControlEvent) -> None:
+        """切换间隔改变事件。"""
+        interval = int(e.control.value)
+        self.config_service.set_config_value("wallpaper_switch_interval", interval)
+        
+        # 如果自动切换已启用，重新启动定时器
+        if self.config_service.get_config_value("wallpaper_auto_switch", False):
+            self._start_auto_switch(interval)
+        
+        # 更新显示
+        if hasattr(self, 'switch_interval_text'):
+            self.switch_interval_text.value = f"{interval} 分钟"
+            self.switch_interval_text.update()
+    
+    def _start_auto_switch(self, interval_minutes: int) -> None:
+        """启动自动切换定时器。
+        
+        Args:
+            interval_minutes: 切换间隔（分钟）
+        """
+        # 先停止现有定时器
+        self._stop_auto_switch()
+        
+        # 创建新定时器
+        def switch_task():
+            if self.bing_wallpapers:
+                self._next_wallpaper()
+            # 递归调用，继续下一次定时
+            self._start_auto_switch(interval_minutes)
+        
+        interval_seconds = interval_minutes * 60
+        self.auto_switch_timer = threading.Timer(interval_seconds, switch_task)
+        self.auto_switch_timer.daemon = True
+        self.auto_switch_timer.start()
+    
+    def _stop_auto_switch(self) -> None:
+        """停止自动切换定时器。"""
+        if self.auto_switch_timer:
+            self.auto_switch_timer.cancel()
+            self.auto_switch_timer = None
     
     def _build_gpu_acceleration_section(self) -> ft.Container:
         """构建GPU加速设置部分，包括高级参数配置。"""
@@ -1942,12 +2277,29 @@ class SettingsView(ft.Container):
             message: 消息内容
             color: 消息颜色
         """
-        snackbar: ft.SnackBar = ft.SnackBar(
-            content=ft.Text(message),
-            bgcolor=color,
-            duration=2000,
-        )
-        self.page.overlay.append(snackbar)
-        snackbar.open = True
-        self.page.update()
+        try:
+            snackbar: ft.SnackBar = ft.SnackBar(
+                content=ft.Text(message),
+                bgcolor=color,
+                duration=2000,
+            )
+            # 使用保存的页面引用作为回退（有时候 self.page 在后台线程中为 None）
+            page = getattr(self, '_saved_page', None) or getattr(self, 'page', None)
+            if not page:
+                return
+            # 将 snackbar 添加到 overlay 并刷新页面
+            try:
+                page.overlay.append(snackbar)
+                snackbar.open = True
+                page.update()
+            except Exception:
+                # 如果 overlay 不可用或在后台线程中引发错误，则尝试安全地设置一个简单替代：
+                # 将消息打印到控制台（避免抛出未捕获异常）
+                print(f"Snackbar show failed: {message}")
+        except Exception:
+            # 最后兜底，避免线程未捕获异常终止程序
+            try:
+                print(f"_show_snackbar error: {message}")
+            except Exception:
+                pass
 

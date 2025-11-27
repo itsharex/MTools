@@ -148,7 +148,7 @@ class ImagePuzzleView(ft.Container):
         
         # 切换到切分视图
         self.parent_container.content = self.split_view
-        self.parent_container.update()
+        self._safe_page_update()
     
     def _open_merge_view(self, e: ft.ControlEvent) -> None:
         """打开多图合并视图。"""
@@ -170,7 +170,7 @@ class ImagePuzzleView(ft.Container):
         
         # 切换到合并视图
         self.parent_container.content = self.merge_view
-        self.parent_container.update()
+        self._safe_page_update()
     
     def _back_to_main(self, e: ft.ControlEvent = None) -> None:
         """返回主菜单。
@@ -183,7 +183,7 @@ class ImagePuzzleView(ft.Container):
         
         if self.parent_container:
             self.parent_container.content = self
-            self.parent_container.update()
+            self._safe_page_update()
     
     def restore_state(self) -> bool:
         """恢复视图状态（从其他页面切换回来时调用）。
@@ -194,6 +194,6 @@ class ImagePuzzleView(ft.Container):
         if self.parent_container and self.current_sub_view:
             # 如果之前在子视图中，恢复到子视图
             self.parent_container.content = self.current_sub_view
-            self.parent_container.update()
+            self._safe_page_update()
             return True
         return False
