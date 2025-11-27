@@ -20,7 +20,7 @@ class JsonTreeNode(ft.Container):
     可展开/收起的 JSON 节点。
     """
     
-    def __init__(self, key: str, value: Any, level: int = 0, is_last: bool = True, parent_path: str = "", page: Optional[ft.Page] = None):
+    def __init__(self, key: str, value: Any, level: int = 0, is_last: bool = True, parent_path: str = "", page: Optional[ft.Page] = None, view: Optional['JsonViewerView'] = None):
         """初始化 JSON 树形节点。
         
         Args:
@@ -29,6 +29,8 @@ class JsonTreeNode(ft.Container):
             level: 缩进层级
             is_last: 是否是最后一个节点
             parent_path: 父节点路径
+            page: 页面对象
+            view: JsonViewerView 实例
         """
         super().__init__()
         self.key = key
@@ -37,6 +39,7 @@ class JsonTreeNode(ft.Container):
         self.is_last = is_last
         self.parent_path = parent_path
         self.page = page
+        self.view = view
         
         # 计算完整路径
         if not parent_path:
@@ -123,7 +126,7 @@ class JsonTreeNode(ft.Container):
             
             for idx, (k, v) in enumerate(items):
                 is_last_child = idx == len(items) - 1
-                children.append(JsonTreeNode(k, v, self.level + 1, is_last_child, parent_path=self.full_path, page=self.page))
+                children.append(JsonTreeNode(k, v, self.level + 1, is_last_child, parent_path=self.full_path, page=self.page, view=self.view))
             
             return ft.Container(
                 content=ft.Column(
@@ -175,7 +178,7 @@ class JsonTreeNode(ft.Container):
             
             for idx, item in enumerate(self.value):
                 is_last_child = idx == len(self.value) - 1
-                children.append(JsonTreeNode(f"[{idx}]", item, self.level + 1, is_last_child, parent_path=self.full_path, page=self.page))
+                children.append(JsonTreeNode(f"[{idx}]", item, self.level + 1, is_last_child, parent_path=self.full_path, page=self.page, view=self.view))
             
             return ft.Container(
                 content=ft.Column(
@@ -280,69 +283,104 @@ class JsonTreeNode(ft.Container):
     def _on_right_click(self, e):
         """右键点击事件处理。"""
         try:
+            # 如果有 view 引用，使用浮动菜单
+            if self.view:
+                # 获取全局坐标
+                global_x = getattr(e, 'global_x', 100)
+                global_y = getattr(e, 'global_y', 100)
+                
+                # 直接使用 global 坐标，但稍微调整一下
+                # 偏右下说明坐标太大了，需要减小
+                # 通常右键菜单应该在鼠标右下方一点点
+                x = global_x - 90  # 右边偏移一点点
+                y = global_y - 60  # 下边偏移一点点
+                
+                self.view.show_context_menu(x, y, self)
+                return
+            
+            # 否则使用对话框（降级方案）
             page = self._resolve_page(e)
             if page is None:
                 return
             
-            # 先关闭可能存在的旧对话框
+            # 关闭可能存在的旧对话框
             if hasattr(page, 'dialog') and page.dialog:
                 try:
                     page.close(page.dialog)
                 except:
                     pass
             
-            # 创建对话框内容
-            def close_dlg(e):
+            # 创建小型弹出菜单
+            def close_menu():
                 dialog.open = False
                 page.update()
             
+            def copy_and_close(text):
+                self._copy_to_clipboard(page, text)
+                close_menu()
+            
+            def copy_value_and_close():
+                if isinstance(self.value, (dict, list)):
+                    text = json.dumps(self.value, ensure_ascii=False, indent=2)
+                else:
+                    text = str(self.value)
+                self._copy_to_clipboard(page, text)
+                close_menu()
+            
             dialog = ft.AlertDialog(
-                modal=True,
-                title=ft.Text("操作"),
+                modal=False,  # 非模态，允许点击外部关闭
                 content=ft.Container(
                     content=ft.Column([
                         ft.ListTile(
-                            leading=ft.Icon(ft.Icons.COPY),
-                            title=ft.Text("复制路径"),
-                            subtitle=ft.Text(self.full_path, size=12, color=ft.Colors.GREY_400),
-                            on_click=lambda _: self._copy_to_clipboard(page, self.full_path, dialog)
+                            leading=ft.Icon(ft.Icons.COPY, size=20),
+                            title=ft.Text("复制路径", size=14),
+                            subtitle=ft.Text(
+                                self.full_path if len(self.full_path) <= 40 else self.full_path[:37] + "...", 
+                                size=11, 
+                                color=ft.Colors.GREY_400
+                            ),
+                            on_click=lambda _: copy_and_close(self.full_path),
+                            dense=True,
                         ),
+                        ft.Divider(height=1, thickness=1),
                         ft.ListTile(
-                            leading=ft.Icon(ft.Icons.COPY),
-                            title=ft.Text("复制键 (Key)"),
-                            subtitle=ft.Text(str(self.key), size=12, color=ft.Colors.GREY_400),
-                            on_click=lambda _: self._copy_to_clipboard(page, str(self.key), dialog)
+                            leading=ft.Icon(ft.Icons.COPY, size=20),
+                            title=ft.Text("复制键", size=14),
+                            subtitle=ft.Text(str(self.key), size=11, color=ft.Colors.GREY_400),
+                            on_click=lambda _: copy_and_close(str(self.key)),
+                            dense=True,
                         ),
+                        ft.Divider(height=1, thickness=1),
                         ft.ListTile(
-                            leading=ft.Icon(ft.Icons.COPY),
-                            title=ft.Text("复制值 (Value)"),
-                            subtitle=ft.Text(self._get_value_preview(self.value), size=12, color=ft.Colors.GREY_400),
-                            on_click=lambda _: self._copy_value_to_clipboard(page, dialog)
+                            leading=ft.Icon(ft.Icons.COPY, size=20),
+                            title=ft.Text("复制值", size=14),
+                            subtitle=ft.Text(
+                                self._get_value_preview(self.value) if len(self._get_value_preview(self.value)) <= 40 
+                                else self._get_value_preview(self.value)[:37] + "...", 
+                                size=11, 
+                                color=ft.Colors.GREY_400
+                            ),
+                            on_click=lambda _: copy_value_and_close(),
+                            dense=True,
                         ),
-                    ], tight=True),
-                    width=400,
+                    ], tight=True, spacing=0),
+                    width=300,
+                    padding=ft.padding.symmetric(vertical=8),
                 ),
-                actions=[ft.TextButton("关闭", on_click=close_dlg)],
-                actions_alignment=ft.MainAxisAlignment.END,
             )
             
-            # 使用 open 方法显示对话框
             page.open(dialog)
         except Exception as ex:
             print(f"右键菜单错误: {ex}")
             import traceback
             traceback.print_exc()
 
-    def _copy_to_clipboard(self, page, text, dialog=None):
+    def _copy_to_clipboard(self, page, text):
         """复制文本到剪贴板。"""
         try:
             if page is None:
                 return
             page.set_clipboard(text)
-            
-            # 关闭对话框
-            if dialog:
-                dialog.open = False
             
             # 显示提示
             snack_bar = ft.SnackBar(
@@ -354,7 +392,7 @@ class JsonTreeNode(ft.Container):
         except Exception as ex:
             print(f"复制失败: {ex}")
 
-    def _copy_value_to_clipboard(self, page, dialog=None):
+    def _copy_value_to_clipboard(self, page):
         """复制值到剪贴板。"""
         try:
             if page is None:
@@ -363,7 +401,7 @@ class JsonTreeNode(ft.Container):
                 text = json.dumps(self.value, ensure_ascii=False, indent=2)
             else:
                 text = str(self.value)
-            self._copy_to_clipboard(page, text, dialog)
+            self._copy_to_clipboard(page, text)
         except Exception as ex:
             print(f"复制值失败: {ex}")
 
@@ -679,8 +717,8 @@ class JsonViewerView(ft.Container):
             vertical_alignment=ft.CrossAxisAlignment.STRETCH,
         )
         
-        # 组装整个视图
-        self.content = ft.Column(
+        # 主内容列
+        main_column = ft.Column(
             controls=[
                 header,
                 ft.Divider(),
@@ -694,6 +732,129 @@ class JsonViewerView(ft.Container):
             spacing=0,
             expand=True,
         )
+        
+        # 浮动菜单容器（初始隐藏，将直接放在 Stack 中）
+        self.floating_menu_ref = ft.Ref[ft.Container]()
+        
+        # 使用 Stack 包裹，添加浮动菜单层
+        self.content = ft.Stack(
+            controls=[
+                main_column,
+                ft.Container(
+                    ref=self.floating_menu_ref,
+                    visible=False,
+                    expand=True,  # 确保容器占满整个空间
+                ),
+            ],
+            expand=True,
+        )
+    
+    def show_context_menu(self, x: float, y: float, node: 'JsonTreeNode'):
+        """在指定位置显示右键菜单。
+        
+        Args:
+            x: 鼠标 X 坐标（相对于窗口）
+            y: 鼠标 Y 坐标（相对于窗口）
+            node: 触发菜单的节点
+        """
+        if not self.floating_menu_ref.current:
+            return
+        
+        def close_menu(e=None):
+            if self.floating_menu_ref.current:
+                self.floating_menu_ref.current.visible = False
+                self.floating_menu_ref.current.update()
+        
+        def copy_and_close(text):
+            node._copy_to_clipboard(self.page, text)
+            close_menu()
+        
+        def copy_value_and_close():
+            if isinstance(node.value, (dict, list)):
+                text = json.dumps(node.value, ensure_ascii=False, indent=2)
+            else:
+                text = str(node.value)
+            node._copy_to_clipboard(self.page, text)
+            close_menu()
+        
+        # 创建菜单项
+        menu_items = ft.Column([
+            ft.Container(
+                content=ft.Row([
+                    ft.Icon(ft.Icons.COPY, size=16, color=ft.Colors.ON_SURFACE),
+                    ft.Text("复制路径", size=13),
+                ], spacing=8),
+                padding=ft.padding.symmetric(horizontal=12, vertical=8),
+                on_click=lambda _: copy_and_close(node.full_path),
+                ink=True,
+                border_radius=4,
+                on_hover=lambda e: self._on_menu_item_hover(e),
+            ),
+            ft.Container(height=1, bgcolor=ft.Colors.OUTLINE_VARIANT),
+            ft.Container(
+                content=ft.Row([
+                    ft.Icon(ft.Icons.COPY, size=16, color=ft.Colors.ON_SURFACE),
+                    ft.Text("复制键", size=13),
+                ], spacing=8),
+                padding=ft.padding.symmetric(horizontal=12, vertical=8),
+                on_click=lambda _: copy_and_close(str(node.key)),
+                ink=True,
+                border_radius=4,
+                on_hover=lambda e: self._on_menu_item_hover(e),
+            ),
+            ft.Container(height=1, bgcolor=ft.Colors.OUTLINE_VARIANT),
+            ft.Container(
+                content=ft.Row([
+                    ft.Icon(ft.Icons.COPY, size=16, color=ft.Colors.ON_SURFACE),
+                    ft.Text("复制值", size=13),
+                ], spacing=8),
+                padding=ft.padding.symmetric(horizontal=12, vertical=8),
+                on_click=lambda _: copy_value_and_close(),
+                ink=True,
+                border_radius=4,
+                on_hover=lambda e: self._on_menu_item_hover(e),
+            ),
+        ], spacing=0, tight=True)
+        
+        # 创建菜单容器（绝对定位）
+        menu_container = ft.Container(
+            content=menu_items,
+            bgcolor=ft.Colors.SURFACE,
+            border=ft.border.all(1, ft.Colors.OUTLINE),
+            border_radius=8,
+            padding=4,
+            shadow=ft.BoxShadow(
+                spread_radius=0,
+                blur_radius=8,
+                color=ft.Colors.with_opacity(0.2, ft.Colors.BLACK),
+                offset=ft.Offset(0, 4),
+            ),
+            width=180,
+            left=x,  # 在 Stack 中的绝对定位
+            top=y,
+        )
+        
+        # 创建透明背景覆盖层（点击关闭菜单）
+        overlay = ft.Container(
+            expand=True,
+            on_click=close_menu,
+        )
+        
+        # 更新浮动菜单的内容为 Stack，包含覆盖层和菜单
+        self.floating_menu_ref.current.content = ft.Stack([
+            overlay,
+            menu_container,
+        ])
+        self.floating_menu_ref.current.visible = True
+        self.floating_menu_ref.current.update()
+    
+    def _on_menu_item_hover(self, e):
+        """菜单项悬停效果。"""
+        if e.data == "true":
+            e.control.bgcolor = ft.Colors.with_opacity(0.1, ft.Colors.ON_SURFACE)
+        else:
+            e.control.bgcolor = None
+        e.control.update()
     
     def _parse_json_smart(self, input_value: str) -> Any:
         """智能解析 JSON，支持多种格式。
@@ -917,11 +1078,11 @@ class JsonViewerView(ft.Container):
         
         if isinstance(data, dict):
             for key, value in data.items():
-                node = JsonTreeNode(key, value, level=0, page=self.page)
+                node = JsonTreeNode(key, value, level=0, page=self.page, view=self)
                 self.tree_view.current.controls.append(node)
         elif isinstance(data, list):
             for idx, item in enumerate(data):
-                node = JsonTreeNode(f"[{idx}]", item, level=0, page=self.page)
+                node = JsonTreeNode(f"[{idx}]", item, level=0, page=self.page, view=self)
                 self.tree_view.current.controls.append(node)
         else:
             self.tree_view.current.controls.append(
