@@ -183,28 +183,37 @@ class WeatherService:
         if ip is None:
             try:
                 
-                # 尝试多个仅支持 IPv4 的 API 服务
+                # 只使用搜狐的文本接口（返回 JS 片段，包含 window.sohu_user_ip="1.2.3.4"）
+                # 以及提供的网易代理地址作为回退
                 ip_services = [
-                    "https://ipv4.icanhazip.com",
-                    "https://api.ipify.org?format=text",  # 仅返回 IPv4
-                    "https://api4.ipify.org",  # 专用 IPv4 端点
-                    "https://v4.ident.me",  # 专用 IPv4 端点
-                    "http://ipv4.myip.com.tw",  # 备用服务
+                    "http://txt.go.sohu.com/ip/soip",
+                    "http://only-329841-103-107-216-231.nstool.yqkk.link/",
                 ]
-                
+
                 ip = ""
+                import re
                 for service_url in ip_services:
                     try:
                         ip_response = await client.get(service_url, timeout=5)
-                        if ip_response.status_code == 200:
-                            ip = ip_response.text.strip()
-                            # 验证是否为 IPv4 格式（包含点且不包含冒号）
-                            if '.' in ip and ':' not in ip and len(ip.split('.')) == 4:
-                                break
+                        if ip_response.status_code == 200 and ip_response.text:
+                            text = ip_response.text.strip()
+                            # 尝试从任意返回文本中提取第一个 IPv4 地址
+                            m = re.search(r"(\d{1,3}(?:\.\d{1,3}){3})", text)
+                            if m:
+                                candidate = m.group(1)
+                                # 基本验证每段 0-255
+                                try:
+                                    parts = [int(p) for p in candidate.split('.')]
+                                    if len(parts) == 4 and all(0 <= p <= 255 for p in parts):
+                                        ip = candidate
+                                        break
+                                except Exception:
+                                    # 如果解析失败，继续尝试下一个服务
+                                    continue
                     except Exception as e:
                         print(f"从 {service_url} 获取 IP 失败: {e}")
                         continue
-                
+
                 if not ip:
                     print("所有 IP 获取服务均失败")
                         
@@ -237,11 +246,9 @@ class WeatherService:
             
             if response.status_code == 200:
                 result = response.json()
-                
                 if result.get('code') == 0 and 'data' in result:
                     location_data = result['data']
                     
-                    # 优先使用城市，如果城市是区级名称（如"普陀区"），则使用省份/地区
                     city = location_data.get('city', '')
                     region = location_data.get('region', '')
                     country = location_data.get('country', '')
