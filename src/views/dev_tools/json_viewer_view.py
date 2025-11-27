@@ -20,7 +20,7 @@ class JsonTreeNode(ft.Container):
     可展开/收起的 JSON 节点。
     """
     
-    def __init__(self, key: str, value: Any, level: int = 0, is_last: bool = True, parent_path: str = ""):
+    def __init__(self, key: str, value: Any, level: int = 0, is_last: bool = True, parent_path: str = "", page: Optional[ft.Page] = None):
         """初始化 JSON 树形节点。
         
         Args:
@@ -36,6 +36,7 @@ class JsonTreeNode(ft.Container):
         self.level = level
         self.is_last = is_last
         self.parent_path = parent_path
+        self.page = page
         
         # 计算完整路径
         if not parent_path:
@@ -122,7 +123,7 @@ class JsonTreeNode(ft.Container):
             
             for idx, (k, v) in enumerate(items):
                 is_last_child = idx == len(items) - 1
-                children.append(JsonTreeNode(k, v, self.level + 1, is_last_child, parent_path=self.full_path))
+                children.append(JsonTreeNode(k, v, self.level + 1, is_last_child, parent_path=self.full_path, page=self.page))
             
             return ft.Container(
                 content=ft.Column(
@@ -150,10 +151,11 @@ class JsonTreeNode(ft.Container):
                                     spacing=5,
                                 ),
                                 padding=ft.padding.only(left=indent),
-                                on_click=self.toggle_expand,
-                                ink=True,
+                                bgcolor=ft.Colors.TRANSPARENT,
                             ),
-                            on_secondary_tap=self._on_right_click,
+                            on_tap=self.toggle_expand,
+                            on_secondary_tap_up=self._on_right_click,
+                            mouse_cursor=ft.MouseCursor.CLICK,
                         ),
                         # 子节点
                         ft.Column(
@@ -173,7 +175,7 @@ class JsonTreeNode(ft.Container):
             
             for idx, item in enumerate(self.value):
                 is_last_child = idx == len(self.value) - 1
-                children.append(JsonTreeNode(f"[{idx}]", item, self.level + 1, is_last_child, parent_path=self.full_path))
+                children.append(JsonTreeNode(f"[{idx}]", item, self.level + 1, is_last_child, parent_path=self.full_path, page=self.page))
             
             return ft.Container(
                 content=ft.Column(
@@ -201,10 +203,11 @@ class JsonTreeNode(ft.Container):
                                     spacing=5,
                                 ),
                                 padding=ft.padding.only(left=indent),
-                                on_click=self.toggle_expand,
-                                ink=True,
+                                bgcolor=ft.Colors.TRANSPARENT,
                             ),
-                            on_secondary_tap=self._on_right_click,
+                            on_tap=self.toggle_expand,
+                            on_secondary_tap_up=self._on_right_click,
+                            mouse_cursor=ft.MouseCursor.CLICK,
                         ),
                         # 子节点
                         ft.Column(
@@ -240,58 +243,140 @@ class JsonTreeNode(ft.Container):
                         vertical_alignment=ft.CrossAxisAlignment.START,
                     ),
                     padding=ft.padding.only(left=indent, top=2, bottom=2),
+                    bgcolor=ft.Colors.TRANSPARENT,
                 ),
-                on_secondary_tap=self._on_right_click,
+                on_secondary_tap_up=self._on_right_click,
             )
+
+    def _resolve_page(self, event: Optional[ft.ControlEvent] = None) -> Optional[ft.Page]:
+        """从事件或控件自身解析 Page 对象。"""
+        # 优先使用存储的 page
+        if self.page is not None:
+            return self.page
+        
+        # 尝试从事件中获取
+        if event is not None:
+            page = getattr(event, "page", None)
+            if page:
+                return page
+            control = getattr(event, "control", None)
+            if control is not None:
+                control_page = getattr(control, "page", None)
+                if control_page:
+                    return control_page
+        
+        # 尝试从自身获取（通过遍历父节点）
+        try:
+            current = self
+            while current is not None:
+                if hasattr(current, 'page') and current.page is not None:
+                    return current.page
+                current = getattr(current, 'parent', None)
+        except:
+            pass
+            
+        return None
 
     def _on_right_click(self, e):
         """右键点击事件处理。"""
-        e.page.dialog = ft.AlertDialog(
-            title=ft.Text("操作"),
-            content=ft.Column([
-                ft.ListTile(
-                    leading=ft.Icon(ft.Icons.COPY),
-                    title=ft.Text("复制路径"),
-                    subtitle=ft.Text(self.full_path, size=12, color=ft.Colors.GREY_400),
-                    on_click=lambda _: self._copy_to_clipboard(e.page, self.full_path)
+        try:
+            page = self._resolve_page(e)
+            if page is None:
+                return
+            
+            # 先关闭可能存在的旧对话框
+            if hasattr(page, 'dialog') and page.dialog:
+                try:
+                    page.close(page.dialog)
+                except:
+                    pass
+            
+            # 创建对话框内容
+            def close_dlg(e):
+                dialog.open = False
+                page.update()
+            
+            dialog = ft.AlertDialog(
+                modal=True,
+                title=ft.Text("操作"),
+                content=ft.Container(
+                    content=ft.Column([
+                        ft.ListTile(
+                            leading=ft.Icon(ft.Icons.COPY),
+                            title=ft.Text("复制路径"),
+                            subtitle=ft.Text(self.full_path, size=12, color=ft.Colors.GREY_400),
+                            on_click=lambda _: self._copy_to_clipboard(page, self.full_path, dialog)
+                        ),
+                        ft.ListTile(
+                            leading=ft.Icon(ft.Icons.COPY),
+                            title=ft.Text("复制键 (Key)"),
+                            subtitle=ft.Text(str(self.key), size=12, color=ft.Colors.GREY_400),
+                            on_click=lambda _: self._copy_to_clipboard(page, str(self.key), dialog)
+                        ),
+                        ft.ListTile(
+                            leading=ft.Icon(ft.Icons.COPY),
+                            title=ft.Text("复制值 (Value)"),
+                            subtitle=ft.Text(self._get_value_preview(self.value), size=12, color=ft.Colors.GREY_400),
+                            on_click=lambda _: self._copy_value_to_clipboard(page, dialog)
+                        ),
+                    ], tight=True),
+                    width=400,
                 ),
-                ft.ListTile(
-                    leading=ft.Icon(ft.Icons.COPY),
-                    title=ft.Text("复制键 (Key)"),
-                    subtitle=ft.Text(str(self.key), size=12, color=ft.Colors.GREY_400),
-                    on_click=lambda _: self._copy_to_clipboard(e.page, str(self.key))
-                ),
-                ft.ListTile(
-                    leading=ft.Icon(ft.Icons.COPY),
-                    title=ft.Text("复制值 (Value)"),
-                    subtitle=ft.Text(self._get_value_preview(self.value), size=12, color=ft.Colors.GREY_400),
-                    on_click=lambda _: self._copy_value_to_clipboard(e.page)
-                ),
-            ], tight=True, width=400),
-            actions=[ft.TextButton("关闭", on_click=lambda _: self._close_dialog(e.page))],
-            actions_alignment=ft.MainAxisAlignment.END,
-        )
-        e.page.dialog.open = True
-        e.page.update()
+                actions=[ft.TextButton("关闭", on_click=close_dlg)],
+                actions_alignment=ft.MainAxisAlignment.END,
+            )
+            
+            # 使用 open 方法显示对话框
+            page.open(dialog)
+        except Exception as ex:
+            print(f"右键菜单错误: {ex}")
+            import traceback
+            traceback.print_exc()
 
-    def _copy_to_clipboard(self, page, text):
+    def _copy_to_clipboard(self, page, text, dialog=None):
         """复制文本到剪贴板。"""
-        page.set_clipboard(text)
-        page.show_snack_bar(ft.SnackBar(content=ft.Text(f"已复制: {text[:50]}...")))
-        self._close_dialog(page)
+        try:
+            if page is None:
+                return
+            page.set_clipboard(text)
+            
+            # 关闭对话框
+            if dialog:
+                dialog.open = False
+            
+            # 显示提示
+            snack_bar = ft.SnackBar(
+                content=ft.Text(f"已复制: {text[:50]}..." if len(str(text)) > 50 else str(text))
+            )
+            page.snack_bar = snack_bar
+            snack_bar.open = True
+            page.update()
+        except Exception as ex:
+            print(f"复制失败: {ex}")
 
-    def _copy_value_to_clipboard(self, page):
+    def _copy_value_to_clipboard(self, page, dialog=None):
         """复制值到剪贴板。"""
-        if isinstance(self.value, (dict, list)):
-            text = json.dumps(self.value, ensure_ascii=False, indent=2)
-        else:
-            text = str(self.value)
-        self._copy_to_clipboard(page, text)
+        try:
+            if page is None:
+                return
+            if isinstance(self.value, (dict, list)):
+                text = json.dumps(self.value, ensure_ascii=False, indent=2)
+            else:
+                text = str(self.value)
+            self._copy_to_clipboard(page, text, dialog)
+        except Exception as ex:
+            print(f"复制值失败: {ex}")
 
     def _close_dialog(self, page):
         """关闭对话框。"""
-        page.dialog.open = False
-        page.update()
+        try:
+            if page is None:
+                return
+            if hasattr(page, 'dialog') and page.dialog is not None:
+                page.dialog.open = False
+                page.update()
+        except Exception as ex:
+            print(f"关闭对话框失败: {ex}")
 
 
 class JsonViewerView(ft.Container):
@@ -832,11 +917,11 @@ class JsonViewerView(ft.Container):
         
         if isinstance(data, dict):
             for key, value in data.items():
-                node = JsonTreeNode(key, value, level=0)
+                node = JsonTreeNode(key, value, level=0, page=self.page)
                 self.tree_view.current.controls.append(node)
         elif isinstance(data, list):
             for idx, item in enumerate(data):
-                node = JsonTreeNode(f"[{idx}]", item, level=0)
+                node = JsonTreeNode(f"[{idx}]", item, level=0, page=self.page)
                 self.tree_view.current.controls.append(node)
         else:
             self.tree_view.current.controls.append(
