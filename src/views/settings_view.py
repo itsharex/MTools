@@ -910,7 +910,10 @@ class SettingsView(ft.Container):
         # 更新UI文本（背景图片显示友好的标题）
         try:
             self.bg_image_text.value = f"必应壁纸: {wallpaper['title']}"
-            self.bg_image_text.update()
+            # 使用 page.update() 而不是控件的 update()
+            page = getattr(self, '_saved_page', self.page)
+            if page:
+                page.update()
         except Exception:
             pass
         
@@ -952,17 +955,19 @@ class SettingsView(ft.Container):
             # 更新壁纸计数显示
             if hasattr(self, 'wallpaper_count_text'):
                 self.wallpaper_count_text.value = f"{self.current_wallpaper_index + 1} / {len(self.bing_wallpapers)}"
-                self.wallpaper_count_text.update()
             
             # 更新壁纸信息
             if hasattr(self, 'wallpaper_info_text'):
                 self.wallpaper_info_text.value = f"{wallpaper['title']}\n{wallpaper['copyright']}"
-                self.wallpaper_info_text.update()
             
             # 更新背景图片文本显示（显示友好的标题而不是URL）
             if hasattr(self, 'bg_image_text'):
                 self.bg_image_text.value = f"必应壁纸: {wallpaper['title']}"
-                self.bg_image_text.update()
+            
+            # 使用 page.update() 统一更新，避免在后台线程中直接调用控件的 update()
+            page = getattr(self, '_saved_page', self.page)
+            if page:
+                page.update()
         except Exception as e:
             # 如果更新失败，至少确保不显示"加载中"
             print(f"更新壁纸UI信息失败: {e}")
@@ -971,7 +976,9 @@ class SettingsView(ft.Container):
                 if "加载中" in self.bg_image_text.value or self.bg_image_text.value.startswith("http"):
                     self.bg_image_text.value = "必应壁纸"
                     try:
-                        self.bg_image_text.update()
+                        page = getattr(self, '_saved_page', self.page)
+                        if page:
+                            page.update()
                     except:
                         pass
     
