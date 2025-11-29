@@ -6,6 +6,7 @@
 
 from views.main_view import MainView
 from views.settings_view import SettingsView
+from views.recommendations_view import RecommendationsView
 from views.image import ImageView
 from views.media import MediaView
 from views.dev_tools import DevToolsView

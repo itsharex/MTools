@@ -17,6 +17,7 @@ from views.dev_tools import DevToolsView
 from views.others import OthersView
 from views.image import ImageView
 from views.settings_view import SettingsView
+from views.recommendations_view import RecommendationsView
 
 
 class MainView(ft.Column):
@@ -42,7 +43,7 @@ class MainView(ft.Column):
         
         # 创建服务
         self.config_service: ConfigService = ConfigService()
-        self.image_service: ImageService = ImageService()
+        self.image_service: ImageService = ImageService(self.config_service)
         self.encoding_service: EncodingService = EncodingService()
         self.ffmpeg_service: FFmpegService = FFmpegService(self.config_service)
         
@@ -53,9 +54,11 @@ class MainView(ft.Column):
         self.content_container: Optional[ft.Container] = None
         
         # 创建各功能视图
+        self.recommendations_view: Optional[RecommendationsView] = None  # 推荐视图
         self.image_view: Optional[ImageView] = None
         self.dev_tools_view: Optional[DevToolsView] = None
         self.media_view: Optional[MediaView] = None  # 统一的媒体处理视图
+        self.others_view: Optional[OthersView] = None
         self.settings_view: SettingsView = SettingsView(page, self.config_service)
         
         # 创建UI组件
@@ -82,6 +85,11 @@ class MainView(ft.Column):
             group_alignment=-0.9,
             expand=True,
             destinations=[
+                ft.NavigationRailDestination(
+                    icon=ft.Icons.LIGHTBULB_OUTLINE,
+                    selected_icon=ft.Icons.LIGHTBULB,
+                    label="推荐",
+                ),
                 ft.NavigationRailDestination(
                     icon=ft.Icons.IMAGE_OUTLINED,
                     selected_icon=ft.Icons.IMAGE_ROUNDED,
@@ -151,18 +159,43 @@ class MainView(ft.Column):
             height=float('inf'),  # 占满可用高度
         )
         
-        # 创建图片视图、媒体视图、开发工具视图和其他工具视图，并传递容器引用
-        self.image_view = ImageView(self.page, self.config_service, self.image_service, self.content_container)
-        self.media_view = MediaView(self.page, self.config_service, self.content_container)
-        
-        self.dev_tools_view = DevToolsView(self.page, self.config_service, self.encoding_service, self.content_container)
-        self.others_view = OthersView(self.page, self.config_service, self.content_container)
-        
-        # 设置初始内容
-        self.content_container.content = self.image_view
-        
-        # 注册所有工具（自动注册）
+        # 注册所有工具（需要在创建视图前注册）
         register_all_tools()
+        
+        # 创建推荐视图
+        self.recommendations_view = RecommendationsView(
+            self.page,
+            self.config_service,
+            on_tool_click=self._open_tool_by_id,
+        )
+        
+        # 创建图片视图、媒体视图、开发工具视图和其他工具视图，并传递容器引用
+        self.image_view = ImageView(
+            self.page, 
+            self.config_service, 
+            self.image_service, 
+            self.content_container,
+        )
+        self.media_view = MediaView(
+            self.page, 
+            self.config_service, 
+            self.content_container,
+        )
+        
+        self.dev_tools_view = DevToolsView(
+            self.page, 
+            self.config_service, 
+            self.encoding_service, 
+            self.content_container,
+        )
+        self.others_view = OthersView(
+            self.page, 
+            self.config_service, 
+            self.content_container,
+        )
+        
+        # 设置初始内容为推荐页
+        self.content_container.content = self.recommendations_view
         
         # 注册键盘快捷键
         self.page.on_keyboard_event = self._on_keyboard
@@ -209,6 +242,11 @@ class MainView(ft.Column):
         
         # 根据选中的索引切换视图
         if selected_index == 0:
+            # 推荐
+            view = self.recommendations_view
+            self.content_container.content = view
+        elif selected_index == 1:
+            # 图片处理
             view = self.image_view
             # 尝试恢复图片处理页面的状态（如果之前在子视图中）
             if hasattr(view, 'restore_state'):
@@ -217,7 +255,7 @@ class MainView(ft.Column):
             # 如果没有恢复子视图，则显示主视图
             if not restored:
                 self.content_container.content = view
-        elif selected_index == 1:
+        elif selected_index == 2:
             # 媒体处理（统一视图）
             view = self.media_view
             # 尝试恢复媒体处理页面的状态
@@ -226,7 +264,8 @@ class MainView(ft.Column):
             
             if not restored:
                 self.content_container.content = view
-        elif selected_index == 2:
+        elif selected_index == 3:
+            # 开发工具
             view = self.dev_tools_view
             # 尝试恢复开发工具页面的状态
             if hasattr(view, 'restore_state'):
@@ -234,7 +273,8 @@ class MainView(ft.Column):
             
             if not restored:
                 self.content_container.content = view
-        elif selected_index == 3:
+        elif selected_index == 4:
+            # 其他工具
             view = self.others_view
             # 尝试恢复其他工具页面的状态
             if hasattr(view, 'restore_state'):
@@ -271,14 +311,14 @@ class MainView(ft.Column):
         
         # 先切换到对应的分类
         if category == "image":
-            self.navigation_rail.selected_index = 0
+            self.navigation_rail.selected_index = 1  # 图片处理现在是索引1
             self.content_container.content = self.image_view
             # 调用图片视图的方法打开子工具
             if hasattr(self.image_view, 'open_tool'):
                 self.image_view.open_tool(tool_name)
         elif category == "audio" or category == "video":
             # 音频和视频都属于媒体处理
-            self.navigation_rail.selected_index = 1
+            self.navigation_rail.selected_index = 2  # 媒体处理现在是索引2
             self.content_container.content = self.media_view
             # 媒体视图使用 _open_view 方法
             if hasattr(self.media_view, '_open_view'):
@@ -308,15 +348,18 @@ class MainView(ft.Column):
                     elif tool_name == "watermark":
                         self.media_view._open_view('video_watermark')
         elif category == "dev":
-            self.navigation_rail.selected_index = 2
+            self.navigation_rail.selected_index = 3  # 开发工具现在是索引3
             self.content_container.content = self.dev_tools_view
             if hasattr(self.dev_tools_view, 'open_tool'):
                 self.dev_tools_view.open_tool(tool_name)
         elif category == "others":
-            self.navigation_rail.selected_index = 3
+            self.navigation_rail.selected_index = 4  # 其他工具现在是索引4
             self.content_container.content = self.others_view
             if hasattr(self.others_view, 'open_tool'):
                 self.others_view.open_tool(tool_name)
+        
+        # 打开具体工具时隐藏搜索按钮
+        self.hide_search_button()
         
         # 使用page.update()而不是单独更新控件
         if self.page:
@@ -363,6 +406,7 @@ class MainView(ft.Column):
         if self.page:
             self.page.floating_action_button = None
             self.page.update()
+    
     
     def _open_settings(self, e: ft.ControlEvent) -> None:
         """打开设置视图。

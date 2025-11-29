@@ -18,6 +18,7 @@ from constants import (
 )
 from services import ConfigService, ImageService
 from utils import format_file_size, GifUtils
+from views.image.image_tools_install_view import ImageToolsInstallView
 
 
 class ImageCompressView(ft.Container):
@@ -35,7 +36,8 @@ class ImageCompressView(ft.Container):
         page: ft.Page,
         config_service: ConfigService,
         image_service: ImageService,
-        on_back: Optional[callable] = None
+        on_back: Optional[callable] = None,
+        parent_container: Optional[ft.Container] = None
     ) -> None:
         """初始化图片压缩视图。
         
@@ -44,12 +46,14 @@ class ImageCompressView(ft.Container):
             config_service: 配置服务实例
             image_service: 图片服务实例
             on_back: 返回按钮回调函数
+            parent_container: 父容器引用，用于切换到安装视图
         """
         super().__init__()
         self.page: ft.Page = page
         self.config_service: ConfigService = config_service
         self.image_service: ImageService = image_service
         self.on_back: Optional[callable] = on_back
+        self.parent_container: Optional[ft.Container] = parent_container
         
         self.selected_files: List[Path] = []
         # GIF 文件集合
@@ -522,6 +526,16 @@ class ImageCompressView(ft.Container):
             self._show_message("请先选择要压缩的图片", ft.Colors.ORANGE)
             return
         
+        # 获取参数
+        mode = self.mode_radio.value
+        
+        # 如果选择标准模式，检查工具是否已安装
+        if mode == "balanced":
+            tools_status = self.image_service.check_tools_installed()
+            if not tools_status["all_installed"]:
+                self._show_tools_install_view()
+                return
+        
         # 显示进度
         self.progress_bar.visible = True
         self.progress_bar.value = 0
@@ -529,8 +543,6 @@ class ImageCompressView(ft.Container):
         self.progress_bar.update()
         self.progress_text.update()
         
-        # 获取参数
-        mode = self.mode_radio.value
         quality = int(self.quality_slider.value)
         output_mode = self.output_mode_radio.value
         
@@ -601,6 +613,52 @@ class ImageCompressView(ft.Container):
         self.progress_text.update()
         
         self._show_message("压缩完成！", ft.Colors.GREEN)
+    
+    def _show_tools_install_view(self) -> None:
+        """显示工具安装引导视图。"""
+        # 创建安装视图
+        install_view = ImageToolsInstallView(
+            self.page,
+            self.image_service,
+            on_back=self._on_tools_install_back,
+            on_installed=self._on_tools_installed,
+        )
+        
+        # 获取父容器并切换内容
+        if self.parent_container:
+            self.parent_container.content = install_view
+            if self.page:
+                self.page.update()
+    
+    def _on_tools_install_back(self, e=None) -> None:
+        """从安装视图返回。"""
+        if self.parent_container:
+            self.parent_container.content = self
+            if self.page:
+                self.page.update()
+    
+    def _on_tools_installed(self, e=None) -> None:
+        """工具安装完成。"""
+        # 检查工具是否真的安装了
+        tools_status = self.image_service.check_tools_installed()
+        
+        if tools_status["all_installed"]:
+            # 显示成功消息
+            self._show_message("工具安装成功！", ft.Colors.GREEN)
+            # 返回压缩视图
+            self._on_tools_install_back()
+        else:
+            # 显示失败消息，提示缺少哪些工具
+            missing_tools = []
+            if not tools_status["mozjpeg"]:
+                missing_tools.append("mozjpeg")
+            if not tools_status["pngquant"]:
+                missing_tools.append("pngquant")
+            
+            self._show_message(
+                f"未检测到工具: {', '.join(missing_tools)}，请按照说明正确安装",
+                ft.Colors.ORANGE
+            )
     
     def _on_back_click(self, e: ft.ControlEvent) -> None:
         """返回按钮点击事件。"""

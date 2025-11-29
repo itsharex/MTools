@@ -262,7 +262,8 @@ class ImageView(ft.Container):
                 self.page,
                 self.config_service,
                 self.image_service,
-                on_back=self._back_to_main
+                on_back=self._back_to_main,
+                parent_container=self.parent_container
             )
         
         # 记录当前子视图

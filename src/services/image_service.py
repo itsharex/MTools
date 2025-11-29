@@ -9,10 +9,13 @@ import os
 import platform
 import subprocess
 import sys
+import zipfile
+import shutil
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Callable
 
 import cv2
+import httpx
 import numpy as np
 from PIL import Image
 
@@ -31,8 +34,17 @@ class ImageService:
     - 批量处理
     """
     
-    def __init__(self) -> None:
-        """初始化图片处理服务。"""
+    # 图片压缩工具下载链接
+    MOZJPEG_DOWNLOAD_URL = "https://ghproxy.cn/https://github.com/mozilla/mozjpeg/releases/download/v4.0.3/mozjpeg-v4.0.3-win-x64.zip"
+    PNGQUANT_DOWNLOAD_URL = "https://pngquant.org/pngquant-windows.zip"
+    
+    def __init__(self, config_service=None) -> None:
+        """初始化图片处理服务。
+        
+        Args:
+            config_service: 配置服务实例（可选）
+        """
+        self.config_service = config_service
         self._init_tools_path()
     
     def _init_tools_path(self) -> None:
@@ -69,6 +81,264 @@ class ImageService:
         elif tool_name == "pngquant":
             return self.pngquant_path.exists()
         return False
+    
+    def check_tools_installed(self) -> dict:
+        """检查图片压缩工具是否已安装。
+        
+        Returns:
+            包含工具安装状态的字典：
+            - mozjpeg: bool - mozjpeg是否已安装
+            - pngquant: bool - pngquant是否已安装
+            - all_installed: bool - 所有工具是否都已安装
+        """
+        mozjpeg_available = self._is_tool_available("mozjpeg")
+        pngquant_available = self._is_tool_available("pngquant")
+        
+        return {
+            "mozjpeg": mozjpeg_available,
+            "pngquant": pngquant_available,
+            "all_installed": mozjpeg_available and pngquant_available,
+        }
+    
+    def _get_temp_dir(self) -> Path:
+        """获取临时目录。
+        
+        Returns:
+            临时目录路径
+        """
+        if self.config_service:
+            return self.config_service.get_temp_dir()
+        
+        # 回退到默认临时目录
+        base_path = get_app_root()
+        temp_dir = base_path / "storage" / "temp"
+        temp_dir.mkdir(parents=True, exist_ok=True)
+        return temp_dir
+    
+    def download_and_install_tools(
+        self,
+        progress_callback: Optional[Callable[[float, str], None]] = None
+    ) -> Tuple[bool, str]:
+        """下载并安装图片压缩工具。
+        
+        Args:
+            progress_callback: 进度回调函数，接收(进度0-1, 状态消息)
+        
+        Returns:
+            (是否成功, 消息)
+        """
+        try:
+            # 下载并安装 mozjpeg
+            if progress_callback:
+                progress_callback(0.0, "开始下载 mozjpeg...")
+            
+            success, message = self._download_mozjpeg(progress_callback)
+            if not success:
+                return False, f"mozjpeg 安装失败: {message}"
+            
+            # 下载并安装 pngquant
+            if progress_callback:
+                progress_callback(0.5, "开始下载 pngquant...")
+            
+            success, message = self._download_pngquant(progress_callback)
+            if not success:
+                return False, f"pngquant 安装失败: {message}"
+            
+            if progress_callback:
+                progress_callback(1.0, "安装完成！")
+            
+            return True, "图片压缩工具安装成功！"
+        
+        except Exception as e:
+            return False, f"安装失败: {str(e)}"
+    
+    def _download_mozjpeg(
+        self,
+        progress_callback: Optional[Callable[[float, str], None]] = None
+    ) -> Tuple[bool, str]:
+        """下载并安装 mozjpeg。
+        
+        Args:
+            progress_callback: 进度回调函数
+        
+        Returns:
+            (是否成功, 消息)
+        """
+        try:
+            temp_dir = self._get_temp_dir()
+            zip_path = temp_dir / "mozjpeg.zip"
+            
+            # 下载
+            with httpx.stream("GET", self.MOZJPEG_DOWNLOAD_URL, follow_redirects=True, timeout=60.0) as response:
+                response.raise_for_status()
+                
+                total_size = int(response.headers.get('content-length', 0))
+                downloaded = 0
+                
+                with open(zip_path, 'wb') as f:
+                    for chunk in response.iter_bytes(chunk_size=8192):
+                        if chunk:
+                            f.write(chunk)
+                            downloaded += len(chunk)
+                            
+                            if progress_callback and total_size > 0:
+                                progress = downloaded / total_size * 0.2  # mozjpeg下载占20%进度
+                                size_mb = downloaded / (1024 * 1024)
+                                total_mb = total_size / (1024 * 1024)
+                                progress_callback(
+                                    progress,
+                                    f"下载 mozjpeg: {size_mb:.1f}/{total_mb:.1f} MB"
+                                )
+            
+            if progress_callback:
+                progress_callback(0.2, "mozjpeg 下载完成，开始解压...")
+            
+            # 解压
+            extract_dir = temp_dir / "mozjpeg_extracted"
+            if extract_dir.exists():
+                shutil.rmtree(extract_dir)
+            extract_dir.mkdir(parents=True, exist_ok=True)
+            
+            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                zip_ref.extractall(extract_dir)
+            
+            if progress_callback:
+                progress_callback(0.35, "mozjpeg 解压完成，正在安装...")
+            
+            # 获取解压后的目录
+            system = platform.system()
+            if system == "Windows":
+                bin_dir = get_app_root() / "bin" / "windows"
+                mozjpeg_dest = bin_dir / "mozjpeg"
+                
+                # 创建目标目录
+                mozjpeg_dest.mkdir(parents=True, exist_ok=True)
+                
+                # 复制文件（mozjpeg解压后直接是shared和static目录）
+                for item in extract_dir.iterdir():
+                    dest = mozjpeg_dest / item.name
+                    if dest.exists():
+                        if dest.is_dir():
+                            shutil.rmtree(dest)
+                        else:
+                            dest.unlink()
+                    
+                    if item.is_dir():
+                        shutil.copytree(item, dest)
+                    else:
+                        shutil.copy2(item, dest)
+            
+            if progress_callback:
+                progress_callback(0.45, "mozjpeg 安装完成，清理临时文件...")
+            
+            # 清理
+            try:
+                zip_path.unlink()
+                shutil.rmtree(extract_dir)
+            except Exception:
+                pass
+            
+            return True, "mozjpeg 安装成功"
+        
+        except Exception as e:
+            return False, str(e)
+    
+    def _download_pngquant(
+        self,
+        progress_callback: Optional[Callable[[float, str], None]] = None
+    ) -> Tuple[bool, str]:
+        """下载并安装 pngquant。
+        
+        Args:
+            progress_callback: 进度回调函数
+        
+        Returns:
+            (是否成功, 消息)
+        """
+        try:
+            temp_dir = self._get_temp_dir()
+            zip_path = temp_dir / "pngquant.zip"
+            
+            # 下载
+            with httpx.stream("GET", self.PNGQUANT_DOWNLOAD_URL, follow_redirects=True, timeout=60.0) as response:
+                response.raise_for_status()
+                
+                total_size = int(response.headers.get('content-length', 0))
+                downloaded = 0
+                
+                with open(zip_path, 'wb') as f:
+                    for chunk in response.iter_bytes(chunk_size=8192):
+                        if chunk:
+                            f.write(chunk)
+                            downloaded += len(chunk)
+                            
+                            if progress_callback and total_size > 0:
+                                progress = 0.5 + (downloaded / total_size * 0.2)  # pngquant下载占20%进度，从50%开始
+                                size_mb = downloaded / (1024 * 1024)
+                                total_mb = total_size / (1024 * 1024)
+                                progress_callback(
+                                    progress,
+                                    f"下载 pngquant: {size_mb:.1f}/{total_mb:.1f} MB"
+                                )
+            
+            if progress_callback:
+                progress_callback(0.7, "pngquant 下载完成，开始解压...")
+            
+            # 解压
+            extract_dir = temp_dir / "pngquant_extracted"
+            if extract_dir.exists():
+                shutil.rmtree(extract_dir)
+            extract_dir.mkdir(parents=True, exist_ok=True)
+            
+            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                zip_ref.extractall(extract_dir)
+            
+            if progress_callback:
+                progress_callback(0.85, "pngquant 解压完成，正在安装...")
+            
+            # 获取解压后的目录
+            system = platform.system()
+            if system == "Windows":
+                bin_dir = get_app_root() / "bin" / "windows"
+                pngquant_dest = bin_dir / "pngquant"
+                
+                # 创建目标目录
+                pngquant_dest.mkdir(parents=True, exist_ok=True)
+                
+                # pngquant解压后是一个pngquant文件夹
+                pngquant_folder = extract_dir / "pngquant"
+                if pngquant_folder.exists():
+                    dest_folder = pngquant_dest / "pngquant"
+                    if dest_folder.exists():
+                        shutil.rmtree(dest_folder)
+                    shutil.copytree(pngquant_folder, dest_folder)
+                else:
+                    # 如果直接是文件，复制所有内容
+                    dest_folder = pngquant_dest / "pngquant"
+                    dest_folder.mkdir(parents=True, exist_ok=True)
+                    for item in extract_dir.iterdir():
+                        dest = dest_folder / item.name
+                        if item.is_dir():
+                            if dest.exists():
+                                shutil.rmtree(dest)
+                            shutil.copytree(item, dest)
+                        else:
+                            shutil.copy2(item, dest)
+            
+            if progress_callback:
+                progress_callback(0.95, "pngquant 安装完成，清理临时文件...")
+            
+            # 清理
+            try:
+                zip_path.unlink()
+                shutil.rmtree(extract_dir)
+            except Exception:
+                pass
+            
+            return True, "pngquant 安装成功"
+        
+        except Exception as e:
+            return False, str(e)
     
     def get_image_info(self, image_path: Path) -> dict:
         """获取图片信息。
