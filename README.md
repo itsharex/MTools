@@ -13,7 +13,7 @@
 ## 🚀 快速开始
 
 ### 环境要求
-- **操作系统**: Windows 10/11 或 macOS (Apple Silicon)
+- **操作系统**: Windows 10/11、macOS (Apple Silicon) 或 Linux
 - **Python**: 3.11+
 - **包管理器**: [uv](https://github.com/astral-sh/uv) - 推荐使用的 Python 包管理器
 
@@ -45,6 +45,15 @@ cd mytools
 uv remove onnxruntime-directml
 uv add onnxruntime-silicon==1.22.0
 ```
+
+**⚠️ Linux 用户请先执行以下操作：**
+```bash
+# 更换为 CUDA 专用的 ONNX Runtime
+# Windows也可以执行这一步，但需要自行配置CUDA加速环境
+uv remove onnxruntime-directml
+uv add onnxruntime-gpu==1.22.0
+```
+
 
 **所有用户继续执行：**
 ```bash
@@ -152,6 +161,7 @@ uv remove <package-name>
 |------|----------|---------|------|
 | **Windows** | mozjpeg + Pillow | pngquant + Pillow | 支持自动下载安装 |
 | **macOS** | Pillow | pngquant + Pillow | mozjpeg 暂不支持，使用 Pillow 替代 |
+| **Linux** | Pillow | pngquant + Pillow | mozjpeg 暂不支持，使用 Pillow 替代 |
 
 #### 音视频处理工具
 
@@ -159,6 +169,7 @@ uv remove <package-name>
 |------|--------|------|
 | **Windows** | ✅ 自动下载 | 使用 gyan.dev 提供的精简版 |
 | **macOS** | ✅ 自动下载 | 使用 evermeet.cx 提供的官方版本 |
+| **Linux** | ✅ 自动下载 | 使用 johnvansickle.com 提供的静态编译版 |
 
 ---
 

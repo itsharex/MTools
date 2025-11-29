@@ -32,6 +32,7 @@ class FFmpegService:
     # FFmpeg 下载链接
     FFMPEG_WINDOWS_URL = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
     FFMPEG_MACOS_URL = "https://evermeet.cx/ffmpeg/getrelease/zip"  # FFmpeg macOS 版本
+    FFMPEG_LINUX_URL = "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz"  # FFmpeg Linux 版本
     
     def __init__(self, config_service=None) -> None:
         """初始化FFmpeg服务。
@@ -222,13 +223,16 @@ class FFmpegService:
             temp_dir = self._get_temp_dir()
             system = platform.system()
             
-            # 根据平台选择下载链接
+            # 根据平台选择下载链接和文件格式
             if system == "Darwin":
                 download_url = self.FFMPEG_MACOS_URL
+                archive_path = temp_dir / "ffmpeg.zip"
+            elif system == "Linux":
+                download_url = self.FFMPEG_LINUX_URL
+                archive_path = temp_dir / "ffmpeg.tar.xz"
             else:  # Windows
                 download_url = self.FFMPEG_WINDOWS_URL
-            
-            zip_path = temp_dir / "ffmpeg.zip"
+                archive_path = temp_dir / "ffmpeg.zip"
             
             # 下载ffmpeg
             if progress_callback:
@@ -240,7 +244,7 @@ class FFmpegService:
                 total_size = int(response.headers.get('content-length', 0))
                 downloaded = 0
                 
-                with open(zip_path, 'wb') as f:
+                with open(archive_path, 'wb') as f:
                     for chunk in response.iter_bytes(chunk_size=8192):
                         if chunk:
                             f.write(chunk)
@@ -265,8 +269,16 @@ class FFmpegService:
                 shutil.rmtree(extract_dir)
             extract_dir.mkdir(parents=True, exist_ok=True)
             
-            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-                zip_ref.extractall(extract_dir)
+            # 根据平台使用不同的解压方法
+            if system == "Linux":
+                # Linux: 解压 tar.xz
+                import tarfile
+                with tarfile.open(archive_path, 'r:xz') as tar_ref:
+                    tar_ref.extractall(extract_dir)
+            else:
+                # Windows/macOS: 解压 zip
+                with zipfile.ZipFile(archive_path, 'r') as zip_ref:
+                    zip_ref.extractall(extract_dir)
             
             if progress_callback:
                 progress_callback(0.85, "解压完成，正在安装...")
@@ -329,6 +341,35 @@ class FFmpegService:
                     except Exception as e:
                         # ffprobe 下载失败不影响 ffmpeg 的安装
                         pass
+            elif system == "Linux":
+                # Linux: johnvansickle 的静态编译版本，包含在子目录中
+                # 创建 bin 目录
+                if self.ffmpeg_bin.exists():
+                    shutil.rmtree(self.ffmpeg_bin)
+                self.ffmpeg_bin.mkdir(parents=True, exist_ok=True)
+                
+                # 查找解压后的 ffmpeg 目录
+                ffmpeg_folders = list(extract_dir.glob("ffmpeg-*"))
+                if ffmpeg_folders:
+                    source_dir = ffmpeg_folders[0]
+                    
+                    # 复制 ffmpeg 和 ffprobe 可执行文件
+                    for exe_name in ["ffmpeg", "ffprobe"]:
+                        exe_file = source_dir / exe_name
+                        if exe_file.exists():
+                            dest = self.ffmpeg_bin / exe_name
+                            shutil.copy2(exe_file, dest)
+                            # 确保可执行权限
+                            dest.chmod(dest.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+                else:
+                    # 如果没有子目录，直接从 extract_dir 复制
+                    for exe_name in ["ffmpeg", "ffprobe"]:
+                        exe_file = extract_dir / exe_name
+                        if exe_file.exists():
+                            dest = self.ffmpeg_bin / exe_name
+                            shutil.copy2(exe_file, dest)
+                            # 确保可执行权限
+                            dest.chmod(dest.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
             else:
                 # Windows: 查找解压后的ffmpeg目录（通常在一个子目录中）
                 ffmpeg_folders = list(extract_dir.glob("ffmpeg-*"))
@@ -359,7 +400,7 @@ class FFmpegService:
             
             # 清理临时文件
             try:
-                zip_path.unlink()
+                archive_path.unlink()
                 shutil.rmtree(extract_dir)
             except Exception:
                 pass  # 清理失败不影响安装结果

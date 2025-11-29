@@ -38,6 +38,7 @@ class ImageService:
     MOZJPEG_DOWNLOAD_URL = "https://ghproxy.cn/https://github.com/mozilla/mozjpeg/releases/download/v4.0.3/mozjpeg-v4.0.3-win-x64.zip"
     PNGQUANT_WINDOWS_URL = "https://pngquant.org/pngquant-windows.zip"
     PNGQUANT_MACOS_URL = "https://pngquant.org/pngquant.tar.bz2"
+    PNGQUANT_LINUX_URL = "https://pngquant.org/pngquant-linux.tar.bz2"
     
     def __init__(self, config_service=None) -> None:
         """初始化图片处理服务。
@@ -115,8 +116,8 @@ class ImageService:
             是否可用
         """
         if tool_name == "mozjpeg":
-            # macOS 下不支持 mozjpeg，直接返回 False
-            if platform.system() == "Darwin":
+            # macOS 和 Linux 下不支持 mozjpeg，直接返回 False
+            if platform.system() in ["Darwin", "Linux"]:
                 return False
             return self.mozjpeg_path.exists()
         elif tool_name == "pngquant":
@@ -171,8 +172,8 @@ class ImageService:
         try:
             system = platform.system()
             
-            # macOS 下跳过 mozjpeg，仅下载 pngquant
-            if system == "Darwin":
+            # macOS 和 Linux 下跳过 mozjpeg，仅下载 pngquant
+            if system in ["Darwin", "Linux"]:
                 if progress_callback:
                     progress_callback(0.0, "开始下载 pngquant...")
                 
@@ -183,7 +184,8 @@ class ImageService:
                 if progress_callback:
                     progress_callback(1.0, "安装完成！")
                 
-                return True, "图片压缩工具安装成功！（macOS 下使用 Pillow 处理 JPEG）"
+                platform_name = "macOS" if system == "Darwin" else "Linux"
+                return True, f"图片压缩工具安装成功！（{platform_name} 下使用 Pillow 处理 JPEG）"
             
             # Windows 下载 mozjpeg 和 pngquant
             # 下载并安装 mozjpeg
@@ -327,6 +329,9 @@ class ImageService:
             if system == "Darwin":
                 download_url = self.PNGQUANT_MACOS_URL
                 archive_path = temp_dir / "pngquant.tar.bz2"
+            elif system == "Linux":
+                download_url = self.PNGQUANT_LINUX_URL
+                archive_path = temp_dir / "pngquant.tar.bz2"
             else:  # Windows
                 download_url = self.PNGQUANT_WINDOWS_URL
                 archive_path = temp_dir / "pngquant.zip"
@@ -345,7 +350,7 @@ class ImageService:
                             downloaded += len(chunk)
                             
                             if progress_callback and total_size > 0:
-                                # Windows 下从 50% 开始，macOS 下从 0% 开始
+                                # Windows 下从 50% 开始，macOS/Linux 下从 0% 开始
                                 progress_start = 0.5 if system == "Windows" else 0.0
                                 progress = progress_start + (downloaded / total_size * 0.2)
                                 size_mb = downloaded / (1024 * 1024)
@@ -366,8 +371,8 @@ class ImageService:
             extract_dir.mkdir(parents=True, exist_ok=True)
             
             # 根据平台使用不同的解压方法
-            if system == "Darwin":
-                # macOS: 解压 tar.bz2
+            if system in ["Darwin", "Linux"]:
+                # macOS/Linux: 解压 tar.bz2
                 with tarfile.open(archive_path, 'r:bz2') as tar_ref:
                     tar_ref.extractall(extract_dir)
             else:
@@ -388,8 +393,8 @@ class ImageService:
             pngquant_dest = tools_dir / "pngquant"
             pngquant_dest.mkdir(parents=True, exist_ok=True)
             
-            if system == "Darwin":
-                # macOS: tar.bz2 解压后通常会有一个目录结构
+            if system in ["Darwin", "Linux"]:
+                # macOS/Linux: tar.bz2 解压后通常会有一个目录结构
                 # 查找 pngquant 可执行文件
                 import os
                 import stat
