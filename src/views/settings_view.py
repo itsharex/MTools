@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Callable, Optional, List, Dict
 import threading
 import time
+import shutil
 
 import flet as ft
 import httpx
@@ -326,7 +327,15 @@ class SettingsView(ft.Container):
         
         # 当前数据目录显示
         current_dir: Path = self.config_service.get_data_dir()
-        is_custom: bool = self.config_service.get_config_value("use_custom_dir", False)
+        default_dir: Path = self.config_service._get_default_data_dir()
+        
+        # 实际检查目录是否为默认目录
+        is_custom: bool = (current_dir != default_dir)
+        
+        # 如果配置与实际不符，更新配置
+        config_is_custom = self.config_service.get_config_value("use_custom_dir", False)
+        if config_is_custom != is_custom:
+            self.config_service.set_config_value("use_custom_dir", is_custom)
         
         self.data_dir_text: ft.Text = ft.Text(
             str(current_dir),
@@ -2148,17 +2157,50 @@ class SettingsView(ft.Container):
             e: 控件事件对象
         """
         is_custom: bool = e.control.value == "custom"
-        self.browse_button.disabled = not is_custom
-        self.browse_button.update()
         
         if not is_custom:
             # 切换到默认目录
-            if self.config_service.reset_to_default_dir():
-                self.data_dir_text.value = str(self.config_service.get_data_dir())
-                self.data_dir_text.update()
-                self._show_snackbar("已切换到默认数据目录", ft.Colors.GREEN)
+            old_dir = self.config_service.get_data_dir()
+            default_dir = self.config_service._get_default_data_dir()
+            
+            # 如果新旧目录相同，不做任何操作
+            if old_dir == default_dir:
+                # 重置单选按钮为自定义（因为当前已经是默认目录）
+                self.dir_type_radio.value = "custom"
+                self.browse_button.disabled = False
+                self.dir_type_radio.update()
+                self.browse_button.update()
+                self._show_snackbar("当前已经是默认目录", ft.Colors.ORANGE)
+                return
+            
+            # 更新浏览按钮状态
+            self.browse_button.disabled = True
+            self.browse_button.update()
+            
+            # 检查旧目录是否有数据
+            has_old_data = self.config_service.check_data_exists(old_dir)
+            
+            if has_old_data:
+                # 有数据，询问是否迁移
+                self._show_migrate_dialog(old_dir, default_dir)
             else:
-                self._show_snackbar("切换失败", ft.Colors.RED)
+                # 没有数据，直接切换
+                if self.config_service.reset_to_default_dir():
+                    self.data_dir_text.value = str(self.config_service.get_data_dir())
+                    self.data_dir_text.update()
+                    # 单选按钮已经在用户点击时更新了，这里不需要再更新
+                    self._show_snackbar("已切换到默认数据目录", ft.Colors.GREEN)
+                else:
+                    # 切换失败，恢复单选按钮状态
+                    self.dir_type_radio.value = "custom"
+                    self.browse_button.disabled = False
+                    self.dir_type_radio.update()
+                    self.browse_button.update()
+                    self._show_snackbar("切换失败", ft.Colors.RED)
+        else:
+            # 切换到自定义路径
+            self.browse_button.disabled = False
+            self.browse_button.update()
     
     def _on_browse_click(self, e: ft.ControlEvent) -> None:
         """浏览按钮点击事件处理。
@@ -2169,17 +2211,367 @@ class SettingsView(ft.Container):
         # 创建文件选择器
         def on_result(result: ft.FilePickerResultEvent) -> None:
             if result.path:
-                if self.config_service.set_data_dir(result.path, is_custom=True):
-                    self.data_dir_text.value = result.path
-                    self.data_dir_text.update()
-                    self._show_snackbar("数据目录已更新", ft.Colors.GREEN)
+                # 检查是否需要迁移数据
+                old_dir = self.config_service.get_data_dir()
+                new_dir = Path(result.path)
+                
+                # 如果新旧目录相同，不做任何操作
+                if old_dir == new_dir:
+                    self._show_snackbar("新目录与当前目录相同", ft.Colors.ORANGE)
+                    return
+                
+                # 检查旧目录是否有数据
+                has_old_data = self.config_service.check_data_exists(old_dir)
+                
+                if has_old_data:
+                    # 有数据，询问是否迁移
+                    self._show_migrate_dialog(old_dir, new_dir)
                 else:
-                    self._show_snackbar("更新数据目录失败", ft.Colors.RED)
+                    # 没有数据，直接更改目录
+                    if self.config_service.set_data_dir(result.path, is_custom=True):
+                        self.data_dir_text.value = result.path
+                        self.data_dir_text.update()
+                        
+                        # 更新单选按钮状态
+                        default_dir = self.config_service._get_default_data_dir()
+                        is_custom_dir = (new_dir != default_dir)
+                        self.dir_type_radio.value = "custom" if is_custom_dir else "default"
+                        self.browse_button.disabled = not is_custom_dir
+                        self.dir_type_radio.update()
+                        self.browse_button.update()
+                        
+                        self._show_snackbar("数据目录已更新", ft.Colors.GREEN)
+                    else:
+                        self._show_snackbar("更新数据目录失败", ft.Colors.RED)
         
         picker: ft.FilePicker = ft.FilePicker(on_result=on_result)
         self.page.overlay.append(picker)
         self.page.update()
         picker.get_directory_path(dialog_title="选择数据存储目录")
+    
+    def _show_migrate_dialog(self, old_dir: Path, new_dir: Path) -> None:
+        """显示数据迁移确认对话框。
+        
+        Args:
+            old_dir: 旧数据目录
+            new_dir: 新数据目录
+        """
+        def on_migrate(e):
+            """选择迁移数据"""
+            dialog.open = False
+            self.page.update()
+            # 显示迁移进度对话框
+            self._show_migrate_progress_dialog(old_dir, new_dir)
+        
+        def on_no_migrate(e):
+            """不迁移数据"""
+            dialog.open = False
+            self.page.update()
+            # 直接更改目录
+            if self.config_service.set_data_dir(str(new_dir), is_custom=True):
+                self.data_dir_text.value = str(new_dir)
+                self.data_dir_text.update()
+                
+                # 更新单选按钮状态
+                default_dir = self.config_service._get_default_data_dir()
+                is_custom_dir = (new_dir != default_dir)
+                self.dir_type_radio.value = "custom" if is_custom_dir else "default"
+                self.browse_button.disabled = not is_custom_dir
+                self.dir_type_radio.update()
+                self.browse_button.update()
+                
+                self._show_snackbar("数据目录已更新（未迁移旧数据）", ft.Colors.ORANGE)
+            else:
+                self._show_snackbar("更新数据目录失败", ft.Colors.RED)
+        
+        def on_cancel(e):
+            """取消操作"""
+            dialog.open = False
+            self.page.update()
+            
+            # 恢复单选按钮状态（因为用户取消了操作）
+            current_dir = self.config_service.get_data_dir()
+            default_dir = self.config_service._get_default_data_dir()
+            is_custom_dir = (current_dir != default_dir)
+            self.dir_type_radio.value = "custom" if is_custom_dir else "default"
+            self.browse_button.disabled = not is_custom_dir
+            self.dir_type_radio.update()
+            self.browse_button.update()
+        
+        dialog = ft.AlertDialog(
+            title=ft.Text("发现旧数据", size=18, weight=ft.FontWeight.W_600),
+            content=ft.Container(
+                content=ft.Column(
+                    controls=[
+                        ft.Text(
+                            "旧数据目录中包含数据，是否迁移到新目录？",
+                            size=14,
+                        ),
+                        ft.Container(height=PADDING_MEDIUM),
+                        ft.Container(
+                            content=ft.Column(
+                                controls=[
+                                    ft.Text("旧目录:", size=12, weight=ft.FontWeight.W_500),
+                                    ft.Text(str(old_dir), size=12, color=ft.Colors.ON_SURFACE_VARIANT),
+                                    ft.Container(height=PADDING_SMALL),
+                                    ft.Text("新目录:", size=12, weight=ft.FontWeight.W_500),
+                                    ft.Text(str(new_dir), size=12, color=ft.Colors.ON_SURFACE_VARIANT),
+                                ],
+                                spacing=PADDING_SMALL // 2,
+                            ),
+                            padding=PADDING_MEDIUM,
+                            border=ft.border.all(1, ft.Colors.OUTLINE_VARIANT),
+                            border_radius=BORDER_RADIUS_MEDIUM,
+                        ),
+                        ft.Container(height=PADDING_MEDIUM),
+                        ft.Row(
+                            controls=[
+                                ft.Icon(ft.Icons.INFO_OUTLINE, size=16, color=ft.Colors.BLUE),
+                                ft.Text(
+                                    "建议迁移数据以保留工具、模型等",
+                                    size=12,
+                                    color=ft.Colors.ON_SURFACE_VARIANT,
+                                ),
+                            ],
+                            spacing=PADDING_SMALL,
+                        ),
+                    ],
+                    spacing=0,
+                    tight=True,
+                ),
+                width=500,
+            ),
+            actions=[
+                ft.TextButton("取消", on_click=on_cancel),
+                ft.TextButton("不迁移", on_click=on_no_migrate),
+                ft.ElevatedButton(
+                    text="迁移数据",
+                    on_click=on_migrate,
+                    style=ft.ButtonStyle(
+                        bgcolor=ft.Colors.PRIMARY,
+                        color=ft.Colors.ON_PRIMARY,
+                    ),
+                ),
+            ],
+            actions_alignment=ft.MainAxisAlignment.END,
+        )
+        
+        self.page.overlay.append(dialog)
+        dialog.open = True
+        self.page.update()
+    
+    def _show_migrate_progress_dialog(self, old_dir: Path, new_dir: Path) -> None:
+        """显示数据迁移进度对话框。
+        
+        Args:
+            old_dir: 旧数据目录
+            new_dir: 新数据目录
+        """
+        progress_bar = ft.ProgressBar(width=400, value=0)
+        progress_text = ft.Text("准备迁移...", size=14)
+        
+        dialog = ft.AlertDialog(
+            title=ft.Text("正在迁移数据", size=18, weight=ft.FontWeight.W_600),
+            content=ft.Container(
+                content=ft.Column(
+                    controls=[
+                        progress_text,
+                        ft.Container(height=PADDING_MEDIUM),
+                        progress_bar,
+                    ],
+                    spacing=0,
+                    tight=True,
+                ),
+                width=500,
+            ),
+            actions=[],  # 迁移时不显示按钮
+        )
+        
+        self.page.overlay.append(dialog)
+        dialog.open = True
+        self.page.update()
+        
+        # 在后台线程执行迁移
+        def migrate_thread():
+            def progress_callback(current, total, message):
+                """进度回调"""
+                progress_bar.value = current / total if total > 0 else 0
+                progress_text.value = message
+                try:
+                    self.page.update()
+                except:
+                    pass
+            
+            # 执行迁移
+            success, message = self.config_service.migrate_data(
+                old_dir, new_dir, progress_callback
+            )
+            
+            # 关闭进度对话框
+            dialog.open = False
+            try:
+                self.page.update()
+            except:
+                pass
+            
+            if success:
+                # 更新配置
+                if self.config_service.set_data_dir(str(new_dir), is_custom=True):
+                    self.data_dir_text.value = str(new_dir)
+                    try:
+                        self.data_dir_text.update()
+                    except:
+                        pass
+                    
+                    # 更新单选按钮状态
+                    default_dir = self.config_service._get_default_data_dir()
+                    is_custom_dir = (new_dir != default_dir)
+                    self.dir_type_radio.value = "custom" if is_custom_dir else "default"
+                    self.browse_button.disabled = not is_custom_dir
+                    try:
+                        self.dir_type_radio.update()
+                        self.browse_button.update()
+                    except:
+                        pass
+                    
+                    self._show_snackbar(f"✓ {message}", ft.Colors.GREEN)
+                    
+                    # 询问是否删除旧数据
+                    import time
+                    time.sleep(0.5)  # 稍微延迟一下，让用户看到成功消息
+                    self._show_delete_old_data_dialog(old_dir)
+                else:
+                    self._show_snackbar("更新配置失败", ft.Colors.RED)
+            else:
+                self._show_snackbar(f"✗ {message}", ft.Colors.RED)
+        
+        thread = threading.Thread(target=migrate_thread, daemon=True)
+        thread.start()
+    
+    def _show_delete_old_data_dialog(self, old_dir: Path) -> None:
+        """显示删除旧数据确认对话框。
+        
+        Args:
+            old_dir: 旧数据目录
+        """
+        def on_delete(e):
+            """删除旧数据"""
+            dialog.open = False
+            self.page.update()
+            
+            # 在后台线程执行删除
+            def delete_thread():
+                try:
+                    import shutil
+                    
+                    if not old_dir.exists():
+                        self._show_snackbar("旧目录不存在", ft.Colors.ORANGE)
+                        return
+                    
+                    # 删除旧数据目录中的内容，但保留 config.json
+                    deleted_count = 0
+                    for item in old_dir.iterdir():
+                        # 跳过 config.json
+                        if item.name == "config.json":
+                            continue
+                        
+                        try:
+                            if item.is_dir():
+                                shutil.rmtree(item)
+                            else:
+                                item.unlink()
+                            deleted_count += 1
+                        except Exception as e:
+                            print(f"删除 {item.name} 失败: {e}")
+                    
+                    if deleted_count > 0:
+                        self._show_snackbar(f"已删除 {deleted_count} 项旧数据（保留了 config.json）", ft.Colors.GREEN)
+                    else:
+                        self._show_snackbar("没有需要删除的数据", ft.Colors.ORANGE)
+                except Exception as e:
+                    self._show_snackbar(f"删除失败: {str(e)}", ft.Colors.RED)
+            
+            thread = threading.Thread(target=delete_thread, daemon=True)
+            thread.start()
+        
+        def on_keep(e):
+            """保留旧数据"""
+            dialog.open = False
+            self.page.update()
+            self._show_snackbar("已保留旧数据", ft.Colors.BLUE)
+        
+        dialog = ft.AlertDialog(
+            title=ft.Text("删除旧数据？", size=18, weight=ft.FontWeight.W_600),
+            content=ft.Container(
+                content=ft.Column(
+                    controls=[
+                        ft.Text(
+                            "数据已成功迁移到新目录。",
+                            size=14,
+                        ),
+                        ft.Text(
+                            "是否删除旧目录中的数据以释放磁盘空间？",
+                            size=14,
+                        ),
+                        ft.Container(height=PADDING_MEDIUM),
+                        ft.Container(
+                            content=ft.Column(
+                                controls=[
+                                    ft.Text("旧目录:", size=12, weight=ft.FontWeight.W_500),
+                                    ft.Text(str(old_dir), size=12, color=ft.Colors.ON_SURFACE_VARIANT),
+                                ],
+                                spacing=PADDING_SMALL // 2,
+                            ),
+                            padding=PADDING_MEDIUM,
+                            border=ft.border.all(1, ft.Colors.OUTLINE_VARIANT),
+                            border_radius=BORDER_RADIUS_MEDIUM,
+                        ),
+                        ft.Container(height=PADDING_MEDIUM),
+                        ft.Row(
+                            controls=[
+                                ft.Icon(ft.Icons.INFO_OUTLINE, size=16, color=ft.Colors.BLUE),
+                                ft.Text(
+                                    "将保留 config.json 配置文件",
+                                    size=12,
+                                    color=ft.Colors.ON_SURFACE_VARIANT,
+                                ),
+                            ],
+                            spacing=PADDING_SMALL,
+                        ),
+                        ft.Row(
+                            controls=[
+                                ft.Icon(ft.Icons.WARNING_AMBER, size=16, color=ft.Colors.ORANGE),
+                                ft.Text(
+                                    "删除后无法恢复，请确认数据已成功迁移",
+                                    size=12,
+                                    color=ft.Colors.ORANGE,
+                                ),
+                            ],
+                            spacing=PADDING_SMALL,
+                        ),
+                    ],
+                    spacing=PADDING_SMALL // 2,
+                    tight=True,
+                ),
+                width=500,
+            ),
+            actions=[
+                ft.TextButton("保留", on_click=on_keep),
+                ft.ElevatedButton(
+                    text="删除",
+                    on_click=on_delete,
+                    style=ft.ButtonStyle(
+                        bgcolor=ft.Colors.ORANGE,
+                        color=ft.Colors.WHITE,
+                    ),
+                ),
+            ],
+            actions_alignment=ft.MainAxisAlignment.END,
+        )
+        
+        self.page.overlay.append(dialog)
+        dialog.open = True
+        self.page.update()
     
     def _on_open_dir_click(self, e: ft.ControlEvent) -> None:
         """打开目录按钮点击事件处理。

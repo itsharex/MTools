@@ -165,6 +165,102 @@ class ConfigService:
             print(f"设置数据目录失败: {e}")
             return False
     
+    def check_data_exists(self, directory: Path = None) -> bool:
+        """检查数据目录是否包含数据。
+        
+        Args:
+            directory: 要检查的目录，默认为当前数据目录
+        
+        Returns:
+            是否包含数据
+        """
+        if directory is None:
+            directory = self.get_data_dir()
+        
+        if not directory.exists():
+            return False
+        
+        # 检查是否有子目录或文件（排除临时文件）
+        try:
+            items = list(directory.iterdir())
+            # 过滤掉隐藏文件和临时文件
+            significant_items = [
+                item for item in items 
+                if not item.name.startswith('.') and item.name != 'temp'
+            ]
+            return len(significant_items) > 0
+        except Exception:
+            return False
+    
+    def migrate_data(self, source_dir: Path, dest_dir: Path, progress_callback=None) -> tuple[bool, str]:
+        """迁移数据从源目录到目标目录。
+        
+        Args:
+            source_dir: 源数据目录
+            dest_dir: 目标数据目录
+            progress_callback: 进度回调函数 (current, total, message)
+        
+        Returns:
+            (是否成功, 消息)
+        """
+        import shutil
+        
+        try:
+            if not source_dir.exists():
+                return False, "源目录不存在"
+            
+            # 确保目标目录存在
+            dest_dir.mkdir(parents=True, exist_ok=True)
+            
+            # 获取所有要迁移的项目（排除 config.json）
+            items = []
+            for item in source_dir.iterdir():
+                # 跳过 config.json，保留在原目录
+                if item.name == "config.json":
+                    continue
+                items.append(item)
+            
+            total_items = len(items)
+            
+            if total_items == 0:
+                return True, "没有需要迁移的数据"
+            
+            migrated_count = 0
+            
+            for i, item in enumerate(items):
+                try:
+                    dest_item = dest_dir / item.name
+                    
+                    if progress_callback:
+                        progress_callback(i, total_items, f"正在迁移: {item.name}")
+                    
+                    if item.is_dir():
+                        # 复制目录
+                        if dest_item.exists():
+                            shutil.rmtree(dest_item)
+                        shutil.copytree(item, dest_item)
+                    else:
+                        # 复制文件
+                        shutil.copy2(item, dest_item)
+                    
+                    migrated_count += 1
+                except Exception as e:
+                    print(f"迁移 {item.name} 失败: {e}")
+                    continue
+            
+            if progress_callback:
+                progress_callback(total_items, total_items, "迁移完成")
+            
+            if migrated_count == 0:
+                return False, "没有成功迁移任何数据"
+            elif migrated_count < total_items:
+                return True, f"部分迁移成功: {migrated_count}/{total_items} 项"
+            else:
+                return True, f"迁移成功: {migrated_count} 项"
+        
+        except Exception as e:
+            return False, f"迁移失败: {str(e)}"
+    
     def reset_to_default_dir(self) -> bool:
         """重置为默认数据目录。
         

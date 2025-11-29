@@ -45,13 +45,11 @@ class ImageService:
             config_service: 配置服务实例（可选）
         """
         self.config_service = config_service
-        self._init_tools_path()
     
-    def _init_tools_path(self) -> None:
-        """初始化压缩工具路径。"""
-        # 获取项目根目录
+    @property
+    def mozjpeg_path(self) -> Path:
+        """获取mozjpeg工具路径（动态读取）。"""
         base_path = get_app_root()
-        
         system = platform.system()
         
         # 使用数据目录存储工具
@@ -63,24 +61,48 @@ class ImageService:
             tools_dir = base_path / "bin" / "windows" if system == "Windows" else base_path / "bin" / system.lower()
         
         if system == "Windows":
-            self.mozjpeg_path = tools_dir / "mozjpeg" / "shared" / "Release" / "cjpeg.exe"
-            self.pngquant_path = tools_dir / "pngquant" / "pngquant" / "pngquant.exe"
+            new_path = tools_dir / "mozjpeg" / "shared" / "Release" / "cjpeg.exe"
             
             # 兼容性检查：如果旧路径存在工具而新路径没有，使用旧路径
-            old_bin_dir = base_path / "bin" / "windows"
-            old_mozjpeg = old_bin_dir / "mozjpeg" / "shared" / "Release" / "cjpeg.exe"
-            old_pngquant = old_bin_dir / "pngquant" / "pngquant" / "pngquant.exe"
+            if not new_path.exists():
+                old_path = base_path / "bin" / "windows" / "mozjpeg" / "shared" / "Release" / "cjpeg.exe"
+                if old_path.exists():
+                    return old_path
             
-            if old_mozjpeg.exists() and not self.mozjpeg_path.exists():
-                self.mozjpeg_path = old_mozjpeg
-            if old_pngquant.exists() and not self.pngquant_path.exists():
-                self.pngquant_path = old_pngquant
+            return new_path
         elif system == "Darwin":
-            self.mozjpeg_path = tools_dir / "mozjpeg" / "cjpeg"
-            self.pngquant_path = tools_dir / "pngquant" / "pngquant"
+            return tools_dir / "mozjpeg" / "cjpeg"
         else:  # Linux
-            self.mozjpeg_path = tools_dir / "mozjpeg" / "cjpeg"
-            self.pngquant_path = tools_dir / "pngquant" / "pngquant"
+            return tools_dir / "mozjpeg" / "cjpeg"
+    
+    @property
+    def pngquant_path(self) -> Path:
+        """获取pngquant工具路径（动态读取）。"""
+        base_path = get_app_root()
+        system = platform.system()
+        
+        # 使用数据目录存储工具
+        if self.config_service:
+            data_dir = self.config_service.get_data_dir()
+            tools_dir = data_dir / "tools"
+        else:
+            # 回退到应用根目录
+            tools_dir = base_path / "bin" / "windows" if system == "Windows" else base_path / "bin" / system.lower()
+        
+        if system == "Windows":
+            new_path = tools_dir / "pngquant" / "pngquant" / "pngquant.exe"
+            
+            # 兼容性检查：如果旧路径存在工具而新路径没有，使用旧路径
+            if not new_path.exists():
+                old_path = base_path / "bin" / "windows" / "pngquant" / "pngquant" / "pngquant.exe"
+                if old_path.exists():
+                    return old_path
+            
+            return new_path
+        elif system == "Darwin":
+            return tools_dir / "pngquant" / "pngquant"
+        else:  # Linux
+            return tools_dir / "pngquant" / "pngquant"
     
     def _is_tool_available(self, tool_name: str) -> bool:
         """检查压缩工具是否可用。
