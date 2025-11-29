@@ -161,7 +161,7 @@ class MediaView(ft.Container):
             FeatureCard(
                 icon=ft.Icons.SPEED,
                 title="视频倍速调整",
-                description="调整视频播放速度(0.25x-4x)",
+                description="调整视频播放速度(0.1x-10x)",
                 on_click=lambda e: self._open_view('video_speed'),
                 gradient_colors=("#667eea", "#764ba2"),
             ),

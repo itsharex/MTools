@@ -161,18 +161,42 @@ class VideoSpeedView(ft.Container):
         
         # 速度设置区域
         self.speed_slider = ft.Slider(
-            min=0.25,
-            max=4.0,
+            min=0.1,
+            max=10.0,
             value=1.0,
-            divisions=15,
+            divisions=99,
             label="{value}x",
             on_change=self._on_speed_change,
         )
         
         self.speed_text = ft.Text("播放速度: 1.0x (原速)", size=14, weight=ft.FontWeight.W_500)
         
+        # GPU加速状态提示
+        gpu_status_row = []
+        gpu_encoder = self.ffmpeg_service.get_preferred_gpu_encoder()
+        if gpu_encoder:
+            gpu_encoder_name = gpu_encoder.replace("_", " ").upper()
+            gpu_status_row.append(
+                ft.Container(
+                    content=ft.Row(
+                        controls=[
+                            ft.Icon(ft.Icons.SPEED, size=16, color=ft.Colors.GREEN),
+                            ft.Text(
+                                f"GPU加速已启用: {gpu_encoder_name}",
+                                size=12,
+                                color=ft.Colors.GREEN,
+                                weight=ft.FontWeight.W_500,
+                            ),
+                        ],
+                        spacing=6,
+                    ),
+                    margin=ft.margin.only(top=PADDING_SMALL),
+                )
+            )
+        
         # 预设速度按钮
         preset_speeds = [
+            ("0.1x", 0.1),
             ("0.25x", 0.25),
             ("0.5x", 0.5),
             ("0.75x", 0.75),
@@ -182,6 +206,9 @@ class VideoSpeedView(ft.Container):
             ("2.0x", 2.0),
             ("3.0x", 3.0),
             ("4.0x", 4.0),
+            ("5.0x", 5.0),
+            ("8.0x", 8.0),
+            ("10.0x", 10.0),
         ]
         
         preset_buttons = []
@@ -193,31 +220,34 @@ class VideoSpeedView(ft.Container):
             )
             preset_buttons.append(btn)
         
+        # 构建速度设置的控件列表
+        speed_controls = [self.speed_text, self.speed_slider]
+        speed_controls.extend(gpu_status_row)  # 添加GPU状态（如果有）
+        speed_controls.append(
+            ft.Container(
+                content=ft.Column(
+                    controls=[
+                        ft.Text("快速选择:", size=12, color=ft.Colors.ON_SURFACE_VARIANT),
+                        ft.Row(
+                            controls=preset_buttons,
+                            wrap=True,
+                            spacing=PADDING_SMALL,
+                            run_spacing=PADDING_SMALL,
+                        ),
+                    ],
+                    spacing=PADDING_SMALL,
+                ),
+                margin=ft.margin.only(top=PADDING_MEDIUM),
+            )
+        )
+        
         speed_settings = ft.Container(
             content=ft.Column(
                 controls=[
                     ft.Text("速度设置", size=18, weight=ft.FontWeight.W_600),
                     ft.Container(
                         content=ft.Column(
-                            controls=[
-                                self.speed_text,
-                                self.speed_slider,
-                                ft.Container(
-                                    content=ft.Column(
-                                        controls=[
-                                            ft.Text("快速选择:", size=12, color=ft.Colors.ON_SURFACE_VARIANT),
-                                            ft.Row(
-                                                controls=preset_buttons,
-                                                wrap=True,
-                                                spacing=PADDING_SMALL,
-                                                run_spacing=PADDING_SMALL,
-                                            ),
-                                        ],
-                                        spacing=PADDING_SMALL,
-                                    ),
-                                    margin=ft.margin.only(top=PADDING_MEDIUM),
-                                ),
-                            ],
+                            controls=speed_controls,
                             spacing=PADDING_SMALL,
                         ),
                         padding=PADDING_MEDIUM,

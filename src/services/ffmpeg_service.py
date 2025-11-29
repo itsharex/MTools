@@ -703,7 +703,7 @@ class FFmpegService:
         Args:
             input_path: 输入视频路径
             output_path: 输出视频路径
-            speed: 速度倍数（0.25-4.0），1.0为原速，2.0为2倍速
+            speed: 速度倍数（0.1-10.0），1.0为原速，2.0为2倍速，0.5为慢放
             adjust_audio: 是否同步调整音频速度
             progress_callback: 进度回调 (progress, speed, remaining_time)
         
@@ -752,6 +752,20 @@ class FFmpegService:
             # 应用滤镜
             video_stream = stream.video.filter("setpts", f"{1/speed}*PTS")
             
+            # 获取GPU加速编码器（如果可用）
+            vcodec = 'libx264'
+            preset = 'medium'
+            gpu_encoder = self.get_preferred_gpu_encoder()
+            if gpu_encoder:
+                vcodec = gpu_encoder
+                # 根据不同GPU编码器设置预设
+                if gpu_encoder.startswith("h264_nvenc") or gpu_encoder.startswith("hevc_nvenc"):
+                    preset = "p4"  # NVIDIA的平衡预设
+                elif gpu_encoder.startswith("h264_amf") or gpu_encoder.startswith("hevc_amf"):
+                    preset = "balanced"  # AMD的平衡预设
+                elif gpu_encoder.startswith("h264_qsv") or gpu_encoder.startswith("hevc_qsv"):
+                    preset = "medium"  # Intel QSV
+            
             if adjust_audio and audio_filter:
                 audio_stream = stream.audio
                 for filter_str in audio_filter.split(","):
@@ -761,12 +775,26 @@ class FFmpegService:
                 
                 # 合并音视频流
                 output_params = {
-                    'vcodec': 'libx264',
+                    'vcodec': vcodec,
                     'acodec': 'aac',
-                    'preset': 'medium',
-                    'crf': 23,
                     'pix_fmt': 'yuv420p',
                 }
+                
+                # 根据编码器类型设置质量参数
+                if vcodec in ["libx264", "libx265"]:
+                    output_params['crf'] = 23
+                    output_params['preset'] = preset
+                elif vcodec.startswith("h264_nvenc") or vcodec.startswith("hevc_nvenc"):
+                    output_params['cq'] = 23
+                    output_params['preset'] = preset
+                elif vcodec.startswith("h264_amf") or vcodec.startswith("hevc_amf"):
+                    output_params['quality'] = preset
+                    output_params['rc'] = 'vbr_peak'
+                    output_params['qmin'] = 18
+                    output_params['qmax'] = 28
+                elif vcodec.startswith("h264_qsv") or vcodec.startswith("hevc_qsv"):
+                    output_params['global_quality'] = 23
+                    output_params['preset'] = preset
                 
                 output_stream = ffmpeg.output(
                     video_stream,
@@ -779,20 +807,32 @@ class FFmpegService:
                 if adjust_audio:
                     # 保留原音频（不调速）
                     output_params = {
-                        'vcodec': 'libx264',
+                        'vcodec': vcodec,
                         'acodec': 'copy',
-                        'preset': 'medium',
-                        'crf': 23,
                         'pix_fmt': 'yuv420p',
                     }
                 else:
                     # 移除音频
                     output_params = {
-                        'vcodec': 'libx264',
-                        'preset': 'medium',
-                        'crf': 23,
+                        'vcodec': vcodec,
                         'pix_fmt': 'yuv420p',
                     }
+                
+                # 根据编码器类型设置质量参数
+                if vcodec in ["libx264", "libx265"]:
+                    output_params['crf'] = 23
+                    output_params['preset'] = preset
+                elif vcodec.startswith("h264_nvenc") or vcodec.startswith("hevc_nvenc"):
+                    output_params['cq'] = 23
+                    output_params['preset'] = preset
+                elif vcodec.startswith("h264_amf") or vcodec.startswith("hevc_amf"):
+                    output_params['quality'] = preset
+                    output_params['rc'] = 'vbr_peak'
+                    output_params['qmin'] = 18
+                    output_params['qmax'] = 28
+                elif vcodec.startswith("h264_qsv") or vcodec.startswith("hevc_qsv"):
+                    output_params['global_quality'] = 23
+                    output_params['preset'] = preset
                 
                 output_stream = ffmpeg.output(video_stream, str(output_path), **output_params)
             

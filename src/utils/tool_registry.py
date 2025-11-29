@@ -217,9 +217,9 @@ def register_all_tools():
     
     register_tool_manual(
         name="视频倍速调整",
-        description="调整视频播放速度(0.25x-4x)",
+        description="调整视频播放速度(0.1x-10x)",
         category="媒体处理",
-        keywords=["倍速", "速度", "快进", "慢放", "加速", "减速", "视频", "调整", "speed", "slow", "fast", "playback", "time", "2x", "0.5x"],
+        keywords=["倍速", "速度", "快进", "慢放", "加速", "减速", "视频", "调整", "speed", "slow", "fast", "playback", "time", "2x", "0.5x", "10x"],
         icon="SPEED",
         tool_id="video.speed",
     )
