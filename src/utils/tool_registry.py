@@ -216,6 +216,15 @@ def register_all_tools():
     )
     
     register_tool_manual(
+        name="视频倍速调整",
+        description="调整视频播放速度(0.25x-4x)",
+        category="媒体处理",
+        keywords=["倍速", "速度", "快进", "慢放", "加速", "减速", "视频", "调整", "speed", "slow", "fast", "playback", "time", "2x", "0.5x"],
+        icon="SPEED",
+        tool_id="video.speed",
+    )
+    
+    register_tool_manual(
         name="视频人声分离",
         description="分离视频中的人声和背景音",
         category="媒体处理",

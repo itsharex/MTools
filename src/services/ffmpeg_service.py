@@ -690,3 +690,184 @@ class FFmpegService:
         
         return info
 
+    def adjust_video_speed(
+        self,
+        input_path: Path,
+        output_path: Path,
+        speed: float,
+        adjust_audio: bool = True,
+        progress_callback: Optional[Callable[[float, str, str], None]] = None
+    ) -> Tuple[bool, str]:
+        """调整视频播放速度。
+        
+        Args:
+            input_path: 输入视频路径
+            output_path: 输出视频路径
+            speed: 速度倍数（0.25-4.0），1.0为原速，2.0为2倍速
+            adjust_audio: 是否同步调整音频速度
+            progress_callback: 进度回调 (progress, speed, remaining_time)
+        
+        Returns:
+            (是否成功, 消息)
+        """
+        ffmpeg_path = self.get_ffmpeg_path()
+        if not ffmpeg_path:
+            return False, "未找到 FFmpeg"
+        
+        try:
+            # 获取视频时长
+            duration = self.get_video_duration(input_path)
+            
+            # 构建输入流
+            stream = ffmpeg.input(str(input_path))
+            
+            # 视频滤镜：调整播放速度
+            # setpts 设置presentation timestamp
+            # speed=2.0 -> setpts=0.5*PTS (快放)
+            # speed=0.5 -> setpts=2.0*PTS (慢放)
+            video_filter = f"setpts={1/speed}*PTS"
+            
+            # 音频滤镜：调整音频速度
+            if adjust_audio:
+                # atempo只支持0.5-2.0倍速，需要链式调用来实现更大范围
+                audio_filters = []
+                remaining_speed = speed
+                
+                # 将速度分解为多个atempo滤镜
+                while remaining_speed > 2.0:
+                    audio_filters.append("atempo=2.0")
+                    remaining_speed /= 2.0
+                
+                while remaining_speed < 0.5:
+                    audio_filters.append("atempo=0.5")
+                    remaining_speed /= 0.5
+                
+                if remaining_speed != 1.0:
+                    audio_filters.append(f"atempo={remaining_speed}")
+                
+                audio_filter = ",".join(audio_filters) if audio_filters else None
+            else:
+                audio_filter = None
+            
+            # 应用滤镜
+            video_stream = stream.video.filter("setpts", f"{1/speed}*PTS")
+            
+            if adjust_audio and audio_filter:
+                audio_stream = stream.audio
+                for filter_str in audio_filter.split(","):
+                    # 解析 atempo=value
+                    tempo_value = filter_str.split("=")[1]
+                    audio_stream = audio_stream.filter("atempo", tempo_value)
+                
+                # 合并音视频流
+                output_params = {
+                    'vcodec': 'libx264',
+                    'acodec': 'aac',
+                    'preset': 'medium',
+                    'crf': 23,
+                    'pix_fmt': 'yuv420p',
+                }
+                
+                output_stream = ffmpeg.output(
+                    video_stream,
+                    audio_stream,
+                    str(output_path),
+                    **output_params
+                )
+            else:
+                # 只调整视频，保留原音频或移除音频
+                if adjust_audio:
+                    # 保留原音频（不调速）
+                    output_params = {
+                        'vcodec': 'libx264',
+                        'acodec': 'copy',
+                        'preset': 'medium',
+                        'crf': 23,
+                        'pix_fmt': 'yuv420p',
+                    }
+                else:
+                    # 移除音频
+                    output_params = {
+                        'vcodec': 'libx264',
+                        'preset': 'medium',
+                        'crf': 23,
+                        'pix_fmt': 'yuv420p',
+                    }
+                
+                output_stream = ffmpeg.output(video_stream, str(output_path), **output_params)
+            
+            # 添加全局参数
+            output_stream = output_stream.global_args('-stats', '-loglevel', 'info', '-progress', 'pipe:2')
+            
+            # 运行ffmpeg
+            process = ffmpeg.run_async(
+                output_stream,
+                cmd=ffmpeg_path,
+                pipe_stderr=True,
+                pipe_stdout=True,
+                overwrite_output=True
+            )
+            
+            # 实时读取进度
+            if progress_callback and duration > 0:
+                import threading
+                
+                def read_stderr():
+                    for line in iter(process.stderr.readline, b''):
+                        try:
+                            line_str = line.decode('utf-8', errors='ignore').strip()
+                            
+                            # 解析时间进度
+                            time_match = re.search(r"time=(\d{2}):(\d{2}):(\d{2})\.\d{2}", line_str)
+                            speed_match = re.search(r"speed=\s*([\d.]+)x", line_str)
+                            
+                            if time_match:
+                                hours = int(time_match.group(1))
+                                minutes = int(time_match.group(2))
+                                seconds = int(time_match.group(3))
+                                current_time = hours * 3600 + minutes * 60 + seconds
+                                
+                                # 调整后的时长
+                                adjusted_duration = duration / speed
+                                progress = min(current_time / adjusted_duration, 0.99) if adjusted_duration > 0 else 0
+                                
+                                speed_str = f"{speed_match.group(1)}x" if speed_match else "N/A"
+                                
+                                if speed_match and float(speed_match.group(1)) > 0:
+                                    remaining_seconds = (adjusted_duration - current_time) / float(speed_match.group(1))
+                                    remaining_time_str = f"{int(remaining_seconds // 60)}m {int(remaining_seconds % 60)}s"
+                                else:
+                                    remaining_time_str = "计算中..."
+                                
+                                progress_callback(progress, speed_str, remaining_time_str)
+                        except Exception:
+                            pass
+                    process.stderr.close()
+                
+                stderr_thread = threading.Thread(target=read_stderr, daemon=True)
+                stderr_thread.start()
+                
+                # 等待进程结束
+                process.wait()
+                stderr_thread.join(timeout=1)
+            else:
+                # 没有回调时直接等待
+                process.wait()
+            
+            # 检查返回码
+            if process.returncode != 0:
+                stderr_output = ""
+                try:
+                    if process.stderr:
+                        stderr_output = process.stderr.read().decode('utf-8', errors='ignore')
+                except Exception:
+                    pass
+                return False, f"FFmpeg 执行失败，退出码: {process.returncode}\n{stderr_output}"
+            
+            return True, "速度调整成功"
+        
+        except ffmpeg.Error as e:
+            return False, f"FFmpeg 错误: {e.stderr.decode()}"
+        except Exception as e:
+            return False, f"速度调整失败: {str(e)}"
+

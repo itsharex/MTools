@@ -20,6 +20,7 @@ from views.media.ffmpeg_install_view import FFmpegInstallView
 from views.media.video_compress_view import VideoCompressView
 from views.media.video_convert_view import VideoConvertView
 from views.media.video_extract_audio_view import VideoExtractAudioView
+from views.media.video_speed_view import VideoSpeedView
 from views.media.video_vocal_separation_view import VideoVocalSeparationView
 from views.media.video_watermark_view import VideoWatermarkView
 
@@ -34,6 +35,7 @@ class MediaView(ft.Container):
     - 视频压缩
     - 视频格式转换
     - 视频提取音频
+    - 视频倍速调整
     - 视频人声分离
     - 视频添加水印
     """
@@ -77,6 +79,7 @@ class MediaView(ft.Container):
         self.video_compress_view: Optional[VideoCompressView] = None
         self.video_convert_view: Optional[VideoConvertView] = None
         self.video_extract_audio_view: Optional[VideoExtractAudioView] = None
+        self.video_speed_view: Optional[VideoSpeedView] = None
         self.video_vocal_separation_view: Optional[VideoVocalSeparationView] = None
         self.video_watermark_view: Optional[VideoWatermarkView] = None
         
@@ -154,6 +157,13 @@ class MediaView(ft.Container):
                 description="从视频中提取音频轨道",
                 on_click=lambda e: self._open_view('video_extract_audio'),
                 gradient_colors=("#ff9a9e", "#fad0c4"),
+            ),
+            FeatureCard(
+                icon=ft.Icons.SPEED,
+                title="视频倍速调整",
+                description="调整视频播放速度(0.25x-4x)",
+                on_click=lambda e: self._open_view('video_speed'),
+                gradient_colors=("#667eea", "#764ba2"),
             ),
             FeatureCard(
                 icon=ft.Icons.GRAPHIC_EQ,
@@ -261,6 +271,16 @@ class MediaView(ft.Container):
                 )
             self._switch_to_sub_view(self.video_extract_audio_view, 'video_extract_audio')
             
+        elif view_name == 'video_speed':
+            if not self.video_speed_view:
+                self.video_speed_view = VideoSpeedView(
+                    self.page,
+                    self.config_service,
+                    self.ffmpeg_service,
+                    on_back=self._back_to_main
+                )
+            self._switch_to_sub_view(self.video_speed_view, 'video_speed')
+            
         elif view_name == 'video_vocal_separation':
             if not self.video_vocal_separation_view:
                 self.video_vocal_separation_view = VideoVocalSeparationView(
@@ -286,13 +306,18 @@ class MediaView(ft.Container):
         if not self.ffmpeg_install_view:
             self.ffmpeg_install_view = FFmpegInstallView(
                 self.page,
+                self.ffmpeg_service,
                 on_back=self._back_to_main,
                 on_installed=self._on_ffmpeg_installed
             )
         self._switch_to_sub_view(self.ffmpeg_install_view, 'ffmpeg_install')
     
-    def _on_ffmpeg_installed(self) -> None:
-        """FFmpeg安装完成回调。"""
+    def _on_ffmpeg_installed(self, e=None) -> None:
+        """FFmpeg安装完成回调。
+        
+        Args:
+            e: 事件对象（可选）
+        """
         # 返回主视图
         self._back_to_main()
     
@@ -318,8 +343,12 @@ class MediaView(ft.Container):
         self.parent_container.content = view
         self._safe_page_update()
     
-    def _back_to_main(self) -> None:
-        """返回主视图。"""
+    def _back_to_main(self, e=None) -> None:
+        """返回主视图。
+        
+        Args:
+            e: 事件对象（可选）
+        """
         if not self.parent_container:
             return
         
@@ -332,6 +361,7 @@ class MediaView(ft.Container):
                 "video_compress": "video_compress_view",
                 "video_convert": "video_convert_view",
                 "video_extract_audio": "video_extract_audio_view",
+                "video_speed": "video_speed_view",
                 "video_vocal_separation": "video_vocal_separation_view",
                 "video_watermark": "video_watermark_view",
                 "ffmpeg_install": "ffmpeg_install_view",

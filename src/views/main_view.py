@@ -297,6 +297,8 @@ class MainView(ft.Column):
                         self.media_view._open_view('video_convert')
                     elif tool_name == "extract_audio":
                         self.media_view._open_view('video_extract_audio')
+                    elif tool_name == "speed":
+                        self.media_view._open_view('video_speed')
                     elif tool_name == "vocal_separation":
                         self.media_view._open_view('video_vocal_separation')
                     elif tool_name == "watermark":
