@@ -2261,11 +2261,15 @@ class SettingsView(ft.Container):
         """
         from constants import WINDOW_WIDTH, WINDOW_HEIGHT
         
-        # 清除保存的窗口位置和大小
+        # 清除保存的窗口位置、大小和最大化状态
         self.config_service.set_config_value("window_left", None)
         self.config_service.set_config_value("window_top", None)
         self.config_service.set_config_value("window_width", None)
         self.config_service.set_config_value("window_height", None)
+        self.config_service.set_config_value("window_maximized", False)
+        
+        # 取消最大化状态
+        self.page.window.maximized = False
         
         # 重置窗口大小为默认值
         self.page.window.width = WINDOW_WIDTH

@@ -254,6 +254,10 @@ class CustomTitleBar(ft.Container):
         
         # 更新按钮图标
         self._update_maximize_button()
+        
+        # 保存最大化状态
+        if self.config_service:
+            self.config_service.set_config_value("window_maximized", self.page.window.maximized)
     
     def _update_maximize_button(self) -> None:
         """根据窗口当前状态更新最大化/还原按钮图标。"""
@@ -274,14 +278,19 @@ class CustomTitleBar(ft.Container):
         Args:
             e: 控件事件对象
         """
-        # 在关闭前保存窗口位置和大小
+        # 在关闭前保存窗口位置、大小和最大化状态
         if self.config_service:
-            if self.page.window.left is not None and self.page.window.top is not None:
-                self.config_service.set_config_value("window_left", self.page.window.left)
-                self.config_service.set_config_value("window_top", self.page.window.top)
-            if self.page.window.width is not None and self.page.window.height is not None:
-                self.config_service.set_config_value("window_width", self.page.window.width)
-                self.config_service.set_config_value("window_height", self.page.window.height)
+            # 保存最大化状态
+            self.config_service.set_config_value("window_maximized", self.page.window.maximized)
+            
+            # 只在非最大化时保存窗口位置和大小
+            if not self.page.window.maximized:
+                if self.page.window.left is not None and self.page.window.top is not None:
+                    self.config_service.set_config_value("window_left", self.page.window.left)
+                    self.config_service.set_config_value("window_top", self.page.window.top)
+                if self.page.window.width is not None and self.page.window.height is not None:
+                    self.config_service.set_config_value("window_width", self.page.window.width)
+                    self.config_service.set_config_value("window_height", self.page.window.height)
         
         # 关闭天气服务
         if self.weather_service:

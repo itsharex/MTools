@@ -50,9 +50,16 @@ class JsonTreeNode(ft.Container):
             else:
                 self.full_path = f"{parent_path}.{key}"
 
-        self.expanded = True
+        # 性能优化：默认收起状态，懒加载时才展开
+        self.expanded = False
         self.icon_ref = ft.Ref[ft.Icon]()
         self.content_ref = ft.Ref[ft.Column]()
+        
+        # 性能优化：延迟创建子节点
+        self.children_created = False
+        
+        # 性能优化：缓存路径格式
+        self._path_formats_cache = None
         
         self.content = self._build_view()
     
@@ -62,6 +69,10 @@ class JsonTreeNode(ft.Container):
         Returns:
             包含不同格式路径的字典（去重后）
         """
+        # 性能优化：使用缓存避免重复计算
+        if self._path_formats_cache is not None:
+            return self._path_formats_cache
+        
         # 先生成所有格式
         all_formats = {}
         
@@ -116,19 +127,10 @@ class JsonTreeNode(ft.Container):
             if path_value not in seen_values:
                 unique_formats[name] = path_value
                 seen_values[path_value] = name
-            else:
-                # 如果值已存在，合并名称
-                existing_name = seen_values[path_value]
-                if existing_name in unique_formats:
-                    # 合并名称（如果还没合并过）
-                    if '/' not in existing_name:
-                        # 只在第一次遇到重复时合并
-                        pass
         
+        # 缓存结果
+        self._path_formats_cache = unique_formats
         return unique_formats
-        formats['简单格式'] = self.full_path
-        
-        return formats
     
     def _to_python_path(self) -> str:
         """转换为Python访问路径格式。"""
@@ -421,8 +423,45 @@ class JsonTreeNode(ft.Container):
             ft.Icons.KEYBOARD_ARROW_DOWN if self.expanded 
             else ft.Icons.KEYBOARD_ARROW_RIGHT
         )
+        
+        # 性能优化：首次展开时才创建子节点（懒加载）
+        if self.expanded and not self.children_created:
+            self._create_children()
+        
         self.content_ref.current.visible = self.expanded
         self.update()
+    
+    def _create_children(self):
+        """创建子节点（懒加载）。"""
+        if self.children_created:
+            return
+        
+        children = []
+        
+        if isinstance(self.value, dict):
+            items = list(self.value.items())
+            for idx, (k, v) in enumerate(items):
+                is_last_child = idx == len(items) - 1
+                children.append(JsonTreeNode(
+                    k, v, self.level + 1, is_last_child, 
+                    parent_path=self.full_path, 
+                    page=self.page, 
+                    view=self.view
+                ))
+        elif isinstance(self.value, list):
+            for idx, item in enumerate(self.value):
+                is_last_child = idx == len(self.value) - 1
+                children.append(JsonTreeNode(
+                    f"[{idx}]", item, self.level + 1, is_last_child,
+                    parent_path=self.full_path,
+                    page=self.page,
+                    view=self.view
+                ))
+        
+        if self.content_ref.current:
+            self.content_ref.current.controls = children
+        
+        self.children_created = True
     
     def _get_value_preview(self, value: Any, truncate: bool = True) -> str:
         """获取值的预览文本。
@@ -479,13 +518,7 @@ class JsonTreeNode(ft.Container):
         
         # 如果是字典
         if isinstance(self.value, dict):
-            children = []
-            items = list(self.value.items())
-            
-            for idx, (k, v) in enumerate(items):
-                is_last_child = idx == len(items) - 1
-                children.append(JsonTreeNode(k, v, self.level + 1, is_last_child, parent_path=self.full_path, page=self.page, view=self.view))
-            
+            # 性能优化：不立即创建子节点，等到展开时再创建（懒加载）
             return ft.Container(
                 content=ft.Column(
                     controls=[
@@ -496,7 +529,7 @@ class JsonTreeNode(ft.Container):
                                     controls=[
                                         ft.Icon(
                                             ref=self.icon_ref,
-                                            name=ft.Icons.KEYBOARD_ARROW_DOWN,
+                                            name=ft.Icons.KEYBOARD_ARROW_RIGHT,  # 默认收起状态
                                             size=16,
                                             color=ft.Colors.GREY_400,
                                         ),
@@ -518,10 +551,10 @@ class JsonTreeNode(ft.Container):
                             on_secondary_tap_up=self._on_right_click,
                             mouse_cursor=ft.MouseCursor.CLICK,
                         ),
-                        # 子节点
+                        # 子节点（初始为空，懒加载）
                         ft.Column(
                             ref=self.content_ref,
-                            controls=children,
+                            controls=[],
                             spacing=2,
                             visible=self.expanded,
                         ),
@@ -532,12 +565,7 @@ class JsonTreeNode(ft.Container):
         
         # 如果是数组
         elif isinstance(self.value, list):
-            children = []
-            
-            for idx, item in enumerate(self.value):
-                is_last_child = idx == len(self.value) - 1
-                children.append(JsonTreeNode(f"[{idx}]", item, self.level + 1, is_last_child, parent_path=self.full_path, page=self.page, view=self.view))
-            
+            # 性能优化：不立即创建子节点，等到展开时再创建（懒加载）
             return ft.Container(
                 content=ft.Column(
                     controls=[
@@ -548,7 +576,7 @@ class JsonTreeNode(ft.Container):
                                     controls=[
                                         ft.Icon(
                                             ref=self.icon_ref,
-                                            name=ft.Icons.KEYBOARD_ARROW_DOWN,
+                                            name=ft.Icons.KEYBOARD_ARROW_RIGHT,  # 默认收起状态
                                             size=16,
                                             color=ft.Colors.GREY_400,
                                         ),
@@ -570,10 +598,10 @@ class JsonTreeNode(ft.Container):
                             on_secondary_tap_up=self._on_right_click,
                             mouse_cursor=ft.MouseCursor.CLICK,
                         ),
-                        # 子节点
+                        # 子节点（初始为空，懒加载）
                         ft.Column(
                             ref=self.content_ref,
-                            controls=children,
+                            controls=[],
                             spacing=2,
                             visible=self.expanded,
                         ),
@@ -781,6 +809,11 @@ class JsonViewerView(ft.Container):
     提供 JSON 格式化和树形查看功能。
     """
     
+    # 性能优化配置
+    MAX_NODES_WARNING = 1000  # 节点数量警告阈值
+    MAX_NODES_LIMIT = 5000    # 节点数量硬性限制
+    MAX_DEPTH_AUTO_EXPAND = 3  # 自动展开的最大深度
+    
     def __init__(
         self,
         page: ft.Page,
@@ -826,6 +859,34 @@ class JsonViewerView(ft.Container):
         self.is_dragging = False
         
         self._build_ui()
+    
+    def _count_nodes(self, data: Any, max_count: int = None) -> int:
+        """递归计算 JSON 数据的节点总数。
+        
+        Args:
+            data: JSON 数据
+            max_count: 最大计数限制（超过此值立即返回）
+            
+        Returns:
+            节点总数
+        """
+        if max_count is not None and max_count <= 0:
+            return max_count
+        
+        count = 1  # 当前节点
+        
+        if isinstance(data, dict):
+            for value in data.values():
+                count += self._count_nodes(value, max_count - count if max_count else None)
+                if max_count is not None and count >= max_count:
+                    return count
+        elif isinstance(data, list):
+            for item in data:
+                count += self._count_nodes(item, max_count - count if max_count else None)
+                if max_count is not None and count >= max_count:
+                    return count
+        
+        return count
     
     def _on_divider_pan_start(self, e: ft.DragStartEvent):
         """开始拖动分隔条。"""
@@ -1401,15 +1462,30 @@ class JsonViewerView(ft.Container):
             # 使用智能解析
             data = self._parse_json_smart(input_value)
             
+            # 性能优化：检查节点数量
+            node_count = self._count_nodes(data, self.MAX_NODES_LIMIT + 1)
+            
+            if node_count > self.MAX_NODES_LIMIT:
+                self._show_error(
+                    f"⚠️ JSON 数据过大！包含超过 {self.MAX_NODES_LIMIT} 个节点，"
+                    f"可能导致性能问题。\n💡 建议：使用其他工具处理超大 JSON，或分段处理。"
+                )
+                return
+            elif node_count > self.MAX_NODES_WARNING:
+                self._show_error(
+                    f"⚠️ 提示：JSON 包含约 {node_count} 个节点，加载可能需要几秒钟。\n"
+                    f"💡 建议：节点默认收起状态，按需展开可提高性能。"
+                )
+            
             # 格式化并替换输入框内容
             formatted = json.dumps(data, indent=2, ensure_ascii=False)
             self.input_text.current.value = formatted
             
             # 构建树形视图
-            self._build_tree_view(data)
+            self._build_tree_view(data, auto_expand=(node_count <= self.MAX_NODES_WARNING))
             
-            # 隐藏错误提示
-            if self.error_container.current:
+            # 如果没有警告，隐藏错误提示
+            if node_count <= self.MAX_NODES_WARNING and self.error_container.current:
                 self.error_container.current.visible = False
             
             self.update()
@@ -1569,21 +1645,40 @@ class JsonViewerView(ft.Container):
         
         self.update()
     
-    def _build_tree_view(self, data: Any):
+    def _build_tree_view(self, data: Any, auto_expand: bool = True):
         """构建树形视图。
         
         Args:
             data: JSON 数据
+            auto_expand: 是否自动展开节点（大数据时建议 False）
         """
         self.tree_view.current.controls.clear()
         
         if isinstance(data, dict):
             for key, value in data.items():
                 node = JsonTreeNode(key, value, level=0, page=self.page, view=self)
+                # 小数据时，展开第一层（懒加载会在用户点击时才创建更深层）
+                if auto_expand and isinstance(value, (dict, list)):
+                    node.expanded = True
+                    if node.icon_ref.current:
+                        node.icon_ref.current.name = ft.Icons.KEYBOARD_ARROW_DOWN
+                    if node.content_ref.current:
+                        node.content_ref.current.visible = True
+                    node._create_children()
+                # 大数据时保持默认收起状态（在 __init__ 中已设置）
                 self.tree_view.current.controls.append(node)
         elif isinstance(data, list):
             for idx, item in enumerate(data):
                 node = JsonTreeNode(f"[{idx}]", item, level=0, page=self.page, view=self)
+                # 小数据时，展开第一层
+                if auto_expand and isinstance(item, (dict, list)):
+                    node.expanded = True
+                    if node.icon_ref.current:
+                        node.icon_ref.current.name = ft.Icons.KEYBOARD_ARROW_DOWN
+                    if node.content_ref.current:
+                        node.content_ref.current.visible = True
+                    node._create_children()
+                # 大数据时保持默认收起状态
                 self.tree_view.current.controls.append(node)
         else:
             self.tree_view.current.controls.append(

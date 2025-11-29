@@ -38,6 +38,7 @@ def main(page: ft.Page) -> None:
     saved_top = config_service.get_config_value("window_top")
     saved_width = config_service.get_config_value("window_width")
     saved_height = config_service.get_config_value("window_height")
+    saved_maximized = config_service.get_config_value("window_maximized", False)
     
     # 配置页面属性
     page.title = APP_TITLE
@@ -77,19 +78,23 @@ def main(page: ft.Page) -> None:
     if icon_path:
         page.window.icon = str(icon_path)
     
-    # 设置窗口大小（使用保存的大小或默认大小）
-    page.window.width = saved_width if saved_width is not None else WINDOW_WIDTH
-    page.window.height = saved_height if saved_height is not None else WINDOW_HEIGHT
-    # page.window.min_width = WINDOW_MIN_WIDTH
-    # page.window.min_height = WINDOW_MIN_HEIGHT
     # 设置窗口最小大小
     page.window.min_width = WINDOW_WIDTH
     page.window.min_height = WINDOW_HEIGHT
     
+    # 先设置窗口大小（使用保存的大小或默认大小）
+    page.window.width = saved_width if saved_width is not None else WINDOW_WIDTH
+    page.window.height = saved_height if saved_height is not None else WINDOW_HEIGHT
+    
     # 恢复窗口位置（如果有保存的位置）
+    # 先移动到上次的位置，这样最大化时会在正确的显示器上
     if saved_left is not None and saved_top is not None:
         page.window.left = saved_left
         page.window.top = saved_top
+    
+    # 最后应用最大化状态（如果上次是最大化）
+    if saved_maximized:
+        page.window.maximized = True
     
     # 隐藏系统标题栏，使用自定义标题栏
     page.window.title_bar_hidden = True
@@ -154,16 +159,22 @@ def main(page: ft.Page) -> None:
     # 监听窗口事件（移动和调整大小时自动保存）
     def on_window_event(e):
         """处理窗口事件。"""
-        # 窗口移动时保存位置
+        # 窗口移动时保存位置（只在非最大化时保存）
         if e.data == "moved":
-            if page.window.left is not None and page.window.top is not None:
-                config_service.set_config_value("window_left", page.window.left)
-                config_service.set_config_value("window_top", page.window.top)
-        # 窗口大小改变时保存大小
+            if not page.window.maximized:
+                if page.window.left is not None and page.window.top is not None:
+                    config_service.set_config_value("window_left", page.window.left)
+                    config_service.set_config_value("window_top", page.window.top)
+        # 窗口大小改变时保存大小和最大化状态
         elif e.data == "resized":
-            if page.window.width is not None and page.window.height is not None:
-                config_service.set_config_value("window_width", page.window.width)
-                config_service.set_config_value("window_height", page.window.height)
+            # 保存最大化状态
+            config_service.set_config_value("window_maximized", page.window.maximized)
+            
+            # 只在非最大化时保存窗口大小
+            if not page.window.maximized:
+                if page.window.width is not None and page.window.height is not None:
+                    config_service.set_config_value("window_width", page.window.width)
+                    config_service.set_config_value("window_height", page.window.height)
     
     page.on_window_event = on_window_event
 
