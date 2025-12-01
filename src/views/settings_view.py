@@ -574,7 +574,7 @@ class SettingsView(ft.Container):
         
         # 背景图片适应模式
         self.bg_fit_dropdown = ft.Dropdown(
-            width=220,
+            width=280,
             value=current_bg_fit,
             options=[
                 ft.dropdown.Option("cover", "覆盖 - 填满窗口(可能裁剪)"),
@@ -638,6 +638,11 @@ class SettingsView(ft.Container):
                             icon=ft.Icons.ARROW_FORWARD,
                             tooltip="下一张",
                             on_click=self._next_wallpaper,
+                        ),
+                        ft.IconButton(
+                            icon=ft.Icons.DOWNLOAD,
+                            tooltip="下载当前壁纸",
+                            on_click=self._on_download_wallpaper,
                         ),
                     ],
                     spacing=PADDING_SMALL,
@@ -990,6 +995,23 @@ class SettingsView(ft.Container):
                             page.update()
                     except:
                         pass
+    
+    def _on_download_wallpaper(self, e: Optional[ft.ControlEvent] = None) -> None:
+        """下载当前壁纸到浏览器。"""
+        if not self.bing_wallpapers:
+            self._show_snackbar("请先获取必应壁纸", ft.Colors.ORANGE)
+            return
+        
+        try:
+            import webbrowser
+            wallpaper = self.bing_wallpapers[self.current_wallpaper_index]
+            url = wallpaper["url"]
+            
+            # 在浏览器中打开壁纸URL
+            webbrowser.open(url)
+            self._show_snackbar("已在浏览器中打开壁纸下载页面", ft.Colors.GREEN)
+        except Exception as ex:
+            self._show_snackbar(f"打开浏览器失败: {str(ex)}", ft.Colors.RED)
     
     def _on_auto_switch_change(self, e: ft.ControlEvent) -> None:
         """自动切换开关改变事件。"""
