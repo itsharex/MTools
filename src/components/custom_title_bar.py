@@ -45,17 +45,20 @@ class CustomTitleBar(ft.Container):
         self.weather_service: WeatherService = WeatherService()
         self.weather_data: Optional[dict] = None
         
-        # 获取用户设置的主题色
+        # 获取用户设置的主题色和天气显示配置
         if self.config_service:
             self.theme_color: str = self.config_service.get_config_value("theme_color", "#667EEA")
+            self.show_weather: bool = self.config_service.get_config_value("show_weather", True)
         else:
             self.theme_color = "#667EEA"
+            self.show_weather = True
         
         # 构建标题栏
         self._build_title_bar()
         
-        # 异步加载天气数据
-        self.page.run_task(self._load_weather_data)
+        # 异步加载天气数据（如果启用）
+        if self.show_weather:
+            self.page.run_task(self._load_weather_data)
     
     def _build_title_bar(self) -> None:
         """构建标题栏UI。"""
@@ -110,6 +113,11 @@ class CustomTitleBar(ft.Container):
             ),
             padding=ft.padding.symmetric(horizontal=8),
             tooltip="天气信息",
+            visible=self.show_weather,  # 根据配置决定是否显示
+            opacity=1.0,
+            scale=1.0,
+            animate_opacity=200,  # 200ms 淡入淡出动画
+            animate_scale=ft.Animation(200, ft.AnimationCurve.EASE_OUT),  # 缩放动画
         )
         
         self.theme_icon: ft.IconButton = ft.IconButton(
@@ -447,4 +455,53 @@ class CustomTitleBar(ft.Container):
         self.page.dialog = dialog
         dialog.open = True
         self.page.update()
+    
+    def set_weather_visibility(self, visible: bool) -> None:
+        """设置天气显示状态
+        
+        Args:
+            visible: 是否显示天气
+        """
+        self.show_weather = visible
+        
+        if visible:
+            # 显示天气：先设为可见但透明，然后淡入+缩放
+            self.weather_container.visible = True
+            self.weather_container.opacity = 0
+            self.weather_container.scale = 0.8
+            self.page.update()
+            
+            # 使用定时器实现非阻塞动画
+            import threading
+            def show_animation():
+                import time
+                time.sleep(0.05)
+                self.weather_container.opacity = 1.0
+                self.weather_container.scale = 1.0
+                self.page.update()
+            
+            timer = threading.Timer(0.001, show_animation)
+            timer.daemon = True
+            timer.start()
+            
+            # 如果还没有加载数据，则加载
+            if self.weather_data is None:
+                self.page.run_task(self._load_weather_data)
+        else:
+            # 隐藏天气：淡出+缩小
+            self.weather_container.opacity = 0
+            self.weather_container.scale = 0.8
+            self.page.update()
+            
+            # 使用定时器延迟隐藏
+            import threading
+            def hide_animation():
+                import time
+                time.sleep(0.2)
+                self.weather_container.visible = False
+                self.page.update()
+            
+            timer = threading.Timer(0.001, hide_animation)
+            timer.daemon = True
+            timer.start()
 

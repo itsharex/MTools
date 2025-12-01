@@ -51,6 +51,9 @@ class Logger:
     
     _instance: Optional['Logger'] = None
     _logger: Optional[logging.Logger] = None
+    _file_handler: Optional[logging.FileHandler] = None
+    _error_handler: Optional[logging.FileHandler] = None
+    _file_logging_enabled: bool = False
     
     def __new__(cls):
         """单例模式"""
@@ -71,11 +74,7 @@ class Logger:
         if self._logger.handlers:
             return
         
-        # 创建日志目录
-        log_dir = Path('logs')
-        log_dir.mkdir(exist_ok=True)
-        
-        # 控制台处理器（彩色输出）
+        # 控制台处理器（彩色输出）- 始终启用
         console_handler = logging.StreamHandler(sys.stdout)
         console_handler.setLevel(logging.DEBUG)
         console_formatter = ColoredFormatter(
@@ -84,23 +83,62 @@ class Logger:
         console_handler.setFormatter(console_formatter)
         self._logger.addHandler(console_handler)
         
-        # 文件处理器（详细日志）
-        log_file = log_dir / f"mytools_{datetime.now().strftime('%Y%m%d')}.log"
-        file_handler = logging.FileHandler(log_file, encoding='utf-8')
-        file_handler.setLevel(logging.DEBUG)
+        # 文件处理器默认不创建，需要调用 enable_file_logging() 启用
+    
+    def enable_file_logging(self):
+        """启用文件日志"""
+        if self._file_logging_enabled:
+            return
+        
+        # 创建日志目录
+        log_dir = Path('logs')
+        log_dir.mkdir(exist_ok=True)
+        
+        # 文件格式化器
         file_formatter = logging.Formatter(
             '%(asctime)s | %(levelname)-8s | %(filename)s:%(lineno)d | %(message)s',
             datefmt='%Y-%m-%d %H:%M:%S'
         )
-        file_handler.setFormatter(file_formatter)
-        self._logger.addHandler(file_handler)
+        
+        # 文件处理器（详细日志）
+        log_file = log_dir / f"mytools_{datetime.now().strftime('%Y%m%d')}.log"
+        self._file_handler = logging.FileHandler(log_file, encoding='utf-8')
+        self._file_handler.setLevel(logging.DEBUG)
+        self._file_handler.setFormatter(file_formatter)
+        self._logger.addHandler(self._file_handler)
         
         # 错误日志文件处理器
         error_log_file = log_dir / f"mytools_error_{datetime.now().strftime('%Y%m%d')}.log"
-        error_handler = logging.FileHandler(error_log_file, encoding='utf-8')
-        error_handler.setLevel(logging.ERROR)
-        error_handler.setFormatter(file_formatter)
-        self._logger.addHandler(error_handler)
+        self._error_handler = logging.FileHandler(error_log_file, encoding='utf-8')
+        self._error_handler.setLevel(logging.ERROR)
+        self._error_handler.setFormatter(file_formatter)
+        self._logger.addHandler(self._error_handler)
+        
+        self._file_logging_enabled = True
+        self.info("文件日志已启用")
+    
+    def disable_file_logging(self):
+        """禁用文件日志"""
+        if not self._file_logging_enabled:
+            return
+        
+        # 移除文件处理器
+        if self._file_handler:
+            self._file_handler.close()
+            self._logger.removeHandler(self._file_handler)
+            self._file_handler = None
+        
+        if self._error_handler:
+            self._error_handler.close()
+            self._logger.removeHandler(self._error_handler)
+            self._error_handler = None
+        
+        self._file_logging_enabled = False
+        self.info("文件日志已禁用")
+    
+    def is_file_logging_enabled(self) -> bool:
+        """检查文件日志是否启用"""
+        return self._file_logging_enabled
     
     def debug(self, message: str, *args, **kwargs):
         """调试级别日志"""

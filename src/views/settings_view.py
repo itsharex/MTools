@@ -1089,6 +1089,8 @@ class SettingsView(ft.Container):
         
         # 获取当前配置
         show_recommendations = self.config_service.get_config_value("show_recommendations_page", True)
+        save_logs = self.config_service.get_config_value("save_logs", False)
+        show_weather = self.config_service.get_config_value("show_weather", True)
         
         # 推荐工具页面开关
         self.recommendations_switch = ft.Switch(
@@ -1098,8 +1100,36 @@ class SettingsView(ft.Container):
         )
         
         # 说明文字
-        info_text = ft.Text(
-            "关闭后，导航栏将不显示推荐工具页面，应用将直接打开图片处理页面",
+        recommendations_info_text = ft.Text(
+            "开启或关闭推荐工具页面在导航栏中的显示",
+            size=12,
+            color=ft.Colors.ON_SURFACE_VARIANT,
+        )
+        
+        # 日志保存开关
+        self.save_logs_switch = ft.Switch(
+            label="保存日志到文件",
+            value=save_logs,
+            on_change=self._on_save_logs_switch_change,
+        )
+        
+        # 日志说明文字
+        logs_info_text = ft.Text(
+            "开启后，应用运行日志将保存到 logs 目录，方便调试和问题排查",
+            size=12,
+            color=ft.Colors.ON_SURFACE_VARIANT,
+        )
+        
+        # 天气显示开关
+        self.show_weather_switch = ft.Switch(
+            label="显示天气信息",
+            value=show_weather,
+            on_change=self._on_show_weather_switch_change,
+        )
+        
+        # 天气说明文字
+        weather_info_text = ft.Text(
+            "开启后，在标题栏右上角显示当前天气信息",
             size=12,
             color=ft.Colors.ON_SURFACE_VARIANT,
         )
@@ -1111,7 +1141,19 @@ class SettingsView(ft.Container):
                     ft.Container(height=PADDING_MEDIUM),
                     self.recommendations_switch,
                     ft.Container(height=PADDING_SMALL),
-                    info_text,
+                    recommendations_info_text,
+                    ft.Container(height=PADDING_MEDIUM),
+                    ft.Divider(),
+                    ft.Container(height=PADDING_MEDIUM),
+                    self.save_logs_switch,
+                    ft.Container(height=PADDING_SMALL),
+                    logs_info_text,
+                    ft.Container(height=PADDING_MEDIUM),
+                    ft.Divider(),
+                    ft.Container(height=PADDING_MEDIUM),
+                    self.show_weather_switch,
+                    ft.Container(height=PADDING_SMALL),
+                    weather_info_text,
                 ],
                 spacing=0,
             ),
@@ -1124,8 +1166,41 @@ class SettingsView(ft.Container):
         """推荐工具页面开关改变事件。"""
         enabled = e.control.value
         if self.config_service.set_config_value("show_recommendations_page", enabled):
+            # 立即更新推荐工具页面显示状态
+            if hasattr(self.page, '_main_view'):
+                self.page._main_view.update_recommendations_visibility(enabled)
+            
             status = "已显示" if enabled else "已隐藏"
-            self._show_snackbar(f"推荐工具页面{status}，重启应用后生效", ft.Colors.GREEN)
+            self._show_snackbar(f"推荐工具页面{status}", ft.Colors.GREEN)
+        else:
+            self._show_snackbar("设置更新失败", ft.Colors.RED)
+    
+    def _on_save_logs_switch_change(self, e: ft.ControlEvent) -> None:
+        """日志保存开关改变事件。"""
+        from utils import logger
+        
+        enabled = e.control.value
+        if self.config_service.set_config_value("save_logs", enabled):
+            # 立即启用或禁用文件日志
+            if enabled:
+                logger.enable_file_logging()
+                self._show_snackbar("日志保存已启用，日志文件将保存到 logs 目录", ft.Colors.GREEN)
+            else:
+                logger.disable_file_logging()
+                self._show_snackbar("日志保存已禁用", ft.Colors.GREEN)
+        else:
+            self._show_snackbar("设置更新失败", ft.Colors.RED)
+    
+    def _on_show_weather_switch_change(self, e: ft.ControlEvent) -> None:
+        """天气显示开关改变事件。"""
+        enabled = e.control.value
+        if self.config_service.set_config_value("show_weather", enabled):
+            # 立即更新天气显示状态
+            if hasattr(self.page, '_main_view') and hasattr(self.page._main_view, 'title_bar'):
+                self.page._main_view.title_bar.set_weather_visibility(enabled)
+            
+            status = "已显示" if enabled else "已隐藏"
+            self._show_snackbar(f"天气信息{status}", ft.Colors.GREEN)
         else:
             self._show_snackbar("设置更新失败", ft.Colors.RED)
     
@@ -1381,7 +1456,7 @@ class SettingsView(ft.Container):
             ("#8B5CF6", "紫色", "优雅"),
             ("#EC4899", "粉红色", "活力"),
             ("#F43F5E", "玫瑰红", "激情"),
-            ("#EF4444", "红色", "热烈"),
+            ("#D2D5E1", "浅灰蓝", "柔和"),
             ("#F97316", "橙色", "温暖"),
             ("#F59E0B", "琥珀色", "明亮"),
             ("#10B981", "绿色", "清新"),

@@ -168,12 +168,14 @@ class MainView(ft.Column):
             ),
         )
         
-        # 创建内容容器（先创建占位容器）
+        # 创建内容容器（先创建占位容器，带动画）
         self.content_container = ft.Container(
             expand=True,
             alignment=ft.alignment.top_left,  # 内容从左上角开始
             width=float('inf'),  # 占满可用宽度
             height=float('inf'),  # 占满可用高度
+            opacity=1.0,
+            animate_opacity=ft.Animation(250, ft.AnimationCurve.EASE_IN_OUT),  # 250ms 淡入淡出动画
         )
         
         # 注册所有工具（需要在创建视图前注册）
@@ -433,6 +435,116 @@ class MainView(ft.Column):
         if self.page:
             self.page.floating_action_button = None
             self.page.update()
+    
+    def update_recommendations_visibility(self, show: bool) -> None:
+        """更新推荐工具页面的显示状态
+        
+        Args:
+            show: 是否显示推荐工具页面
+        """
+        # 如果状态没有变化，不需要更新
+        if self.show_recommendations == show:
+            return
+        
+        # 保存当前选中的索引（处理可能的空值）
+        try:
+            current_index = self.navigation_rail.selected_index
+            if current_index is None:
+                current_index = 0
+        except (ValueError, TypeError):
+            current_index = 0
+        
+        # 更新状态
+        self.show_recommendations = show
+        
+        # 重建导航栏目的地
+        destinations = []
+        
+        # 如果启用推荐工具页面，添加到导航栏
+        if show:
+            destinations.append(
+                ft.NavigationRailDestination(
+                    icon=ft.Icons.LIGHTBULB_OUTLINE,
+                    selected_icon=ft.Icons.LIGHTBULB,
+                    label="推荐工具",
+                )
+            )
+        
+        # 添加其他固定的导航项
+        destinations.extend([
+            ft.NavigationRailDestination(
+                icon=ft.Icons.IMAGE_OUTLINED,
+                selected_icon=ft.Icons.IMAGE_ROUNDED,
+                label="图片处理",
+            ),
+            ft.NavigationRailDestination(
+                icon=ft.Icons.PERM_MEDIA_OUTLINED,
+                selected_icon=ft.Icons.PERM_MEDIA_ROUNDED,
+                label="媒体处理",
+            ),
+            ft.NavigationRailDestination(
+                icon=ft.Icons.DEVELOPER_MODE_OUTLINED,
+                selected_icon=ft.Icons.DEVELOPER_MODE_ROUNDED,
+                label="开发工具",
+            ),
+            ft.NavigationRailDestination(
+                icon=ft.Icons.EXTENSION_OUTLINED,
+                selected_icon=ft.Icons.EXTENSION_ROUNDED,
+                label="其他工具",
+            ),
+        ])
+        
+        # 更新导航栏的 destinations
+        self.navigation_rail.destinations = destinations
+        
+        # 调整选中的索引
+        # 检查当前是否在设置页面
+        is_in_settings = self.content_container.content == self.settings_view
+        
+        # 更新导航栏内容
+        if show and not is_in_settings:
+            self.navigation_rail.selected_index = 0
+        elif not show and not is_in_settings:
+            if current_index == 0:
+                self.navigation_rail.selected_index = 0
+            elif current_index > 0:
+                self.navigation_rail.selected_index = current_index - 1
+        
+        self.page.update()
+        
+        # 内容切换
+        if show:
+            # 显示推荐页面
+            if not is_in_settings:
+                self._switch_content_with_animation(self.recommendations_view)
+        else:
+            # 隐藏推荐页面
+            if not is_in_settings and current_index == 0:
+                self._switch_content_with_animation(self.image_view)
+    
+    def _switch_content_with_animation(self, new_content):
+        """带动画切换内容
+        
+        Args:
+            new_content: 新的内容控件
+        """
+        # 淡出当前内容
+        self.content_container.opacity = 0
+        self.page.update()
+        
+        # 使用定时器实现非阻塞动画
+        import threading
+        def switch_content():
+            import time
+            time.sleep(0.15)  # 等待淡出动画完成
+            self.content_container.content = new_content
+            time.sleep(0.05)  # 短暂延迟
+            self.content_container.opacity = 1.0
+            self.page.update()
+        
+        timer = threading.Timer(0.001, switch_content)
+        timer.daemon = True
+        timer.start()
     
     
     def _open_settings(self, e: ft.ControlEvent) -> None:

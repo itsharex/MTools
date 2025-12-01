@@ -19,6 +19,7 @@ from constants import (
 )
 from services import ConfigService
 from views.main_view import MainView
+from utils import logger
 
 
 def main(page: ft.Page) -> None:
@@ -31,6 +32,12 @@ def main(page: ft.Page) -> None:
     """
     # 加载配置
     config_service = ConfigService()
+    
+    # 初始化日志系统 - 根据配置决定是否启用文件日志
+    save_logs = config_service.get_config_value("save_logs", False)
+    if save_logs:
+        logger.enable_file_logging()
+    
     saved_font = config_service.get_config_value("font_family", "System")
     saved_theme_color = config_service.get_config_value("theme_color", "#667EEA")
     saved_theme_mode = config_service.get_config_value("theme_mode", "system")

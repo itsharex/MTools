@@ -21,6 +21,7 @@ from .logger import (
     critical,
     exception,
     log_print,
+    Logger,
 )
 from .tool_metadata import (
     ToolMetadata,
@@ -41,6 +42,7 @@ __all__ = [
     "list_files_by_extension",
     "GifUtils",
     "logger",
+    "Logger",
     "debug",
     "info",
     "warning",
