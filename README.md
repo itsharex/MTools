@@ -54,6 +54,32 @@ uv run flet run
 
 ---
 
+## 📦 打包编译
+
+如需将项目编译为独立的可执行文件（无需 Python 环境即可运行），请查看：
+
+📘 **[完整编译指南](./docs/build_guide.md)**
+
+### 快速编译
+
+```bash
+# Release 模式（生产环境）
+python build.py
+
+# Dev 模式（开发测试，保留控制台）
+python build.py --mode dev
+
+# 启用 UPX 压缩
+python build.py --upx
+
+# 查看所有选项
+python build.py --help
+```
+
+编译完成后，可执行文件位于 `dist/release/` 目录。
+
+---
+
 ## ✨ 核心特性
 
 ### 🤖 AI 智能处理

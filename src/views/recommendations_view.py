@@ -108,7 +108,10 @@ class RecommendationsView(ft.Container):
                 ),
             ],
             scroll=ft.ScrollMode.AUTO,
+            horizontal_alignment=ft.CrossAxisAlignment.START,
+            alignment=ft.MainAxisAlignment.START,
             expand=True,
+            width=float('inf'),  # 占满可用宽度
             spacing=0,
         )
     

@@ -113,7 +113,10 @@ class OthersView(ft.Container):
             ],
             spacing=PADDING_MEDIUM,
             scroll=ft.ScrollMode.AUTO,
+            horizontal_alignment=ft.CrossAxisAlignment.START,
+            alignment=ft.MainAxisAlignment.START,
             expand=True,
+            width=float('inf'),  # 占满可用宽度
         )
     
     def _open_windows_update_view(self) -> None:

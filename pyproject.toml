@@ -41,6 +41,7 @@ path = "src"
 [tool.uv]
 dev-dependencies = [
     "flet[all]==0.28.3",
+    "nuitka>=2.5.0",
 ]
 
 [tool.poetry]

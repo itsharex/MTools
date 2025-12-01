@@ -156,6 +156,10 @@ class SettingsView(ft.Container):
             ],
             spacing=0,
             scroll=ft.ScrollMode.HIDDEN,  # 隐藏滚动条
+            horizontal_alignment=ft.CrossAxisAlignment.START,
+            alignment=ft.MainAxisAlignment.START,
+            expand=True,
+            width=float('inf'),  # 占满可用宽度
         )
     
     def _build_theme_mode_section(self) -> ft.Container:
