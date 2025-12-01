@@ -1,13 +1,13 @@
-@REM conda activate mytoolsbuild
+@REM conda activate MToolsbuild
 
-conda run -n mytoolsbuild python -m nuitka ^
+uv run python -m nuitka ^
     --standalone ^
     --windows-console-mode=disable ^
     --windows-icon-from-ico=src/assets/icon.ico ^
-    --product-name="MyTools" ^
+    --product-name="MTools" ^
     --file-version=0.1.1.0 ^
     --product-version=0.1.1 ^
-    --file-description="MyTools - Multi-functional desktop tool" ^
+    --file-description="MTools - Multi-functional desktop tool" ^
     --company-name="HG-ha" ^
     --copyright="Copyright (C) 2025 by HG-ha" ^
     --assume-yes-for-downloads ^
@@ -24,7 +24,7 @@ conda run -n mytoolsbuild python -m nuitka ^
     --nofollow-import-to=IPython ^
     --nofollow-import-to=matplotlib ^
     --output-dir=dist/release ^
-    --output-filename=MyTools.exe ^
+    --output-filename=MTools.exe ^
     --enable-plugin=upx ^
     --onefile-no-compression ^
     --python-flag=-O ^
@@ -32,10 +32,10 @@ conda run -n mytoolsbuild python -m nuitka ^
     --python-flag=no_warnings ^
     src/main.py
 
-@REM 重命名文件夹为MyTools_x64
-move dist\release\main.dist dist\release\MyTools_x64
+@REM 重命名文件夹为MTools_x64
+move dist\release\main.dist dist\release\MTools_x64
 
 @REM 进入目录后打包zip，这样zip内部就不会有多余的路径层级
 cd dist\release
-zip -r MyTools_x64.zip MyTools_x64
+zip -r MTools_x64.zip MTools_x64
 cd ..\..

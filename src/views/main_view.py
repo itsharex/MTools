@@ -88,7 +88,7 @@ class MainView(ft.Column):
                 ft.NavigationRailDestination(
                     icon=ft.Icons.LIGHTBULB_OUTLINE,
                     selected_icon=ft.Icons.LIGHTBULB,
-                    label="推荐",
+                    label="推荐工具",
                 ),
                 ft.NavigationRailDestination(
                     icon=ft.Icons.IMAGE_OUTLINED,

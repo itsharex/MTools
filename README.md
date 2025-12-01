@@ -1,4 +1,4 @@
-# MyTools - 多功能桌面工具箱
+# MTools - 多功能桌面工具箱
 
 <div align="center">
 
@@ -17,26 +17,14 @@
 - **Python**: 3.11+
 - **包管理器**: [uv](https://github.com/astral-sh/uv) - 推荐使用的 Python 包管理器
 
-### 安装 uv（如果尚未安装）
-
-**Windows (PowerShell):**
-```powershell
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
-```
-
-**macOS/Linux:**
-```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
-```
-
 ### 一键安装依赖
 
 使用 uv 可以快速同步所有依赖（包括开发依赖）：
 
 ```bash
 # 克隆仓库
-git clone <repository-url>
-cd mytools
+git clone https://github.com/HG-ha/MTools
+cd MTools
 ```
 
 **⚠️ macOS (Apple Silicon) 用户请先执行以下操作：**
@@ -60,30 +48,8 @@ uv add onnxruntime-gpu==1.22.0
 # 一键同步依赖（自动创建虚拟环境）
 uv sync
 
-# 激活虚拟环境
-# Windows
-.venv\Scripts\activate
-# macOS/Linux
-source .venv/bin/activate
-
-# 运行项目
-flet run src
-```
-
-### 其他常用命令
-
-```bash
-# 添加新依赖
-uv add <package-name>
-
-# 添加开发依赖
-uv add --dev <package-name>
-
-# 更新依赖
-uv lock --upgrade
-
-# 移除依赖
-uv remove <package-name>
+# 运行程序
+uv run flet run
 ```
 
 ---

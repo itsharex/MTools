@@ -417,7 +417,7 @@ wheels = [
 ]
 
 [[package]]
-name = "mytools"
+name = "MTools"
 version = "0.1.1"
 source = { virtual = "." }
 dependencies = [

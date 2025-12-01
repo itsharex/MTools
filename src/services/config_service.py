@@ -31,16 +31,16 @@ class ConfigService:
             默认数据目录路径
         """
         system: str = platform.system()
-        app_name: str = "MyTools"
+        app_name: str = "MTools"
         
         if system == "Windows":
-            # Windows: %APPDATA%\MyTools
+            # Windows: %APPDATA%\MTools
             base_dir: Path = Path.home() / "AppData" / "Roaming"
         elif system == "Darwin":
-            # macOS: ~/Library/Application Support/MyTools
+            # macOS: ~/Library/Application Support/MTools
             base_dir = Path.home() / "Library" / "Application Support"
         else:
-            # Linux: ~/.local/share/MyTools
+            # Linux: ~/.local/share/MTools
             base_dir = Path.home() / ".local" / "share"
         
         data_dir: Path = base_dir / app_name
@@ -53,16 +53,16 @@ class ConfigService:
             配置文件路径
         """
         system: str = platform.system()
-        app_name: str = "MyTools"
+        app_name: str = "MTools"
         
         if system == "Windows":
-            # Windows: %APPDATA%\MyTools\config.json
+            # Windows: %APPDATA%\MTools\config.json
             config_dir: Path = Path.home() / "AppData" / "Roaming" / app_name
         elif system == "Darwin":
-            # macOS: ~/Library/Application Support/MyTools/config.json
+            # macOS: ~/Library/Application Support/MTools/config.json
             config_dir = Path.home() / "Library" / "Application Support" / app_name
         else:
-            # Linux: ~/.config/MyTools/config.json
+            # Linux: ~/.config/MTools/config.json
             config_dir = Path.home() / ".config" / app_name
         
         # 确保目录存在

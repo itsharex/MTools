@@ -2099,7 +2099,7 @@ class SettingsView(ft.Container):
         import webbrowser
         app_info: ft.Column = ft.Column(
             controls=[
-                ft.Text("MyTools - 多功能工具箱", size=16, weight=ft.FontWeight.W_500),
+                ft.Text("MTools - 多功能工具箱", size=16, weight=ft.FontWeight.W_500),
                 ft.Text("版本: 0.1.0", size=14, color=ft.Colors.ON_SURFACE_VARIANT),
                 ft.Text("By：一铭"),
                 ft.Text("QQ交流群：1029212047"),
@@ -2112,7 +2112,7 @@ class SettingsView(ft.Container):
                 # 点击访问软件发布页，用浏览器打开
                 ft.TextButton(
                     "软件发布页",
-                    on_click=lambda e: webbrowser.open("https://openlist.wer.plus/MyTools"),
+                    on_click=lambda e: webbrowser.open("https://openlist.wer.plus/MTools"),
                     icon=ft.Icons.LINK,
                     tooltip="软件发布页",
                 ),
