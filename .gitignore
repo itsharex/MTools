@@ -47,4 +47,6 @@ storage/temp/*
 !storage/data/.gitkeep
 !storage/temp/.gitkeep
 
+# 日志文件
 logs/
+*.log
