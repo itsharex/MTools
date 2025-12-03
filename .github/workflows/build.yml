@@ -47,7 +47,7 @@ jobs:
             artifact_ext: .zip
             jobs: 4
             upx: false  # UPX 不支持 macOS Mach-O 格式
-          - os: ubuntu-20.04  # 使用较老版本以兼容更多 Linux 发行版 (GLIBC 2.31)
+          - os: ubuntu-22.04  # GLIBC 2.35，兼容 Ubuntu 22.04+, Debian 12+
             platform: Linux
             arch: amd64
             artifact_ext: .zip
@@ -116,10 +116,18 @@ jobs:
           echo "name=${ARTIFACT_NAME}" >> $GITHUB_OUTPUT
           echo "Artifact name: ${ARTIFACT_NAME}"
 
-      - name: Upload build artifact
+      - name: Upload build artifact (directory for testing)
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.artifact.outputs.name }}
+          path: dist/release/MTools_${{ matrix.platform }}_${{ matrix.arch }}/
+          if-no-files-found: error
+          retention-days: 7
+      
+      - name: Upload release zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.artifact.outputs.name }}_release
           path: dist/release/MTools_${{ matrix.platform }}_${{ matrix.arch }}${{ matrix.artifact_ext }}
           if-no-files-found: error
           retention-days: 7
@@ -153,9 +161,10 @@ jobs:
           with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
               f.write(f'version={version}\n')
 
-      - name: Download all artifacts
+      - name: Download release artifacts
         uses: actions/download-artifact@v4
         with:
+          pattern: '*_release'
           path: artifacts
 
       - name: List artifacts

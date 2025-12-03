@@ -915,31 +915,48 @@ def organize_output(mode="release"):
     dist_dir = get_dist_dir(mode)
     platform_name = get_platform_name()
     output_dir = dist_dir / f"{APP_NAME}_{platform_name}"
+    system = platform.system()
     
     print("\n📦 整理输出文件...")
     print(f"   目标目录: {output_dir.name}")
     
-    # Nuitka standalone 模式通常会生成 main.dist 文件夹（或类似名称）
-    # 我们需要找到生成的文件夹并重命名
+    # 如果目标目录已存在，先删除
+    if output_dir.exists():
+        shutil.rmtree(output_dir)
     
+    # macOS: 处理 .app bundle
+    if system == "Darwin":
+        app_bundles = list(dist_dir.glob("*.app"))
+        if not app_bundles:
+            print("❌ 未找到 macOS 应用包 (.app)")
+            return False
+        
+        source_app = app_bundles[0]
+        target_app = output_dir / f"{APP_NAME}.app"
+        
+        try:
+            # 创建目标目录
+            output_dir.mkdir(parents=True, exist_ok=True)
+            
+            # 移动并重命名 .app bundle
+            shutil.move(str(source_app), str(target_app))
+            print(f"   已移动: {source_app.name} -> {output_dir.name}/{APP_NAME}.app")
+            
+            # 清理 .app 内的多余资源
+            cleanup_assets_in_output(target_app)
+            
+            return True
+        except Exception as e:
+            print(f"   ❌ 整理失败: {e}")
+            return False
+    
+    # Windows/Linux: 处理 .dist 目录
     dist_content = list(dist_dir.glob("*.dist"))
     if not dist_content:
-        # 可能是 macOS app bundle
-        app_bundles = list(dist_dir.glob("*.app"))
-        if app_bundles:
-            print(f"   发现应用包: {app_bundles[0].name}")
-            # macOS app bundle 也需要清理
-            cleanup_assets_in_output(app_bundles[0])
-            return True
-            
         print("❌ 未找到构建输出目录 (.dist)")
         return False
     
     source_dist = dist_content[0]
-    
-    # 如果目标目录已存在，先删除
-    if output_dir.exists():
-        shutil.rmtree(output_dir)
         
     # 重命名/移动到目标目录
     try:
@@ -961,10 +978,15 @@ def cleanup_assets_in_output(output_dir: Path):
     注意：.flet.zip / .flet.tar.gz 必须保留！程序首次启动时需要解压。
     
     Args:
-        output_dir: 输出目录路径
+        output_dir: 输出目录路径（Windows/Linux 为目录，macOS 为 .app bundle）
     """
     system = platform.system()
-    assets_dir = output_dir / "src" / "assets"
+    
+    # macOS .app bundle 的资源在 Contents/MacOS/src/assets
+    if system == "Darwin" and output_dir.suffix == ".app":
+        assets_dir = output_dir / "Contents" / "MacOS" / "src" / "assets"
+    else:
+        assets_dir = output_dir / "src" / "assets"
     
     if not assets_dir.exists():
         return
@@ -1011,31 +1033,19 @@ def compress_output(mode="release"):
     zip_filename = dist_dir / f"{APP_NAME}_{platform_name}.zip"
     
     try:
-        # 如果是 macOS app bundle
-        if platform.system() == "Darwin" and list(dist_dir.glob("*.app")):
-            app_path = list(dist_dir.glob("*.app"))[0]
-            # macOS 上通常使用 shutil.make_archive 或 tar 命令
-            # 这里为了简单使用 zip
-            with zipfile.ZipFile(zip_filename, 'w', zipfile.ZIP_DEFLATED) as zipf:
-                for root, _, files in os.walk(app_path):
-                    for file in files:
-                        file_path = Path(root) / file
-                        arcname = file_path.relative_to(dist_dir)
-                        zipf.write(file_path, arcname)
-        else:
-            # Windows/Linux 目录压缩
-            if not output_dir.exists():
-                print("   ❌ 找不到要压缩的目录")
-                return
-                
-            with zipfile.ZipFile(zip_filename, 'w', zipfile.ZIP_DEFLATED) as zipf:
-                # 遍历目录并添加到 zip，保持相对路径结构
-                for root, _, files in os.walk(output_dir):
-                    for file in files:
-                        file_path = Path(root) / file
-                        # 计算在压缩包中的相对路径（例如 MTools_x64/MTools.exe）
-                        arcname = file_path.relative_to(dist_dir)
-                        zipf.write(file_path, arcname)
+        # 统一使用 output_dir 压缩（所有平台现在都整理到这个目录）
+        if not output_dir.exists():
+            print("   ❌ 找不到要压缩的目录")
+            return
+            
+        with zipfile.ZipFile(zip_filename, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            # 遍历目录并添加到 zip，保持相对路径结构
+            for root, _, files in os.walk(output_dir):
+                for file in files:
+                    file_path = Path(root) / file
+                    # 计算在压缩包中的相对路径（例如 MTools_Darwin_amd64/MTools.app/...）
+                    arcname = file_path.relative_to(dist_dir)
+                    zipf.write(file_path, arcname)
                         
         print(f"   ✅ 压缩完成: {zip_filename}")
         print(f"   文件大小: {os.path.getsize(zip_filename) / (1024*1024):.2f} MB")
@@ -1135,10 +1145,9 @@ def main():
             sys.exit(1)
         
         if run_build(mode=args.mode, enable_upx=args.upx, upx_path=args.upx_path, jobs=args.jobs, mingw64=args.mingw64):
-            if platform.system() != "Darwin":  # macOS app bundle 不需要重命名步骤
-                if not organize_output(args.mode):
-                    print("\n❌ 构建未完成")
-                    sys.exit(1)
+            if not organize_output(args.mode):
+                print("\n❌ 构建未完成")
+                sys.exit(1)
             
             compress_output(args.mode)
             
