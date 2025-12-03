@@ -286,13 +286,16 @@ class SettingsView(ft.Container):
         
         # 保存到配置
         if self.config_service.set_config_value("theme_mode", mode):
+            # 通过 _saved_page 获取页面引用(因为 self.page 可能在布局重建后失效)
+            page = getattr(self, '_saved_page', self.page)
             # 立即应用主题模式
-            if mode == "system":
-                self.page.theme_mode = ft.ThemeMode.SYSTEM
-            elif mode == "light":
-                self.page.theme_mode = ft.ThemeMode.LIGHT
-            else:  # dark
-                self.page.theme_mode = ft.ThemeMode.DARK
+            if page:
+                if mode == "system":
+                    page.theme_mode = ft.ThemeMode.SYSTEM
+                elif mode == "light":
+                    page.theme_mode = ft.ThemeMode.LIGHT
+                else:  # dark
+                    page.theme_mode = ft.ThemeMode.DARK
             
             # 更新所有容器的边框样式
             for container in self.theme_mode_containers:
@@ -301,9 +304,15 @@ class SettingsView(ft.Container):
                     2 if is_selected else 1,
                     ft.Colors.PRIMARY if is_selected else ft.Colors.OUTLINE
                 )
-                container.update()
+                # 只在控件已添加到页面时才更新
+                try:
+                    if container.page:
+                        container.update()
+                except:
+                    pass
             
-            self.page.update()
+            if page:
+                page.update()
             self._show_snackbar(f"已切换到{self._get_mode_name(mode)}", ft.Colors.GREEN)
         else:
             self._show_snackbar("主题模式更新失败", ft.Colors.RED)
@@ -782,8 +791,9 @@ class SettingsView(ft.Container):
             self._apply_background_image(image_path, self.bg_fit_dropdown.value)
             
             # 更新页面
-            if self.page:
-                self.page.update()
+            page = getattr(self, '_saved_page', self.page)
+            if page:
+                page.update()
     
     def _on_clear_bg_image(self, e: ft.ControlEvent) -> None:
         """清除背景图片事件。"""
@@ -796,8 +806,9 @@ class SettingsView(ft.Container):
         self._apply_background_image(None, None)
         
         # 更新页面
-        if self.page:
-            self.page.update()
+        page = getattr(self, '_saved_page', self.page)
+        if page:
+            page.update()
     
     def _on_bg_fit_change(self, e: ft.ControlEvent) -> None:
         """背景图片适应模式改变事件。"""
@@ -1052,7 +1063,11 @@ class SettingsView(ft.Container):
         # 更新显示
         if hasattr(self, 'switch_interval_text'):
             self.switch_interval_text.value = f"{interval} 分钟"
-            self.switch_interval_text.update()
+            try:
+                if self.switch_interval_text.page:
+                    self.switch_interval_text.update()
+            except:
+                pass
     
     def _start_auto_switch(self, interval_minutes: int) -> None:
         """启动自动切换定时器。
@@ -1395,7 +1410,11 @@ class SettingsView(ft.Container):
         memory_limit = int(e.control.value)
         if self.config_service.set_config_value("gpu_memory_limit", memory_limit):
             self.gpu_memory_value_text.value = f"{memory_limit} MB"
-            self.gpu_memory_value_text.update()
+            try:
+                if self.gpu_memory_value_text.page:
+                    self.gpu_memory_value_text.update()
+            except:
+                pass
             self._show_snackbar(f"GPU内存限制已设置为 {memory_limit} MB", ft.Colors.GREEN)
         else:
             self._show_snackbar("GPU内存限制设置更新失败", ft.Colors.RED)
@@ -1431,16 +1450,32 @@ class SettingsView(ft.Container):
         for ctrl in (self.gpu_memory_slider, self.gpu_device_dropdown, self.memory_arena_switch):
             ctrl.disabled = not enabled
             ctrl.opacity = 1.0 if enabled else 0.6
-            ctrl.update()
+            try:
+                if ctrl.page:
+                    ctrl.update()
+            except:
+                pass
 
         self.gpu_advanced_container.opacity = 1.0 if enabled else 0.5
-        self.gpu_advanced_container.update()
+        try:
+            if self.gpu_advanced_container.page:
+                self.gpu_advanced_container.update()
+        except:
+            pass
 
         self.gpu_memory_value_text.opacity = 1.0 if enabled else 0.6
-        self.gpu_memory_value_text.update()
+        try:
+            if self.gpu_memory_value_text.page:
+                self.gpu_memory_value_text.update()
+        except:
+            pass
 
         self.gpu_advanced_title.opacity = 1.0 if enabled else 0.6
-        self.gpu_advanced_title.update()
+        try:
+            if self.gpu_advanced_title.page:
+                self.gpu_advanced_title.update()
+        except:
+            pass
     
     def _build_theme_color_section(self) -> ft.Container:
         """构建主题色设置部分。
@@ -1888,7 +1923,9 @@ class SettingsView(ft.Container):
                 if color_value:
                     self._apply_custom_color(color_value)
             self.color_picker_dialog.open = False
-            self.page.update()
+            page = getattr(self, '_saved_page', self.page)
+            if page:
+                page.update()
         
         self.color_picker_dialog = ft.AlertDialog(
             modal=True,
@@ -1901,9 +1938,11 @@ class SettingsView(ft.Container):
             actions_alignment=ft.MainAxisAlignment.END,
         )
         
-        self.page.overlay.append(self.color_picker_dialog)
-        self.color_picker_dialog.open = True
-        self.page.update()
+        page = getattr(self, '_saved_page', self.page)
+        if page:
+            page.overlay.append(self.color_picker_dialog)
+            self.color_picker_dialog.open = True
+            page.update()
     
     def _update_color_preview_in_dialog(
         self,
@@ -1928,9 +1967,15 @@ class SettingsView(ft.Container):
         preview_box.bgcolor = hex_color
         rgb_text.value = f"RGB({r}, {g}, {b})"
         color_input.value = hex_color
-        preview_box.update()
-        rgb_text.update()
-        color_input.update()
+        try:
+            if preview_box.page:
+                preview_box.update()
+            if rgb_text.page:
+                rgb_text.update()
+            if color_input.page:
+                color_input.update()
+        except:
+            pass
     
     def _apply_preset_color(
         self,
@@ -1962,9 +2007,15 @@ class SettingsView(ft.Container):
         r_slider.value = r
         g_slider.value = g
         b_slider.value = b
-        r_slider.update()
-        g_slider.update()
-        b_slider.update()
+        try:
+            if r_slider.page:
+                r_slider.update()
+            if g_slider.page:
+                g_slider.update()
+            if b_slider.page:
+                b_slider.update()
+        except:
+            pass
         self._update_color_preview_in_dialog(r, g, b, preview_box, rgb_text, color_input)
     
     
@@ -1986,11 +2037,13 @@ class SettingsView(ft.Container):
         
         # 保存并应用颜色
         if self.config_service.set_config_value("theme_color", color_value.upper()):
+            # 通过 _saved_page 获取页面引用(因为 self.page 可能在布局重建后失效)
+            page = getattr(self, '_saved_page', self.page)
             # 立即更新页面主题色
-            if self.page.theme:
-                self.page.theme.color_scheme_seed = color_value
-            if self.page.dark_theme:
-                self.page.dark_theme.color_scheme_seed = color_value
+            if page and page.theme:
+                page.theme.color_scheme_seed = color_value
+            if page and page.dark_theme:
+                page.dark_theme.color_scheme_seed = color_value
             
             # 更新标题栏颜色
             self._update_title_bar_color(color_value)
@@ -2014,10 +2067,17 @@ class SettingsView(ft.Container):
                         if len(card.content.controls) > 4:
                             card.content.controls[4] = ft.Container(height=16)
                     
-                    card.update()
+                    # 只在控件已添加到页面时才更新
+                    try:
+                        if card.page:
+                            card.update()
+                    except:
+                        pass
             
             # 更新整个页面
-            self.page.update()
+            page = getattr(self, '_saved_page', self.page)
+            if page:
+                page.update()
             self._show_snackbar(f"自定义主题色已应用: {color_value}", ft.Colors.GREEN)
         else:
             self._show_snackbar("主题色更新失败", ft.Colors.RED)
@@ -2036,11 +2096,13 @@ class SettingsView(ft.Container):
         
         # 保存主题色设置
         if self.config_service.set_config_value("theme_color", clicked_color):
+            # 通过 _saved_page 获取页面引用(因为 self.page 可能在布局重建后失效)
+            page = getattr(self, '_saved_page', self.page)
             # 立即更新页面主题色
-            if self.page.theme:
-                self.page.theme.color_scheme_seed = clicked_color
-            if self.page.dark_theme:
-                self.page.dark_theme.color_scheme_seed = clicked_color
+            if page and page.theme:
+                page.theme.color_scheme_seed = clicked_color
+            if page and page.dark_theme:
+                page.dark_theme.color_scheme_seed = clicked_color
             
             # 更新标题栏颜色（如果标题栏存在）
             self._update_title_bar_color(clicked_color)
@@ -2090,10 +2152,17 @@ class SettingsView(ft.Container):
                         else:
                             card.content.controls[4] = ft.Container(height=16)
                 
-                card.update()
+                # 只在控件已添加到页面时才更新
+                try:
+                    if card.page:
+                        card.update()
+                except:
+                    pass
             
             # 更新整个页面
-            self.page.update()
+            page = getattr(self, '_saved_page', self.page)
+            if page:
+                page.update()
             self._show_snackbar("主题色已更新", ft.Colors.GREEN)
         else:
             self._show_snackbar("主题色更新失败", ft.Colors.RED)
@@ -2104,22 +2173,14 @@ class SettingsView(ft.Container):
         Args:
             color: 新的主题色
         """
+        # 通过 _saved_page 获取页面引用
+        page = getattr(self, '_saved_page', self.page)
+        
         # 尝试找到标题栏组件并更新颜色
         try:
-            # 从页面的controls中查找标题栏
-            for control in self.page.controls:
-                if hasattr(control, 'controls'):
-                    for sub_control in control.controls:
-                        # 检查是否是标题栏（通过类名或属性判断）
-                        if hasattr(sub_control, 'gradient'):
-                            # 更新渐变色
-                            sub_control.gradient = ft.LinearGradient(
-                                begin=ft.alignment.center_left,
-                                end=ft.alignment.center_right,
-                                colors=[color, color],
-                            )
-                            sub_control.update()
-                            break
+            # 通过 MainView 访问标题栏
+            if page and hasattr(page, '_main_view') and hasattr(page._main_view, 'title_bar'):
+                page._main_view.title_bar.update_theme_color(color)
         except Exception:
             pass  # 如果更新失败也不影响其他功能
     
@@ -2596,9 +2657,11 @@ class SettingsView(ft.Container):
                         self._show_snackbar("更新数据目录失败", ft.Colors.RED)
         
         picker: ft.FilePicker = ft.FilePicker(on_result=on_result)
-        self.page.overlay.append(picker)
-        self.page.update()
-        picker.get_directory_path(dialog_title="选择数据存储目录")
+        page = getattr(self, '_saved_page', self.page)
+        if page:
+            page.overlay.append(picker)
+            page.update()
+            picker.get_directory_path(dialog_title="选择数据存储目录")
     
     def _show_migrate_dialog(self, old_dir: Path, new_dir: Path) -> None:
         """显示数据迁移确认对话框。
@@ -2610,14 +2673,18 @@ class SettingsView(ft.Container):
         def on_migrate(e):
             """选择迁移数据"""
             dialog.open = False
-            self.page.update()
+            page = getattr(self, '_saved_page', self.page)
+            if page:
+                page.update()
             # 显示迁移进度对话框
             self._show_migrate_progress_dialog(old_dir, new_dir)
         
         def on_no_migrate(e):
             """不迁移数据"""
             dialog.open = False
-            self.page.update()
+            page = getattr(self, '_saved_page', self.page)
+            if page:
+                page.update()
             # 直接更改目录
             if self.config_service.set_data_dir(str(new_dir), is_custom=True):
                 self.data_dir_text.value = str(new_dir)
@@ -2707,9 +2774,11 @@ class SettingsView(ft.Container):
             actions_alignment=ft.MainAxisAlignment.END,
         )
         
-        self.page.overlay.append(dialog)
-        dialog.open = True
-        self.page.update()
+        page = getattr(self, '_saved_page', self.page)
+        if page:
+            page.overlay.append(dialog)
+            dialog.open = True
+            page.update()
     
     def _show_migrate_progress_dialog(self, old_dir: Path, new_dir: Path) -> None:
         """显示数据迁移进度对话框。
@@ -2738,9 +2807,11 @@ class SettingsView(ft.Container):
             actions=[],  # 迁移时不显示按钮
         )
         
-        self.page.overlay.append(dialog)
-        dialog.open = True
-        self.page.update()
+        page = getattr(self, '_saved_page', self.page)
+        if page:
+            page.overlay.append(dialog)
+            dialog.open = True
+            page.update()
         
         # 在后台线程执行迁移
         def migrate_thread():
@@ -2749,7 +2820,9 @@ class SettingsView(ft.Container):
                 progress_bar.value = current / total if total > 0 else 0
                 progress_text.value = message
                 try:
-                    self.page.update()
+                    page = getattr(self, '_saved_page', self.page)
+                    if page:
+                        page.update()
                 except:
                     pass
             
@@ -2761,7 +2834,9 @@ class SettingsView(ft.Container):
             # 关闭进度对话框
             dialog.open = False
             try:
-                self.page.update()
+                page = getattr(self, '_saved_page', self.page)
+                if page:
+                    page.update()
             except:
                 pass
             

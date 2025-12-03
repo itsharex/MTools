@@ -14,6 +14,11 @@ import flet as ft
 
 from constants import (
     APP_TITLE,
+    BACKGROUND_COLOR,
+    CARD_BACKGROUND,
+    DARK_BACKGROUND_COLOR,
+    DARK_CARD_BACKGROUND,
+    PRIMARY_COLOR,
     WINDOW_HEIGHT,
     WINDOW_WIDTH,
 )
@@ -39,7 +44,7 @@ def main(page: ft.Page) -> None:
         logger.enable_file_logging()
     
     saved_font = config_service.get_config_value("font_family", "System")
-    saved_theme_color = config_service.get_config_value("theme_color", "#667EEA")
+    saved_theme_color = config_service.get_config_value("theme_color", PRIMARY_COLOR)
     saved_theme_mode = config_service.get_config_value("theme_mode", "system")
     saved_left = config_service.get_config_value("window_left")
     saved_top = config_service.get_config_value("window_top")
@@ -113,8 +118,8 @@ def main(page: ft.Page) -> None:
         use_material3=True,
         font_family=saved_font,  # 使用保存的字体
         # 页面和组件颜色配置
-        scaffold_bgcolor="#F8F9FA",  # 浅灰背景
-        card_color="#FFFFFF",         # 白色卡片
+        scaffold_bgcolor=BACKGROUND_COLOR,  # 浅灰背景
+        card_color=CARD_BACKGROUND,         # 白色卡片
         # 导航栏主题 - 不设置固定背景色，使用容器的半透明背景
         navigation_rail_theme=ft.NavigationRailTheme(
             bgcolor=ft.Colors.TRANSPARENT,
@@ -127,8 +132,8 @@ def main(page: ft.Page) -> None:
         use_material3=True,
         font_family=saved_font,  # 使用保存的字体
         # 深色模式颜色配置
-        scaffold_bgcolor="#121212",  # 深色背景
-        card_color="#2C2C2C",        # 深色卡片
+        scaffold_bgcolor=DARK_BACKGROUND_COLOR,  # 深色背景
+        card_color=DARK_CARD_BACKGROUND,        # 深色卡片
         # 深色导航栏主题 - 不设置固定背景色，使用容器的半透明背景
         navigation_rail_theme=ft.NavigationRailTheme(
             bgcolor=ft.Colors.TRANSPARENT,

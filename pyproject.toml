@@ -1,11 +1,12 @@
 [project]
 name = "MTools"
-version = "0.1.1"
+version = "0.0.1-beta"
 description = "Multi-functional desktop application with media processing, encoding conversion, and more"
 readme = "README.md"
+license = {text = "MIT"}
 requires-python = ">=3.11,<3.12"
 authors = [
-    { name = "Flet developer", email = "you@example.com" }
+    { name = "MTools Developer", email = "1790233968@qq.com" }
 ]
 # Don't hard-code the version, to avoid flet compilation issues.
 dependencies = [
@@ -25,17 +26,17 @@ dependencies = [
 [tool.flet]
 # org name in reverse domain name notation, e.g. "com.mycompany".
 # Combined with project.name to build bundle ID for iOS and Android apps
-org = "com.mycompany"
+org = "com.hgha"
 
 # project display name that is used as an app title on Android and iOS home screens,
 # shown in window titles and about app dialogs on desktop.
 product = "MTools"
 
 # company name to display in about app dialogs
-company = "Flet"
+company = "MTools"
 
 # copyright text to display in about app dialogs
-copyright = "Copyright (C) 2025 by Flet"
+copyright = "Copyright (C) 2025 by MTools Developer"
 
 [tool.flet.app]
 path = "src"

@@ -275,6 +275,20 @@ class CustomTitleBar(ft.Container):
             self.theme_icon.icon = ft.Icons.DARK_MODE_OUTLINED
             self.theme_icon.tooltip = "切换到浅色模式"
     
+    def update_theme_color(self, color: str) -> None:
+        """更新标题栏主题色。
+        
+        Args:
+            color: 新的主题色（十六进制颜色值）
+        """
+        self.theme_color = color
+        self.bgcolor = ft.Colors.with_opacity(0.95, color)
+        try:
+            if self.page:
+                self.update()
+        except:
+            pass
+    
     def _minimize_window(self, e: ft.ControlEvent) -> None:
         """最小化窗口。
         
