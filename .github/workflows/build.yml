@@ -10,10 +10,13 @@ on:
         default: false
         type: boolean
   
-  # 推送标签时自动触发
+  # 推送标签时自动触发（会创建 Release）
   push:
     tags:
       - 'v*'
+    # 推送主分支时也触发（只构建，不发布）
+    branches:
+      - main
 
 # 确保同一时间只运行一个工作流
 concurrency:

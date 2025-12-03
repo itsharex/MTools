@@ -142,6 +142,30 @@ COMPANY_NAME = "HG-ha"
 COPYRIGHT = f"Copyright (C) 2025 by {COMPANY_NAME}"
 DESCRIPTION = APP_CONFIG["APP_DESCRIPTION"]
 
+
+def get_file_version(version: str) -> str:
+    """将版本号转换为 Windows 文件版本格式（4 段纯数字）。
+    
+    Args:
+        version: 版本号，如 "0.0.1-beta", "1.2.3"
+    
+    Returns:
+        4 段数字格式，如 "0.0.1.0", "1.2.3.0"
+    """
+    import re
+    # 移除预发布标签（如 -beta, -alpha, -rc1 等）
+    clean_version = re.split(r'[-+]', version)[0]
+    
+    # 分割版本号
+    parts = clean_version.split('.')
+    
+    # 确保有 4 段数字
+    while len(parts) < 4:
+        parts.append('0')
+    
+    # 只取前 4 段，确保都是数字
+    return '.'.join(parts[:4])
+
 def clean_dist(mode="release"):
     """清理构建目录
     
@@ -748,7 +772,7 @@ def get_nuitka_cmd(mode="release", enable_upx=False, upx_path=None, jobs=2):
         cmd.extend([
             f"--windows-console-mode={console_mode}",
             f"--windows-icon-from-ico={ASSETS_DIR / 'icon.ico'}",
-            f"--file-version={VERSION}.0",
+            f"--file-version={get_file_version(VERSION)}",
             f"--product-version={VERSION}",
             f"--file-description={DESCRIPTION}",
             f"--company-name={COMPANY_NAME}",
