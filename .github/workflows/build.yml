@@ -38,19 +38,19 @@ jobs:
           - os: macos-latest
             platform: Darwin
             arch: arm64
-            artifact_ext: .zip
+            artifact_ext: .tar.gz
             jobs: 4
             upx: false  # UPX 不支持 macOS Mach-O 格式
           - os: macos-13
             platform: Darwin
             arch: amd64
-            artifact_ext: .zip
+            artifact_ext: .tar.gz
             jobs: 4
             upx: false  # UPX 不支持 macOS Mach-O 格式
           - os: ubuntu-22.04  # GLIBC 2.35，兼容 Ubuntu 22.04+, Debian 12+
             platform: Linux
             arch: amd64
-            artifact_ext: .zip
+            artifact_ext: .tar.gz
             jobs: 4
             upx: true
 
@@ -116,18 +116,10 @@ jobs:
           echo "name=${ARTIFACT_NAME}" >> $GITHUB_OUTPUT
           echo "Artifact name: ${ARTIFACT_NAME}"
 
-      - name: Upload build artifact (directory for testing)
+      - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.artifact.outputs.name }}
-          path: dist/release/MTools_${{ matrix.platform }}_${{ matrix.arch }}/
-          if-no-files-found: error
-          retention-days: 7
-      
-      - name: Upload release zip
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ steps.artifact.outputs.name }}_release
           path: dist/release/MTools_${{ matrix.platform }}_${{ matrix.arch }}${{ matrix.artifact_ext }}
           if-no-files-found: error
           retention-days: 7
@@ -161,17 +153,19 @@ jobs:
           with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
               f.write(f'version={version}\n')
 
-      - name: Download release artifacts
+      - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: '*_release'
           path: artifacts
 
       - name: List artifacts
         run: |
           echo "Downloaded artifacts:"
           ls -la artifacts/
+          echo "=== ZIP files ==="
           find artifacts -type f -name "*.zip"
+          echo "=== TAR.GZ files ==="
+          find artifacts -type f -name "*.tar.gz"
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
@@ -183,6 +177,7 @@ jobs:
           generate_release_notes: true
           files: |
             artifacts/**/*.zip
+            artifacts/**/*.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
