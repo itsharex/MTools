@@ -849,6 +849,8 @@ def organize_output(mode="release"):
         app_bundles = list(dist_dir.glob("*.app"))
         if app_bundles:
             print(f"   发现应用包: {app_bundles[0].name}")
+            # macOS app bundle 也需要清理
+            cleanup_assets_in_output(app_bundles[0])
             return True
             
         print("❌ 未找到构建输出目录 (.dist)")
@@ -864,10 +866,56 @@ def organize_output(mode="release"):
     try:
         shutil.move(str(source_dist), str(output_dir))
         print(f"   已重命名: {source_dist.name} -> {output_dir.name}")
+        
+        # 清理多余的资源文件
+        cleanup_assets_in_output(output_dir)
+        
         return True
     except Exception as e:
         print(f"   ❌ 整理失败: {e}")
         return False
+
+
+def cleanup_assets_in_output(output_dir: Path):
+    """清理输出目录中多余的资源文件
+    
+    注意：.flet.zip / .flet.tar.gz 必须保留！程序首次启动时需要解压。
+    
+    Args:
+        output_dir: 输出目录路径
+    """
+    system = platform.system()
+    assets_dir = output_dir / "src" / "assets"
+    
+    if not assets_dir.exists():
+        return
+    
+    print("   🧹 清理多余的资源文件...")
+    
+    # 根据平台删除不需要的图标文件
+    # 注意：不要删除 .flet.zip / .flet.tar.gz，程序启动时需要！
+    files_to_remove = []
+    
+    if system == "Windows":
+        files_to_remove = ["icon.icns"]  # Windows 不需要 macOS 图标
+    elif system == "Darwin":
+        files_to_remove = ["icon.ico"]   # macOS 不需要 Windows 图标
+    elif system == "Linux":
+        files_to_remove = ["icon.ico", "icon.icns"]  # Linux 只需要 PNG
+    
+    removed_count = 0
+    for filename in files_to_remove:
+        file_path = assets_dir / filename
+        if file_path.exists():
+            try:
+                file_path.unlink()
+                print(f"      已删除: {filename}")
+                removed_count += 1
+            except Exception as e:
+                print(f"      ⚠️ 删除 {filename} 失败: {e}")
+    
+    if removed_count > 0:
+        print(f"   ✅ 清理完成，共删除 {removed_count} 个文件")
 
 def compress_output(mode="release"):
     """压缩输出目录

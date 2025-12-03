@@ -30,6 +30,14 @@ from .tool_metadata import (
     register_tool,
     register_tool_manual,
 )
+from .network_utils import (
+    check_needs_proxy,
+    get_proxied_url,
+    clear_location_cache,
+    get_location_by_ip,
+    contains_cjk,
+    LocationInfo,
+)
 
 __all__ = [
     "ensure_dir",
@@ -55,5 +63,11 @@ __all__ = [
     "register_tool_manual",
     "get_all_tools",
     "get_tool",
+    "check_needs_proxy",
+    "get_proxied_url",
+    "clear_location_cache",
+    "get_location_by_ip",
+    "contains_cjk",
+    "LocationInfo",
 ]
 

@@ -5,10 +5,8 @@
 """
 
 import httpx
-import json
 from typing import Dict, Optional, Tuple
-from utils import logger
-import asyncio
+from utils import logger, contains_cjk, get_location_by_ip
 
 
 class WeatherService:
@@ -172,68 +170,23 @@ class WeatherService:
     async def get_location_info(self) -> Optional[Tuple[str, float, float]]:
         """获取当前位置信息（通过 IP 地理位置 API）
         
+        使用 utils.get_location_by_ip() 获取缓存的位置信息。
+        
         Returns:
             元组 (城市名称, 纬度, 经度)，失败返回 None
         """
-        client = self._ensure_client()
+        # 使用统一的位置获取函数（带缓存）
+        location = get_location_by_ip()
         
-        # 检查是否包含中文字符
-        def contains_cjk(s: str) -> bool:
-            try:
-                return any('\u4e00' <= ch <= '\u9fff' for ch in s)
-            except Exception:
-                return False
-        
-        # 尝试 ipapi.co
-        try:
-            api_url = "https://ipapi.co/json"
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-            }
+        if location and location.latitude is not None and location.longitude is not None:
+            city = location.city
+            region = location.region
             
-            response = await client.get(api_url, headers=headers, timeout=10)
+            # 如果城市名不是中文，优先使用 region
+            location_name = region if (region and contains_cjk(region)) else (city or region)
             
-            if response.status_code == 200:
-                data = response.json()
-                
-                city = data.get('city', '')
-                region = data.get('region', '')
-                latitude = data.get('latitude')
-                longitude = data.get('longitude')
-                
-                # 如果城市名不是中文，优先使用 region
-                location_name = region if (region and contains_cjk(region)) else (city or region)
-                
-                if location_name and latitude is not None and longitude is not None:
-                    return (location_name, latitude, longitude)
-        except Exception as e:
-            logger.error(f"ipapi.co 获取位置信息失败: {e}")
-        
-        # 备用方案：尝试 ipwhois.app
-        try:
-            api_url = "https://ipwhois.app/json/"
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-            }
-            
-            response = await client.get(api_url, headers=headers, timeout=10)
-            
-            if response.status_code == 200:
-                data = response.json()
-                
-                if data.get('success'):
-                    city = data.get('city', '')
-                    region = data.get('region', '')
-                    latitude = data.get('latitude')
-                    longitude = data.get('longitude')
-                    
-                    # 如果城市名不是中文，优先使用 region
-                    location_name = region if (region and contains_cjk(region)) else (city or region)
-                    
-                    if location_name and latitude is not None and longitude is not None:
-                        return (location_name, latitude, longitude)
-        except Exception as e:
-            logger.error(f"ipwhois.app 获取位置信息失败: {e}")
+            if location_name:
+                return (location_name, location.latitude, location.longitude)
         
         return None
     
@@ -261,13 +214,6 @@ class WeatherService:
                     current_weather = weather_list[0]
                     current_data = current_weather.get('current', {})
                     location = source.get('location', {})
-                    
-                    # 检查字符串是否包含中文字符
-                    def contains_cjk(s: str) -> bool:
-                        try:
-                            return any('\u4e00' <= ch <= '\u9fff' for ch in s)
-                        except Exception:
-                            return False
                     
                     # 优先使用天气数据中的中文地名
                     state_code = location.get('StateCode', '')  # 如 "北京"

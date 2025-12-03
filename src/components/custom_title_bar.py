@@ -4,6 +4,8 @@
 提供自定义标题栏，包含窗口控制、主题切换等功能。
 """
 
+import sys
+from pathlib import Path
 from typing import Callable, Optional
 
 import flet as ft
@@ -18,6 +20,36 @@ from constants import (
 )
 from services import ConfigService
 from services.weather_service import WeatherService
+
+
+def _get_icon_path() -> str:
+    """获取应用图标路径。
+    
+    Returns:
+        图标文件路径
+    """
+    # 判断是否为 Nuitka 打包后的环境
+    is_compiled = Path(sys.argv[0]).suffix.lower() == '.exe'
+    
+    if is_compiled:
+        # 打包环境：从 exe 所在目录查找
+        app_dir = Path(sys.argv[0]).parent
+        possible_paths = [
+            app_dir / "src" / "assets" / "icon.png",
+            app_dir / "assets" / "icon.png",
+        ]
+    else:
+        # 开发环境：从源代码目录查找
+        possible_paths = [
+            Path(__file__).parent.parent / "assets" / "icon.png",
+        ]
+    
+    for path in possible_paths:
+        if path.exists():
+            return str(path)
+    
+    # 默认返回相对路径
+    return "src/assets/icon.png"
 
 
 class CustomTitleBar(ft.Container):
@@ -67,10 +99,11 @@ class CustomTitleBar(ft.Container):
             content=ft.GestureDetector(
                 content=ft.Row(
                     controls=[
-                        ft.Icon(
-                            name=ft.Icons.APPS_ROUNDED,
-                            size=24,
-                            color=ft.Colors.WHITE,
+                        ft.Image(
+                            src=_get_icon_path(),
+                            width=22,
+                            height=22,
+                            fit=ft.ImageFit.CONTAIN,
                         ),
                         ft.Container(width=PADDING_SMALL),
                         ft.Text(

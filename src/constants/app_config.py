@@ -9,8 +9,18 @@ from typing import Final
 
 # 应用基本信息
 APP_TITLE: Final[str] = "MTools - 多功能工具箱"
-APP_VERSION: Final[str] = "0.1.1"
-APP_DESCRIPTION: Final[str] = "一个多功能工具箱，集成了图片处理、音视频处理、编码转换、代码格式化等功能"
+APP_VERSION: Final[str] = "0.0.1"
+APP_DESCRIPTION: Final[str] = "MTools 是一个功能强大的全能桌面应用程序，集成了音视频处理、图片编辑、文本操作和编码工具。旨在简化您的工作流程，提升生产效率。"
+
+# GitHub 仓库配置
+GITHUB_OWNER: Final[str] = "HG-ha"
+GITHUB_REPO: Final[str] = "MTools"
+GITHUB_API_URL: Final[str] = f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO}/releases/latest"
+GITHUB_RELEASES_URL: Final[str] = f"https://github.com/{GITHUB_OWNER}/{GITHUB_REPO}/releases"
+
+# GitHub 代理配置（用于中国大陆用户加速下载）
+# 参考：https://gh-proxy.org
+GITHUB_PROXY_URL: Final[str] = "https://gh-proxy.org/"
 
 # 窗口配置
 WINDOW_WIDTH: Final[int] = 1070

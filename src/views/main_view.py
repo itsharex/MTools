@@ -4,12 +4,15 @@
 提供应用的主界面，包含导航栏和各功能视图的切换。
 """
 
+import threading
+import webbrowser
 from typing import Optional
 
 import flet as ft
 
 from components import CustomTitleBar, ToolInfo, ToolSearchDialog
-from services import ConfigService, EncodingService, ImageService, FFmpegService
+from constants import APP_VERSION
+from services import ConfigService, EncodingService, ImageService, FFmpegService, UpdateService, UpdateStatus
 from utils.tool_registry import register_all_tools
 from utils import get_all_tools
 from views.media import MediaView
@@ -73,6 +76,11 @@ class MainView(ft.Column):
         # 保存背景图片配置，延迟到页面加载后应用
         self._pending_bg_image = self.config_service.get_config_value("background_image", None)
         self._pending_bg_fit = self.config_service.get_config_value("background_image_fit", "cover")
+        
+        # 启动时自动检测更新（如果配置允许）
+        auto_check_update = self.config_service.get_config_value("auto_check_update", True)
+        if auto_check_update:
+            self._check_update_on_startup()
     
     def _build_ui(self) -> None:
         """构建用户界面。"""
@@ -565,6 +573,110 @@ class MainView(ft.Column):
         # 使用page.update()而不是单独更新控件
         if self.page:
             self.page.update()
+    
+    def _check_update_on_startup(self) -> None:
+        """启动时在后台检测更新。"""
+        def check_task():
+            try:
+                update_service = UpdateService()
+                update_info = update_service.check_update()
+                
+                # 只在有新版本时提示
+                if update_info.status == UpdateStatus.UPDATE_AVAILABLE:
+                    # 在主线程中显示更新对话框
+                    self._show_update_dialog(update_info)
+            except Exception:
+                # 静默失败，不打扰用户
+                pass
+        
+        # 延迟2秒后开始检测，避免影响启动速度
+        def delayed_check():
+            import time
+            time.sleep(2)
+            check_task()
+        
+        thread = threading.Thread(target=delayed_check, daemon=True)
+        thread.start()
+    
+    def _show_update_dialog(self, update_info) -> None:
+        """显示更新提示对话框。
+        
+        Args:
+            update_info: 更新信息对象
+        """
+        def close_dialog(e):
+            dialog.open = False
+            self.page.update()
+        
+        def open_download(e):
+            dialog.open = False
+            self.page.update()
+            # 打开下载页面
+            url = update_info.release_url or update_info.download_url
+            if url:
+                webbrowser.open(url)
+        
+        def skip_this_version(e):
+            # 记录跳过的版本
+            self.config_service.set_config_value("skipped_version", update_info.latest_version)
+            dialog.open = False
+            self.page.update()
+        
+        # 检查是否跳过了这个版本
+        skipped_version = self.config_service.get_config_value("skipped_version", "")
+        if skipped_version == update_info.latest_version:
+            return  # 用户已选择跳过此版本
+        
+        # 构建更新日志内容（最多显示500字符）
+        release_notes = update_info.release_notes or "暂无更新说明"
+        if len(release_notes) > 500:
+            release_notes = release_notes[:500] + "..."
+        
+        dialog = ft.AlertDialog(
+            modal=True,
+            title=ft.Text("🎉 发现新版本"),
+            content=ft.Container(
+                content=ft.Column(
+                    controls=[
+                        ft.Text(
+                            f"当前版本: {APP_VERSION}  →  最新版本: {update_info.latest_version}",
+                            size=14,
+                            weight=ft.FontWeight.W_500,
+                        ),
+                        ft.Container(height=8),
+                        ft.Text("更新内容:", size=13, weight=ft.FontWeight.W_500),
+                        ft.Container(
+                            content=ft.Text(
+                                release_notes,
+                                size=12,
+                                color=ft.Colors.ON_SURFACE_VARIANT,
+                            ),
+                            bgcolor=ft.Colors.SURFACE_VARIANT,
+                            border_radius=8,
+                            padding=12,
+                            width=400,
+                        ),
+                    ],
+                    spacing=4,
+                    tight=True,
+                ),
+                width=420,
+            ),
+            actions=[
+                ft.TextButton("跳过此版本", on_click=skip_this_version),
+                ft.TextButton("稍后提醒", on_click=close_dialog),
+                ft.ElevatedButton(
+                    "前往下载",
+                    icon=ft.Icons.DOWNLOAD,
+                    on_click=open_download,
+                ),
+            ],
+            actions_alignment=ft.MainAxisAlignment.END,
+        )
+        
+        self.page.overlay.append(dialog)
+        dialog.open = True
+        self.page.update()
     
     def apply_background(self, image_path: Optional[str], fit_mode: Optional[str]) -> None:
         """应用背景图片到主界面。

@@ -15,6 +15,7 @@ import flet as ft
 import httpx
 
 from constants import (
+    APP_VERSION,
     BORDER_RADIUS_MEDIUM,
     PADDING_LARGE,
     PADDING_MEDIUM,
@@ -22,7 +23,8 @@ from constants import (
     PADDING_XLARGE,
     SURFACE_VARIANT,
 )
-from services import ConfigService
+from services import ConfigService, UpdateService, UpdateInfo, UpdateStatus
+from constants import APP_DESCRIPTION
 
 
 class SettingsView(ft.Container):
@@ -2258,15 +2260,82 @@ class SettingsView(ft.Container):
             weight=ft.FontWeight.W_600,
         )
         import webbrowser
+        
+        # 更新状态显示组件
+        self.update_status_text: ft.Text = ft.Text(
+            "",
+            size=13,
+            color=ft.Colors.ON_SURFACE_VARIANT,
+            visible=False,
+        )
+        
+        self.update_status_icon: ft.Icon = ft.Icon(
+            ft.Icons.INFO_OUTLINE,
+            size=16,
+            color=ft.Colors.ON_SURFACE_VARIANT,
+            visible=False,
+        )
+        
+        # 更新按钮（当有新版本时显示）
+        self.update_download_button: ft.TextButton = ft.TextButton(
+            "前往下载",
+            icon=ft.Icons.DOWNLOAD,
+            visible=False,
+            on_click=self._on_open_download_page,
+        )
+        
+        # 更新状态行
+        self.update_status_row: ft.Row = ft.Row(
+            controls=[
+                self.update_status_icon,
+                self.update_status_text,
+                self.update_download_button,
+            ],
+            spacing=PADDING_SMALL,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        )
+        
+        # 检查更新按钮
+        self.check_update_button: ft.OutlinedButton = ft.OutlinedButton(
+            text="检查更新",
+            icon=ft.Icons.REFRESH,
+            on_click=self._on_check_update,
+            tooltip="检查是否有新版本",
+        )
+        
+        # 检查更新进度指示器
+        self.update_progress: ft.ProgressRing = ft.ProgressRing(
+            width=16,
+            height=16,
+            stroke_width=2,
+            visible=False,
+        )
+        
+        # 启动时自动检测更新开关
+        auto_check_update = self.config_service.get_config_value("auto_check_update", True)
+        self.auto_check_update_switch: ft.Switch = ft.Switch(
+            label="启动时自动检测更新",
+            value=auto_check_update,
+            on_change=self._on_auto_check_update_change,
+        )
+        
         app_info: ft.Column = ft.Column(
             controls=[
                 ft.Text("MTools - 多功能工具箱", size=16, weight=ft.FontWeight.W_500),
-                ft.Text("版本: 0.1.0", size=14, color=ft.Colors.ON_SURFACE_VARIANT),
+                ft.Row(
+                    controls=[
+                        ft.Text(f"版本: {APP_VERSION}", size=14, color=ft.Colors.ON_SURFACE_VARIANT),
+                        self.update_progress,
+                    ],
+                    spacing=PADDING_SMALL,
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                ),
+                self.update_status_row,
                 ft.Text("By：一铭"),
                 ft.Text("QQ交流群：1029212047"),
                 ft.Container(height=PADDING_MEDIUM // 2),
                 ft.Text(
-                    "一个集成了图片处理、音视频处理、编码转换、代码格式化等功能的桌面应用",
+                    APP_DESCRIPTION,
                     size=14,
                     color=ft.Colors.ON_SURFACE_VARIANT,
                 ),
@@ -2278,7 +2347,7 @@ class SettingsView(ft.Container):
                     tooltip="软件发布页",
                 ),
                 ft.TextButton(
-                    "GIthub",
+                    "Github",
                     on_click=lambda e: webbrowser.open("https://github.com/HG-ha/MTools"),
                     icon=ft.Icons.LINK,
                     tooltip="Github",
@@ -2302,13 +2371,134 @@ class SettingsView(ft.Container):
                     ft.Container(height=PADDING_MEDIUM),
                     app_info,
                     ft.Container(height=PADDING_MEDIUM),
-                    reset_window_button,
+                    self.auto_check_update_switch,
+                    ft.Container(height=PADDING_MEDIUM),
+                    ft.Row(
+                        controls=[
+                            self.check_update_button,
+                            reset_window_button,
+                        ],
+                        spacing=PADDING_MEDIUM,
+                    ),
                 ],
                 spacing=0,
             ),
             padding=PADDING_LARGE,
             border=ft.border.all(1, ft.Colors.OUTLINE_VARIANT),
             border_radius=BORDER_RADIUS_MEDIUM,
+        )
+    
+    def _on_check_update(self, e: ft.ControlEvent) -> None:
+        """检查更新按钮点击事件。
+        
+        Args:
+            e: 控件事件对象
+        """
+        # 显示进度指示器
+        self.update_progress.visible = True
+        self.check_update_button.disabled = True
+        self.update_status_text.visible = False
+        self.update_status_icon.visible = False
+        self.update_download_button.visible = False
+        
+        # 更新 UI
+        page = getattr(self, '_saved_page', self.page)
+        if page:
+            page.update()
+        
+        # 在后台线程中检查更新
+        def check_update_task():
+            try:
+                update_service = UpdateService()
+                update_info = update_service.check_update()
+                
+                # 在主线程中更新UI
+                self._update_check_result(update_info)
+            except Exception as ex:
+                logger.error(f"检查更新出错: {ex}")
+                self._update_check_result(UpdateInfo(
+                    status=UpdateStatus.ERROR,
+                    current_version=APP_VERSION,
+                    error_message=f"检查更新出错: {str(ex)}",
+                ))
+        
+        thread = threading.Thread(target=check_update_task, daemon=True)
+        thread.start()
+    
+    def _update_check_result(self, update_info: UpdateInfo) -> None:
+        """更新检查结果到UI。
+        
+        Args:
+            update_info: 更新信息对象
+        """
+        # 保存更新信息用于下载
+        self._latest_update_info = update_info
+        
+        # 隐藏进度指示器
+        self.update_progress.visible = False
+        self.check_update_button.disabled = False
+        
+        # 根据状态更新UI
+        if update_info.status == UpdateStatus.UP_TO_DATE:
+            self.update_status_icon.name = ft.Icons.CHECK_CIRCLE_OUTLINE
+            self.update_status_icon.color = ft.Colors.GREEN
+            self.update_status_text.value = "已是最新版本"
+            self.update_status_text.color = ft.Colors.GREEN
+            self.update_download_button.visible = False
+            
+        elif update_info.status == UpdateStatus.UPDATE_AVAILABLE:
+            self.update_status_icon.name = ft.Icons.NEW_RELEASES
+            self.update_status_icon.color = ft.Colors.ORANGE
+            self.update_status_text.value = f"发现新版本: {update_info.latest_version}"
+            self.update_status_text.color = ft.Colors.ORANGE
+            self.update_download_button.visible = True
+            
+        elif update_info.status == UpdateStatus.ERROR:
+            self.update_status_icon.name = ft.Icons.ERROR_OUTLINE
+            self.update_status_icon.color = ft.Colors.RED
+            self.update_status_text.value = update_info.error_message or "检查更新失败"
+            self.update_status_text.color = ft.Colors.RED
+            self.update_download_button.visible = False
+        
+        self.update_status_icon.visible = True
+        self.update_status_text.visible = True
+        
+        # 使用保存的页面引用更新 UI
+        page = getattr(self, '_saved_page', self.page)
+        if page:
+            page.update()
+    
+    def _on_open_download_page(self, e: ft.ControlEvent) -> None:
+        """打开下载页面。
+        
+        Args:
+            e: 控件事件对象
+        """
+        import webbrowser
+        
+        if hasattr(self, '_latest_update_info') and self._latest_update_info:
+            # 优先打开 Release 页面
+            url = self._latest_update_info.release_url or self._latest_update_info.download_url
+            if url:
+                webbrowser.open(url)
+            else:
+                webbrowser.open("https://github.com/HG-ha/MTools/releases")
+    
+    def _on_auto_check_update_change(self, e: ft.ControlEvent) -> None:
+        """自动检测更新开关状态变化事件。
+        
+        Args:
+            e: 控件事件对象
+        """
+        self.config_service.set_config_value("auto_check_update", e.control.value)
+        
+        # 如果关闭自动检测，同时清除跳过的版本记录
+        if not e.control.value:
+            self.config_service.set_config_value("skipped_version", "")
+        
+        self._show_snackbar(
+            "已开启启动时自动检测更新" if e.control.value else "已关闭启动时自动检测更新",
+            ft.Colors.GREEN
         )
     
     def _on_dir_type_change(self, e: ft.ControlEvent) -> None:
