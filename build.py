@@ -788,7 +788,6 @@ def get_nuitka_cmd(mode="release", enable_upx=False, upx_path=None, jobs=2):
             "--python-flag=-O",
             "--python-flag=no_site",
             "--python-flag=no_warnings",
-            "--onefile-no-compression",
         ])
         print("   优化级别: 完整优化")
     else:  # dev 模式

@@ -20,8 +20,6 @@ from constants import (
     PADDING_LARGE,
     PADDING_MEDIUM,
     PADDING_SMALL,
-    PADDING_XLARGE,
-    SURFACE_VARIANT,
 )
 from services import ConfigService, UpdateService, UpdateInfo, UpdateStatus
 from constants import APP_DESCRIPTION
@@ -423,7 +421,7 @@ class SettingsView(ft.Container):
         
         # 说明文字
         info_text: ft.Text = ft.Text(
-            "数据目录用于存储应用的处理结果和临时文件",
+            "数据目录用于存储应用的模型文件、处理结果和临时文件，建议选择存储空间较大的目录",
             size=12,
             color=ft.Colors.ON_SURFACE_VARIANT,
         )
@@ -2402,10 +2400,10 @@ class SettingsView(ft.Container):
                 ),
                 # 点击访问软件发布页，用浏览器打开
                 ft.TextButton(
-                    "软件发布页",
+                    "国内访问下载页",
                     on_click=lambda e: webbrowser.open("https://openlist.wer.plus/MTools"),
                     icon=ft.Icons.LINK,
-                    tooltip="软件发布页",
+                    tooltip="国内访问下载页",
                 ),
                 ft.TextButton(
                     "Github",

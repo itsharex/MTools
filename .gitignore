@@ -23,10 +23,6 @@ wheels/
 storage/
 tests/
 .pytest_cache/
-.ruff_cache/
-.mypy_cache/
-.pytest_cache/
-.pytest_cache/
 
 # Virtual Environment
 venv/
