@@ -622,7 +622,56 @@ def check_dependencies():
     
     # 检查 onnxruntime 版本
     print("\n🔍 检查 ONNX Runtime 版本...")
-    return check_onnxruntime_version()
+    if not check_onnxruntime_version():
+        return False
+    
+    # Linux 上检查 patchelf
+    if platform.system() == "Linux":
+        print("\n🔍 检查 Linux 构建依赖...")
+        if not check_patchelf():
+            return False
+    
+    return True
+
+def check_patchelf():
+    """检查 patchelf 是否已安装（仅 Linux）
+    
+    patchelf 是 Nuitka 在 Linux 上修改 ELF 二进制文件所必需的工具。
+    
+    Returns:
+        bool: 如果已安装或非 Linux 系统返回 True
+    """
+    if platform.system() != "Linux":
+        return True
+    
+    try:
+        result = subprocess.run(
+            ["patchelf", "--version"],
+            capture_output=True,
+            timeout=5
+        )
+        if result.returncode == 0:
+            version = result.stdout.decode().strip() or result.stderr.decode().strip()
+            print(f"   ✅ 找到 patchelf: {version}")
+            return True
+    except FileNotFoundError:
+        pass
+    except subprocess.TimeoutExpired:
+        pass
+    except Exception as e:
+        print(f"⚠️  检查 patchelf 时出错: {e}")
+    
+    print("\n" + "=" * 60)
+    print("❌ 未找到 patchelf")
+    print("=" * 60)
+    print("patchelf 是 Nuitka 在 Linux 上构建所必需的工具。")
+    print("\n请安装 patchelf：")
+    print("   Ubuntu/Debian: sudo apt-get install patchelf")
+    print("   Fedora/RHEL:   sudo dnf install patchelf")
+    print("   Arch Linux:    sudo pacman -S patchelf")
+    print("=" * 60)
+    return False
+
 
 def check_compiler():
     """检查并推荐编译器（Windows）
@@ -779,11 +828,11 @@ def get_nuitka_cmd(mode="release", enable_upx=False, upx_path=None, jobs=2):
             f"--windows-console-mode={console_mode}",
             f"--windows-icon-from-ico={ASSETS_DIR / 'icon.ico'}",
             f"--file-version={get_file_version(VERSION)}",
-            f"--product-version={VERSION}",
+            f"--product-version={get_file_version(VERSION)}",
             f"--file-description={DESCRIPTION}",
             f"--company-name={COMPANY_NAME}",
             f"--copyright={COPYRIGHT}",
-            f"--product-name={APP_NAME}",
+            f"--product-name={APP_NAME} {VERSION}",
             f"--output-filename={APP_NAME}.exe",
         ])
         if mode == "dev":
