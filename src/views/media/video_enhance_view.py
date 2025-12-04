@@ -2,6 +2,8 @@
 """视频增强视图模块。
 
 提供视频超分辨率增强功能的用户界面。
+
+性能等待优化
 """
 
 import gc
@@ -13,7 +15,6 @@ from typing import Callable, List, Optional
 from utils import logger
 
 import flet as ft
-import numpy as np
 
 from constants import (
     IMAGE_ENHANCE_MODELS,
@@ -68,6 +69,7 @@ class VideoEnhanceView(ft.Container):
         self.is_model_loading: bool = False
         self.is_processing: bool = False
         self.should_cancel: bool = False
+        self.is_destroyed: bool = False  # 视图是否已被销毁
         
         # 当前选择的模型
         saved_model_key = self.config_service.get_config_value("video_enhance_model_key", DEFAULT_ENHANCE_MODEL_KEY)
@@ -790,6 +792,10 @@ class VideoEnhanceView(ft.Container):
     
     def _on_model_loaded(self, success: bool, error: Optional[str]) -> None:
         """模型加载完成回调。"""
+        if self.is_destroyed:
+            logger.info("视图已销毁，跳过模型加载回调")
+            return  # 视图已销毁，不更新UI
+        
         self.is_model_loading = False
         if success:
             device_info = "未知设备"
@@ -808,12 +814,19 @@ class VideoEnhanceView(ft.Container):
     
     def _on_download_failed(self, error: str) -> None:
         """模型下载失败回调。"""
+        if self.is_destroyed:
+            logger.info("视图已销毁，跳过下载失败回调")
+            return
+        
         self.is_model_loading = False
         self._update_model_status("need_download", "下载失败，请重试")
         self._show_snackbar(f"模型下载失败: {error}", ft.Colors.RED)
     
     def _update_model_status(self, status: str, message: str) -> None:
         """更新模型状态显示。"""
+        if self.is_destroyed:
+            return  # 视图已销毁，不更新UI
+        
         if status == "loading":
             self.model_status_icon.name = ft.Icons.HOURGLASS_EMPTY
             self.model_status_icon.color = ft.Colors.BLUE
@@ -871,8 +884,49 @@ class VideoEnhanceView(ft.Container):
     
     def _on_back_click(self, e: ft.ControlEvent = None) -> None:
         """返回按钮点击事件。"""
-        if self.on_back:
-            self.on_back()
+        # 检查是否有任务正在运行
+        if self.is_processing:
+            # 显示确认对话框
+            def confirm_exit(confirm_e: ft.ControlEvent) -> None:
+                dialog.open = False
+                self.page.update()
+                
+                # 清理资源并取消任务
+                self.cleanup()
+                
+                # 返回
+                if self.on_back:
+                    self.on_back()
+            
+            def cancel_exit(cancel_e: ft.ControlEvent) -> None:
+                dialog.open = False
+                self.page.update()
+            
+            dialog = ft.AlertDialog(
+                modal=True,
+                title=ft.Text("确认退出"),
+                content=ft.Text(
+                    "视频增强任务正在进行中，退出将取消任务。是否确认退出？",
+                    size=14
+                ),
+                actions=[
+                    ft.TextButton("继续处理", on_click=cancel_exit),
+                    ft.ElevatedButton(
+                        "退出并取消",
+                        icon=ft.Icons.EXIT_TO_APP,
+                        on_click=confirm_exit
+                    ),
+                ],
+                actions_alignment=ft.MainAxisAlignment.END,
+            )
+            
+            self.page.overlay.append(dialog)
+            dialog.open = True
+            self.page.update()
+        else:
+            # 没有任务在运行，直接返回
+            if self.on_back:
+                self.on_back()
     
     def _on_model_select_change(self, e: ft.ControlEvent) -> None:
         """模型选择变化事件。"""
@@ -1134,6 +1188,9 @@ class VideoEnhanceView(ft.Container):
     
     def _update_file_list(self) -> None:
         """更新文件列表显示。"""
+        if self.is_destroyed:
+            return  # 视图已销毁，不更新UI
+        
         self.file_list_view.controls.clear()
         
         if not self.selected_files:
@@ -1253,9 +1310,15 @@ class VideoEnhanceView(ft.Container):
     
     def _update_process_button(self) -> None:
         """更新处理按钮状态。"""
-        button = self.process_button.content
-        button.disabled = not (self.selected_files and self.enhancer)
-        self.process_button.update()
+        if self.is_destroyed:
+            return  # 视图已销毁，不更新UI
+        
+        try:
+            button = self.process_button.content
+            button.disabled = not (self.selected_files and self.enhancer)
+            self.process_button.update()
+        except:
+            pass
     
     def _on_cancel(self, e: ft.ControlEvent) -> None:
         """取消处理按钮点击事件。"""
@@ -2097,6 +2160,9 @@ class VideoEnhanceView(ft.Container):
     
     def _update_progress(self, value: float, text: str) -> None:
         """更新进度显示。"""
+        if self.is_destroyed:
+            return  # 视图已销毁，不更新UI
+        
         self.progress_bar.value = value
         self.progress_text.value = text
         try:
@@ -2106,6 +2172,10 @@ class VideoEnhanceView(ft.Container):
     
     def _on_process_complete(self, success_count: int, total: int, output_dir: Path) -> None:
         """处理完成回调。"""
+        if self.is_destroyed:
+            logger.info(f"视图已销毁，跳过完成回调（成功: {success_count}/{total}）")
+            return  # 视图已销毁，不更新UI
+        
         self.is_processing = False
         self.progress_bar.value = 1.0
         
@@ -2138,15 +2208,36 @@ class VideoEnhanceView(ft.Container):
     
     def _show_snackbar(self, message: str, color: str) -> None:
         """显示提示消息。"""
-        snackbar: ft.SnackBar = ft.SnackBar(
-            content=ft.Text(message),
-            bgcolor=color,
-            duration=3000,
-        )
-        self.page.overlay.append(snackbar)
-        snackbar.open = True
+        if self.is_destroyed or not self.page:
+            logger.debug(f"视图已销毁，跳过snackbar: {message}")
+            return  # 视图已销毁或page不存在，不显示消息
+        
         try:
+            snackbar: ft.SnackBar = ft.SnackBar(
+                content=ft.Text(message),
+                bgcolor=color,
+                duration=3000,
+            )
+            self.page.overlay.append(snackbar)
+            snackbar.open = True
             self.page.update()
-        except:
-            pass
+        except Exception as e:
+            logger.debug(f"显示snackbar失败（可能视图已销毁）: {e}")
+    
+    def cleanup(self) -> None:
+        """清理资源，停止所有后台任务。"""
+        logger.info("开始清理视频增强视图...")
+        
+        # 标记视图已销毁，防止后台线程更新UI
+        self.is_destroyed = True
+        
+        if self.is_processing:
+            logger.warning("视图被销毁，取消正在进行的任务...")
+            self.should_cancel = True
+            
+            # 等待一小段时间让任务清理
+            import time
+            time.sleep(0.5)
+        
+        logger.info("✓ 视频增强视图已清理")
 

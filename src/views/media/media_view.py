@@ -438,6 +438,14 @@ class MediaView(ft.Container):
             }
             view_attr = view_map.get(self.current_sub_view_type)
             if view_attr:
+                # 在销毁前调用cleanup方法（如果存在）
+                view_instance = getattr(self, view_attr, None)
+                if view_instance and hasattr(view_instance, 'cleanup'):
+                    try:
+                        view_instance.cleanup()
+                    except Exception as e:
+                        logger.warning(f"清理视图 {view_attr} 时出错: {e}")
+                
                 setattr(self, view_attr, None)
         
         # 清空当前子视图记录
