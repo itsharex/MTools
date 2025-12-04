@@ -213,14 +213,16 @@ uv sync
 uv run flet run
 ```
 
-#### Linux GPU 加速（可选）
-
-如需在 Linux 上启用 CUDA GPU 加速：
+启用 CUDA GPU 加速（默认已启用平台通用加速）：
 
 ```bash
+# 使用此方式可完全榨干NVIDIA GPU性能
 # 替换为 GPU 版本（需要 NVIDIA GPU 和 CUDA 环境）
 uv remove onnxruntime-directml onnxruntime
 uv add onnxruntime-gpu==1.22.0
+# 需要免去配置cuda和cudnn环境的话请更改为此依赖
+# 会导致体积增大数倍
+# uv add onnxruntime-gpu[cuda,cudnn]==1.22.0
 ```
 
 ---

@@ -390,3 +390,136 @@ IMAGE_ENHANCE_MODELS: Final[dict[str, ImageEnhanceModelInfo]] = {
 # 默认图像增强模型
 DEFAULT_ENHANCE_MODEL_KEY: Final[str] = "RealESRGAN_x4plus"
 
+
+# 视频插帧模型配置（RIFE）
+@dataclass
+class FrameInterpolationModelInfo(ModelInfo):
+    """视频插帧模型信息。
+    
+    Attributes:
+        precision: 精度类型（fp32/fp16）
+        ensemble: 是否使用集成模式
+        optimized_for: 优化场景（真人/动漫）
+        recommended: 是否推荐
+        vram_usage: 显存占用描述
+    """
+    precision: str = "fp32"
+    ensemble: bool = False
+    optimized_for: str = "通用"
+    recommended: bool = False
+    vram_usage: str = "中等"
+
+
+FRAME_INTERPOLATION_MODELS: Final[dict[str, FrameInterpolationModelInfo]] = {
+    # RIFE 4.9 - 真人视频优化
+    "rife49_fast": FrameInterpolationModelInfo(
+        name="rife49_fast",
+        display_name="RIFE 4.9 快速版（推荐）",
+        url="https://www.modelscope.cn/models/yiminger/MyTools_Models/resolve/master/models/RIFE/rife49_ensembleFalse_op18_fp16_clamp_sim.onnx",
+        size_mb=11,
+        quality="⭐⭐⭐⭐ 高质量",
+        performance="⚡⚡⚡⚡⚡ 极速 | 显存占用低",
+        filename="rife49_ensembleFalse_op18_fp16_clamp_sim.onnx",
+        version="v4.9",
+        precision="fp16",
+        ensemble=False,
+        optimized_for="真人视频",
+        recommended=True,
+        vram_usage="低 (2-3GB)"
+    ),
+    "rife49_standard": FrameInterpolationModelInfo(
+        name="rife49_standard",
+        display_name="RIFE 4.9 标准版",
+        url="https://www.modelscope.cn/models/yiminger/MyTools_Models/resolve/master/models/RIFE/rife49_ensembleFalse_op18_clamp_sim.onnx",
+        size_mb=21,
+        quality="⭐⭐⭐⭐ 高质量",
+        performance="⚡⚡⚡⚡ 快速 | 显存占用中等",
+        filename="rife49_ensembleFalse_op18_clamp_sim.onnx",
+        version="v4.9",
+        precision="fp32",
+        ensemble=False,
+        optimized_for="真人视频",
+        recommended=False,
+        vram_usage="中等 (3-4GB)"
+    ),
+    "rife49_quality": FrameInterpolationModelInfo(
+        name="rife49_quality",
+        display_name="RIFE 4.9 高质量版",
+        url="https://www.modelscope.cn/models/yiminger/MyTools_Models/resolve/master/models/RIFE/rife49_ensembleTrue_op18_clamp_sim.onnx",
+        size_mb=21,
+        quality="⭐⭐⭐⭐⭐ 极致质量",
+        performance="⚡⚡⚡ 较快 | 显存占用中等",
+        filename="rife49_ensembleTrue_op18_clamp_sim.onnx",
+        version="v4.9",
+        precision="fp32",
+        ensemble=True,
+        optimized_for="真人视频",
+        recommended=False,
+        vram_usage="中等 (4-6GB)"
+    ),
+    "rife49_quality_fp16": FrameInterpolationModelInfo(
+        name="rife49_quality_fp16",
+        display_name="RIFE 4.9 高质量FP16版",
+        url="https://www.modelscope.cn/models/yiminger/MyTools_Models/resolve/master/models/RIFE/rife49_ensembleTrue_op18_fp16_clamp_sim.onnx",
+        size_mb=11,
+        quality="⭐⭐⭐⭐⭐ 极致质量",
+        performance="⚡⚡⚡⚡ 快速 | 显存占用低",
+        filename="rife49_ensembleTrue_op18_fp16_clamp_sim.onnx",
+        version="v4.9",
+        precision="fp16",
+        ensemble=True,
+        optimized_for="真人视频",
+        recommended=False,
+        vram_usage="低 (3-4GB)"
+    ),
+    
+    # RIFE 4.8 - 动漫视频优化
+    "rife48_anime_fast": FrameInterpolationModelInfo(
+        name="rife48_anime_fast",
+        display_name="RIFE 4.8 动漫快速版",
+        url="https://www.modelscope.cn/models/yiminger/MyTools_Models/resolve/master/models/RIFE/rife48_ensembleFalse_op18_fp16_clamp_sim.onnx",
+        size_mb=11,
+        quality="⭐⭐⭐⭐ 高质量",
+        performance="⚡⚡⚡⚡⚡ 极速 | 显存占用低",
+        filename="rife48_ensembleFalse_op18_fp16_clamp_sim.onnx",
+        version="v4.8",
+        precision="fp16",
+        ensemble=False,
+        optimized_for="动漫视频",
+        recommended=False,
+        vram_usage="低 (2-3GB)"
+    ),
+    "rife48_anime_standard": FrameInterpolationModelInfo(
+        name="rife48_anime_standard",
+        display_name="RIFE 4.8 动漫标准版",
+        url="https://www.modelscope.cn/models/yiminger/MyTools_Models/resolve/master/models/RIFE/rife48_ensembleFalse_op18_clamp_sim.onnx",
+        size_mb=21,
+        quality="⭐⭐⭐⭐ 高质量",
+        performance="⚡⚡⚡⚡ 快速 | 显存占用中等",
+        filename="rife48_ensembleFalse_op18_clamp_sim.onnx",
+        version="v4.8",
+        precision="fp32",
+        ensemble=False,
+        optimized_for="动漫视频",
+        recommended=False,
+        vram_usage="中等 (3-4GB)"
+    ),
+    "rife48_anime_quality": FrameInterpolationModelInfo(
+        name="rife48_anime_quality",
+        display_name="RIFE 4.8 动漫高质量版",
+        url="https://www.modelscope.cn/models/yiminger/MyTools_Models/resolve/master/models/RIFE/rife48_ensembleTrue_op18_clamp_sim.onnx",
+        size_mb=21,
+        quality="⭐⭐⭐⭐⭐ 极致质量",
+        performance="⚡⚡⚡ 较快 | 显存占用中等",
+        filename="rife48_ensembleTrue_op18_clamp_sim.onnx",
+        version="v4.8",
+        precision="fp32",
+        ensemble=True,
+        optimized_for="动漫视频",
+        recommended=False,
+        vram_usage="中等 (4-6GB)"
+    ),
+}
+
+# 默认插帧模型
+DEFAULT_INTERPOLATION_MODEL_KEY: Final[str] = "rife49_fast"

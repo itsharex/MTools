@@ -22,6 +22,7 @@ from views.media.video_compress_view import VideoCompressView
 from views.media.video_convert_view import VideoConvertView
 from views.media.video_enhance_view import VideoEnhanceView
 from views.media.video_extract_audio_view import VideoExtractAudioView
+from views.media.video_interpolation_view import VideoInterpolationView
 from views.media.video_repair_view import VideoRepairView
 from views.media.video_speed_view import VideoSpeedView
 from views.media.video_vocal_separation_view import VideoVocalSeparationView
@@ -83,6 +84,7 @@ class MediaView(ft.Container):
         self.video_compress_view: Optional[VideoCompressView] = None
         self.video_convert_view: Optional[VideoConvertView] = None
         self.video_enhance_view: Optional[VideoEnhanceView] = None
+        self.video_interpolation_view: Optional[VideoInterpolationView] = None
         self.video_extract_audio_view: Optional[VideoExtractAudioView] = None
         self.video_repair_view: Optional[VideoRepairView] = None
         self.video_speed_view: Optional[VideoSpeedView] = None
@@ -152,10 +154,17 @@ class MediaView(ft.Container):
             # 视频处理
             FeatureCard(
                 icon=ft.Icons.AUTO_AWESOME,
-                title="视频增强",
-                description="AI视频超分辨率和补帧，提升画质和流畅度",
+                title="视频超分辨率",
+                description="AI视频超分辨率增强，提升画质清晰度",
                 on_click=lambda e: self._open_view('video_enhance'),
                 gradient_colors=("#fa709a", "#fee140"),
+            ),
+            FeatureCard(
+                icon=ft.Icons.SLOW_MOTION_VIDEO,
+                title="视频插帧",
+                description="AI帧率提升，让视频更流畅（RIFE补帧）",
+                on_click=lambda e: self._open_view('video_interpolation'),
+                gradient_colors=("#667eea", "#764ba2"),
             ),
             FeatureCard(
                 icon=ft.Icons.COMPRESS,
@@ -319,6 +328,16 @@ class MediaView(ft.Container):
                 )
             self._switch_to_sub_view(self.video_enhance_view, 'video_enhance')
             
+        elif view_name == 'video_interpolation':
+            if not self.video_interpolation_view:
+                self.video_interpolation_view = VideoInterpolationView(
+                    self._saved_page,
+                    self.config_service,
+                    self.ffmpeg_service,
+                    on_back=self._back_to_main
+                )
+            self._switch_to_sub_view(self.video_interpolation_view, 'video_interpolation')
+            
         elif view_name == 'video_extract_audio':
             if not self.video_extract_audio_view:
                 self.video_extract_audio_view = VideoExtractAudioView(
@@ -429,6 +448,7 @@ class MediaView(ft.Container):
                 "video_compress": "video_compress_view",
                 "video_convert": "video_convert_view",
                 "video_enhance": "video_enhance_view",
+                "video_interpolation": "video_interpolation_view",
                 "video_extract_audio": "video_extract_audio_view",
                 "video_repair": "video_repair_view",
                 "video_speed": "video_speed_view",
