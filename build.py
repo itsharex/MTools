@@ -938,6 +938,65 @@ def get_nuitka_cmd(mode="release", enable_upx=False, upx_path=None, jobs=2):
     cmd.append(MAIN_SCRIPT)
     return cmd
 
+def cleanup_sherpa_onnx_libs():
+    """清理 sherpa-onnx 自带的 onnxruntime 库文件
+    
+    sherpa-onnx 包自带了旧版本的 onnxruntime 动态库（1.17.1），
+    与系统安装的新版本（1.22.0）冲突，导致 Nuitka 打包时出现路径解析错误。
+    
+    需要删除的文件：
+    - Windows: sherpa_onnx/lib/onnxruntime.dll
+    - Linux: sherpa_onnx/lib/libonnxruntime.so.*
+    - macOS: sherpa_onnx/lib/libonnxruntime.*.dylib
+    """
+    system = platform.system()
+    
+    try:
+        import site
+        site_packages = site.getsitepackages()
+        
+        for site_pkg in site_packages:
+            sherpa_lib_dir = Path(site_pkg) / "sherpa_onnx" / "lib"
+            if not sherpa_lib_dir.exists():
+                continue
+            
+            print("\n🔍 检查 sherpa-onnx 库文件冲突...")
+            print(f"   目录: {sherpa_lib_dir}")
+            
+            # 根据平台查找并删除 onnxruntime 库文件
+            patterns = []
+            if system == "Windows":
+                patterns = ["onnxruntime.dll", "onnxruntime_*.dll"]
+            elif system == "Linux":
+                patterns = ["libonnxruntime.so*"]
+            elif system == "Darwin":
+                patterns = ["libonnxruntime.*.dylib"]
+            
+            deleted_files = []
+            for pattern in patterns:
+                for lib_file in sherpa_lib_dir.glob(pattern):
+                    if lib_file.is_file():
+                        try:
+                            lib_file.unlink()
+                            deleted_files.append(lib_file.name)
+                        except Exception as e:
+                            print(f"   ⚠️  无法删除 {lib_file.name}: {e}")
+            
+            if deleted_files:
+                print(f"   ✅ 已删除 sherpa-onnx 自带的 onnxruntime 库:")
+                for filename in deleted_files:
+                    print(f"      • {filename}")
+                print("   💡 这些库与系统安装的 onnxruntime 冲突，已自动清理")
+            else:
+                print("   ℹ️  未发现冲突的 onnxruntime 库文件")
+            
+            return True
+            
+    except Exception as e:
+        print(f"   ⚠️  检查 sherpa-onnx 库时出错: {e}")
+        # 不是致命错误，继续构建
+        return False
+
 def run_build(mode="release", enable_upx=False, upx_path=None, jobs=2, mingw64=None):
     """执行构建
     
@@ -949,6 +1008,9 @@ def run_build(mode="release", enable_upx=False, upx_path=None, jobs=2, mingw64=N
         mingw64: MinGW64 安装路径（可选）
     """
     clean_dist(mode)
+    
+    # 清理 sherpa-onnx 自带的 onnxruntime 库（避免版本冲突）
+    cleanup_sherpa_onnx_libs()
     
     # 注册清理处理器（使用 lambda 捕获 mode）
     register_cleanup_handler(lambda: cleanup_incomplete_build(mode))

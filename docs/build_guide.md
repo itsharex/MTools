@@ -22,6 +22,52 @@ Flet 在首次启动时需要 UI 客户端（约 95MB）。我们采用**预打�
 - 🔄 **版本同步**：自动检测版本变化，确保客户端与代码匹配
 - 🌍 **跨平台**：Windows、macOS、Linux 统一处理
 
+## 🚀 快速参考
+
+### 标准版本（自适应NVIDIA、AMD、Intel GPU 以及 MacOS 加速，但性能不如 CUDA）
+```bash
+# 1. 安装依赖
+uv sync
+
+# 2. 编译
+python build.py
+```
+
+### CUDA FULL 版本（完全释放 NVIDIA GPU性能，无需手动安装cuda环境）
+```bash
+# 1. 安装依赖
+uv sync
+
+# 2. 安装 CUDA FULL onnxruntime
+uv remove onnxruntime-directml
+uv add "onnxruntime-gpu[cuda,cudnn]==1.22.0"
+
+# 3. 编译
+# Windows (PowerShell)
+$env:CUDA_VARIANT="cuda_full"
+python build.py
+
+# Linux/macOS
+export CUDA_VARIANT=cuda_full
+python build.py
+```
+
+### 验证 CUDA FULL 编译成功
+编译时应该看到：
+```
+🎯 检测到 CUDA FULL 变体，正在包含 NVIDIA 库...
+✅ 找到 NVIDIA 库: ...\site-packages\nvidia
+📦 发现 7 个 NVIDIA 子包:
+   • nvidia.cublas (3 DLLs)
+   • nvidia.cuda_nvrtc (3 DLLs)
+   • nvidia.cuda_runtime (1 DLLs)
+   • nvidia.cudnn (8 DLLs)
+   • nvidia.cufft (2 DLLs)
+   • nvidia.curand (1 DLLs)
+   • nvidia.nvjitlink (1 DLLs)
+✅ 已包含 7 个包，共 21 个 DLL 文件
+```
+
 ## 📋 前置要求
 
 ### 必需环境
@@ -94,6 +140,8 @@ uv sync
 > - 首次会自动打包 Flet 客户端（约 50-100MB，需 1-2 分钟）
 > - 后续编译无需重复下载，速度显著提升
 
+#### 标准版本（推荐）
+
 **Release 模式（生产环境）**
 ```bash
 python build.py
@@ -102,6 +150,8 @@ python build.py
 - ✅ 完整优化
 - ✅ 无控制台窗口
 - ✅ 体积较小，性能最佳
+- 🎮 Windows: 支持 DirectML (Intel/AMD/NVIDIA GPU)
+- 🍎 macOS: 支持 CoreML (Apple Silicon)
 - ⏱️ 编译时间：首次 15-35分钟，后续 10-30分钟
 
 **Dev 模式（开发测试）**
@@ -113,6 +163,94 @@ python build.py --mode dev
 - ✅ 保留控制台窗口（可查看日志）
 - ✅ 保留调试信息
 - ⏱️ 编译时间：首次 10-20分钟，后续 5-15分钟
+
+#### CUDA 版本（NVIDIA GPU 加速）
+
+> 🎯 **适用场景**：拥有 NVIDIA 显卡，需要最佳 AI 推理性能
+
+MTools 支持三种 CUDA 变体，性能从左到右递增：
+
+| 版本 | CUDA 依赖 | 体积 | 兼容性 | 性能 | 推荐场景 |
+|------|----------|------|--------|------|---------|
+| **标准版** | ❌ 无 | 小 | ⭐⭐⭐ | ⭐⭐ | 通用，无需安装CUDA环境也可使用GPU加速，AMD、Intel通用加速 |
+| **CUDA** | ⚠️ 需自行安装 | 小 | ⭐⭐ | ⭐⭐⭐ | 已安装 CUDA Toolkit |
+| **CUDA FULL** | ✅ 内置完整 | 大 | ⭐⭐⭐ | ⭐⭐⭐ | 一键部署，最佳性能，体积很大 |
+
+##### 方案 1: CUDA 版本（需外部 CUDA）
+
+**特点**：
+- 📦 体积小（不含 CUDA 库）
+- ⚠️ 需要用户系统已安装 CUDA Toolkit 12.x 和 cuDNN 9.x
+- 🎯 适合已配置 CUDA 环境的开发者
+
+**编译步骤**：
+```bash
+# 1. 替换 onnxruntime 为 GPU 版本
+uv remove onnxruntime-directml  # Windows
+uv remove onnxruntime           # Linux/macOS
+uv add onnxruntime-gpu==1.22.0
+
+# 2. 设置环境变量并编译
+# Windows (PowerShell)
+$env:CUDA_VARIANT="cuda"
+python build.py
+
+# Linux/macOS
+export CUDA_VARIANT=cuda
+python build.py
+```
+
+##### 方案 2: CUDA FULL 版本（内置完整 CUDA，推荐）
+
+**特点**：
+- ✅ 一键部署，内置所有 NVIDIA 库（CUDA 12.x + cuDNN 9.x）
+- ✅ 用户无需安装任何 CUDA 依赖，开箱即用
+- 📦 体积较大（约增加 500MB-1GB）
+- 🎯 最佳性能，最简单部署
+
+**编译步骤**：
+```bash
+# 1. 安装带完整 CUDA 和 cuDNN 的 onnxruntime
+uv remove onnxruntime-directml  # Windows
+uv remove onnxruntime           # Linux/macOS
+uv add "onnxruntime-gpu[cuda,cudnn]==1.22.0"
+
+# 2. 设置环境变量并编译
+# Windows (PowerShell)
+$env:CUDA_VARIANT="cuda_full"
+python build.py
+
+# Linux/macOS
+export CUDA_VARIANT=cuda_full
+python build.py
+```
+
+**构建输出**：
+```
+🎯 检测到 CUDA FULL 变体，正在包含 NVIDIA 库...
+✅ 找到 NVIDIA 库: C:\...\site-packages\nvidia
+📦 发现 7 个 NVIDIA 子包:
+   • nvidia.cublas (3 DLLs)
+   • nvidia.cuda_nvrtc (3 DLLs)
+   • nvidia.cuda_runtime (1 DLLs)
+   • nvidia.cudnn (8 DLLs)
+   • nvidia.cufft (2 DLLs)
+   • nvidia.curand (1 DLLs)
+   • nvidia.nvjitlink (1 DLLs)
+✅ 已包含 7 个包，共 21 个 DLL 文件
+```
+
+**CUDA 版本对比**：
+```bash
+# 标准版（DirectML/CoreML）
+dist/release/MTools_Windows_amd64.zip          # ~200MB
+
+# CUDA 版本（需外部 CUDA）
+dist/release/MTools_Windows_amd64_CUDA.zip     # ~200MB + 需要 CUDA Toolkit
+
+# CUDA FULL 版本（内置完整）
+dist/release/MTools_Windows_amd64_CUDA_FULL.zip # ~700-800MB
+```
 
 ### 3. 高级选项
 
@@ -154,9 +292,15 @@ python build.py --mode release --upx --jobs 4
 
 # 快速测试编译
 python build.py --mode dev --jobs 1
+
+# CUDA FULL 版本 + 完整优化
+$env:CUDA_VARIANT="cuda_full"  # Windows
+python build.py --mode release --jobs 4
 ```
 
 ## 📊 构建模式对比
+
+### 基础模式对比
 
 | 特性 | Dev 模式 | Release 模式 |
 |------|---------|-------------|
@@ -167,6 +311,21 @@ python build.py --mode dev --jobs 1
 | **启动速度** | 较慢 | 较快 |
 | **适用场景** | 开发测试 | 正式发布 |
 | **Python 标志** | `no_site` | `-O`, `no_site`, `no_warnings` |
+
+### CUDA 变体对比
+
+| 特性 | 标准版 | CUDA 版 | CUDA FULL 版 |
+|------|--------|---------|--------------|
+| **onnxruntime** | `onnxruntime-directml` (Win)<br>`onnxruntime` (Mac/Linux) | `onnxruntime-gpu` | `onnxruntime-gpu[cuda,cudnn]` |
+| **打包体积** | ~200MB | ~200MB | ~700-800MB |
+| **GPU 支持** | DirectML (Win)<br>CoreML (Mac) | CUDA (NVIDIA) | CUDA (NVIDIA) |
+| **用户依赖** | ✅ 无 | ⚠️ 需 CUDA 12.x + cuDNN 9.x | ✅ 无（内置） |
+| **包含 DLL** | ❌ 无 CUDA DLL | ❌ 无 CUDA DLL | ✅ 21 个 NVIDIA DLL |
+| **部署难度** | 🟢 简单 | 🔴 困难 | 🟢 简单 |
+| **AI 性能** | ⭐⭐ 中等 | ⭐⭐⭐ 最佳 | ⭐⭐⭐ 最佳 |
+| **兼容性** | ⭐⭐⭐ 最广 | ⭐⭐ 需配置 | ⭐⭐⭐ 开箱即用 |
+| **环境变量** | 无 | `CUDA_VARIANT=cuda` | `CUDA_VARIANT=cuda_full` |
+| **推荐场景** | 通用部署 | 已配置 CUDA 环境 | NVIDIA GPU 一键部署 |
 
 ## 🛠️ C 编译器对比 (Windows)
 
@@ -389,6 +548,96 @@ sudo apt install build-essential
 2. 检查是否卡在某个步骤（查看输出日志）
 3. 尝试 `Ctrl+C` 中断，重新编译
 
+### Q7: CUDA FULL 版本未包含 NVIDIA 库
+
+**症状**：
+- 编译完成但打包的程序中没有 `nvidia` 目录
+- 运行时提示缺少 CUDA DLL 文件
+
+**检查步骤**：
+```bash
+# 1. 验证环境变量是否正确设置
+# Windows (PowerShell)
+echo $env:CUDA_VARIANT  # 应显示 "cuda_full"
+
+# Linux/macOS
+echo $CUDA_VARIANT  # 应显示 "cuda_full"
+
+# 2. 验证 onnxruntime-gpu 是否正确安装
+uv run python test_cuda_libs.py
+
+# 3. 检查是否安装了完整的 CUDA 和 cuDNN
+uv pip list | findstr onnxruntime  # Windows
+uv pip list | grep onnxruntime     # Linux/macOS
+```
+
+**解决方案**：
+```bash
+# 1. 确保完全移除旧版本
+uv remove onnxruntime-directml
+uv remove onnxruntime
+uv remove onnxruntime-gpu
+
+# 2. 安装带完整 CUDA 和 cuDNN 的版本（注意引号）
+uv add "onnxruntime-gpu[cuda,cudnn]==1.22.0"
+
+# 3. 设置环境变量并重新编译
+# Windows (PowerShell)
+$env:CUDA_VARIANT="cuda_full"
+python build.py
+
+# Linux/macOS
+export CUDA_VARIANT=cuda_full
+python build.py
+```
+
+**预期输出**（编译时）：
+```
+🎯 检测到 CUDA FULL 变体，正在包含 NVIDIA 库...
+✅ 找到 NVIDIA 库: ...\site-packages\nvidia
+📦 发现 7 个 NVIDIA 子包:
+   • nvidia.cublas (3 DLLs)
+   • nvidia.cuda_nvrtc (3 DLLs)
+   • nvidia.cuda_runtime (1 DLLs)
+   • nvidia.cudnn (8 DLLs)
+   • nvidia.cufft (2 DLLs)
+   • nvidia.curand (1 DLLs)
+   • nvidia.nvjitlink (1 DLLs)
+✅ 已包含 7 个包，共 21 个 DLL 文件
+```
+
+### Q8: CUDA 版本和 CUDA FULL 版本的区别
+
+| 特性 | CUDA 版本 | CUDA FULL 版本 |
+|------|----------|---------------|
+| **安装依赖** | `onnxruntime-gpu==1.22.0` | `onnxruntime-gpu[cuda,cudnn]==1.22.0` |
+| **打包体积** | ~200MB | ~700-800MB |
+| **用户要求** | 需安装 CUDA Toolkit 12.x + cuDNN 9.x | ✅ 无需安装任何依赖 |
+| **兼容性** | ⭐⭐ 依赖系统 CUDA | ⭐⭐⭐ 开箱即用 |
+| **部署难度** | 🔴 高（需自行配置环境） | 🟢 低（一键运行） |
+| **环境变量** | `CUDA_VARIANT=cuda` | `CUDA_VARIANT=cuda_full` |
+
+### Q9: 如何验证 CUDA 加速是否生效
+
+**方法 1: 使用测试脚本**
+```bash
+# 在打包的程序目录中运行
+.\test_cuda_libs.py
+```
+
+**方法 2: 检查 onnxruntime providers**
+```python
+import onnxruntime as ort
+print(ort.get_available_providers())
+
+# 应包含:
+# ['CUDAExecutionProvider', 'CPUExecutionProvider']
+```
+
+**方法 3: 运行 AI 功能并观察性能**
+- CUDA 加速: 处理速度明显更快
+- CPU 模式: 处理速度较慢，CPU 占用高
+
 ## 📚 进阶主题
 
 ### 自定义编译选项
@@ -406,7 +655,6 @@ Nuitka 官方文档: https://nuitka.net/doc/user-manual.html
 
 在对应平台上运行 `python build.py` 即可。
 
-
 ---
 
-**最后更新**: 2025-12-02
+**最后更新**: 2025-12-05
