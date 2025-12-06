@@ -653,51 +653,68 @@ print(ort.get_available_providers())
 ### Q10: macOS 打包失败 - sherpa-onnx 库冲突
 
 **症状**:
-编译时出现错误：
+编译时出现错误（通常在 Nuitka 链接阶段）：
 ```
 FATAL: Error, failed to find path @rpath/libonnxruntime.1.17.1.dylib
 (resolved DLL to ...site-packages/sherpa_onnx/lib/libonnxruntime.1.17.1.dylib)
 for ...site-packages/sherpa_onnx/lib/_sherpa_onnx.cpython-311-darwin.so
 ```
 
+或者 Nuitka 参数错误：
+```
+error: option --noinclude-pytest-mode: invalid choice: 'auto'
+```
+
 **根本原因**:
 - sherpa-onnx 包自带了旧版本的 ONNX Runtime 库（1.17.1）
 - 与系统安装的新版本（1.22.0）冲突
-- macOS 上的符号链接处理导致 Nuitka 无法正确解析库路径
+- macOS 上 C++ 扩展模块依赖这些嵌入式库文件
+- Nuitka 打包时无法正确处理这些依赖关系
 
 **自动修复**（推荐）:
 ```bash
-# 使用最新的 build.py，已自动处理清理
+# 使用最新的 build.py，已自动处理
 # 只需重新运行构建
 python build.py
 ```
 
-新版本 `build.py` 会在编译前自动清理冲突的库文件：
-```
-🔍 检查 sherpa-onnx 库文件冲突...
-   目录: ...site-packages/sherpa_onnx/lib
-   ✅ 已删除 sherpa-onnx 自带的 onnxruntime 库:
-      • libonnxruntime.1.17.1.dylib
-      • libonnxruntime.dylib
-   💡 这些库与系统安装的 onnxruntime 冲突，已自动清理
-```
+最新版本的 `build.py` 会：
+
+1. **自动清理冲突库文件**:
+   ```
+   🔍 检查 sherpa-onnx 库文件冲突...
+      ✅ 已删除 sherpa-onnx 自带的 onnxruntime 库:
+         • libonnxruntime.1.17.1.dylib
+   ```
+
+2. **添加 macOS 特殊处理**:
+   ```
+   🔧 macOS 特殊处理: 排除 sherpa-onnx 的嵌入式库文件
+   ```
+
+3. **自动检测并设置目标架构**:
+   ```
+   --macos-target-arch=arm64  # 或 x86_64
+   ```
 
 **手动修复**（如果自动修复失败）:
-```bash
-# 找到 sherpa-onnx 库目录
-python -c "import site; import sys; 
-sp = site.getsitepackages()[0]; 
-print(sp + '/sherpa_onnx/lib')"
 
-# 手动删除冲突的库文件（macOS）
-rm -f ~/.venv/lib/python3.11/site-packages/sherpa_onnx/lib/libonnxruntime*.dylib
+1. 清理冲突的库文件:
+   ```bash
+   # 找到 sherpa-onnx 库目录
+   python -c "import site; sp = site.getsitepackages()[0]; \
+   print(sp + '/sherpa_onnx/lib')"
+   
+   # 删除冲突的库文件
+   rm -f ~/.venv/lib/python3.11/site-packages/sherpa_onnx/lib/libonnxruntime*.dylib
+   ```
 
-# 或使用 find 命令查找
-find ~/.venv/lib/python3.11/site-packages/sherpa_onnx/lib -name "libonnxruntime*.dylib" -type f
+2. 更新 build.py 到最新版本
 
-# 删除找到的文件
-find ~/.venv/lib/python3.11/site-packages/sherpa_onnx/lib -name "libonnxruntime*.dylib" -type f -delete
-```
+3. 重新编译：
+   ```bash
+   python build.py
+   ```
 
 **升级 sherpa-onnx**（根本解决）:
 ```bash
@@ -711,18 +728,11 @@ uv add sherpa-onnx --upgrade
 python build.py
 ```
 
-**验证修复**:
-```bash
-# 检查库文件是否已清理
-ls ~/.venv/lib/python3.11/site-packages/sherpa_onnx/lib/
-
-# 应该不再包含 libonnxruntime* 文件
-```
-
 **预防措施**:
 - 定期更新依赖包: `uv sync --upgrade`
-- 使用 Python 3.11+ (推荐使用 3.11+)
-- 在 macOS 上编译前，确保有足够的磁盘空间和内存
+- 在 macOS 上编译前，确保有足够的磁盘空间（至少 10GB）
+- 使用 Python 3.11 或更高版本
+- 如果反复出错，尝试清理虚拟环境: `rm -rf .venv && uv sync`
 
 ## 📚 进阶主题
 

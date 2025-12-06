@@ -835,6 +835,14 @@ def get_nuitka_cmd(mode="release", enable_upx=False, upx_path=None, jobs=2):
     for pkg in excluded_packages:
         cmd.append(f"--nofollow-import-to={pkg}")
     
+    # macOS 特殊处理：解决 sherpa-onnx 与 onnxruntime 库冲突问题
+    if system == "Darwin":
+        print("   🔧 macOS 特殊处理: 排除 sherpa-onnx 的嵌入式库文件")
+        # 在 macOS 上，sherpa-onnx 包含的 _sherpa_onnx.cpython-311-darwin.so 
+        # 会尝试加载其 lib 目录中的 dylib 文件，导致 Nuitka 打包时出错
+        # 解决方案：让 Nuitka 不复制 sherpa_onnx/lib 目录
+        cmd.append("--nofollow-import-to=sherpa_onnx.lib")
+    
     # 检查 CUDA FULL 版本，包含 nvidia DLL
     cuda_variant = os.environ.get('CUDA_VARIANT', 'none').lower()
     if cuda_variant == 'cuda_full':
@@ -978,9 +986,6 @@ def get_nuitka_cmd(mode="release", enable_upx=False, upx_path=None, jobs=2):
             f"--output-filename={APP_NAME}",
             # 自动检测目标架构
             f"--macos-target-arch={machine}",
-            # 禁用 Nuitka 自动处理 dylib 以避免路径问题
-            # (我们会手动处理库文件)
-            "--noinclude-pytest-mode=auto",
         ])
     
     cmd.append(MAIN_SCRIPT)
