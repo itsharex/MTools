@@ -161,6 +161,20 @@ COMPANY_NAME = "HG-ha"
 COPYRIGHT = f"Copyright (C) 2025 by {COMPANY_NAME}"
 DESCRIPTION = APP_CONFIG["APP_DESCRIPTION"]
 
+def get_variant_suffix():
+    """获取变体后缀（用于版本信息显示）
+    
+    Returns:
+        str: 变体后缀，例如 " (CUDA)", " (CUDA FULL)", 或空字符串（标准版）
+    """
+    cuda_variant = os.environ.get('CUDA_VARIANT', 'none').lower()
+    if cuda_variant == 'cuda':
+        return " (CUDA)"
+    elif cuda_variant == 'cuda_full':
+        return " (CUDA FULL)"
+    else:
+        return ""  # 标准版不添加后缀
+
 
 def get_file_version(version: str) -> str:
     """将版本号转换为 Windows 文件版本格式（4 段纯数字）。
@@ -949,28 +963,39 @@ def get_nuitka_cmd(mode="release", enable_upx=False, upx_path=None, jobs=2):
     if system == "Windows":
         # 控制台模式：dev 模式保留控制台，release 模式禁用
         console_mode = "attach" if mode == "dev" else "disable"
+        
+        # 获取变体后缀
+        variant_suffix = get_variant_suffix()
+        product_name = f"{APP_NAME} {VERSION}{variant_suffix}"
+        
         cmd.extend([
             f"--windows-console-mode={console_mode}",
             f"--windows-icon-from-ico={ASSETS_DIR / 'icon.ico'}",
             f"--file-version={get_file_version(VERSION)}",
             f"--product-version={get_file_version(VERSION)}",
-            f"--file-description={DESCRIPTION}",
+            f"--file-description={DESCRIPTION}{variant_suffix}",
             f"--company-name={COMPANY_NAME}",
             f"--copyright={COPYRIGHT}",
-            f"--product-name={APP_NAME} {VERSION}",
+            f"--product-name={product_name}",
             f"--output-filename={APP_NAME}.exe",
         ])
         if mode == "dev":
             print("   控制台窗口: 已启用（调试模式）")
         else:
             print("   控制台窗口: 已禁用")
+        print(f"   产品名称: {product_name}")
     
     # Linux 特定配置
     elif system == "Linux":
+        # 获取变体后缀（用于文件名区分）
+        variant_suffix = get_variant_suffix()
+        
         cmd.extend([
             f"--linux-icon={ASSETS_DIR / 'icon.png'}",
             f"--output-filename={APP_NAME}.bin",
         ])
+        if variant_suffix:
+            print(f"   版本变体: {variant_suffix.strip()}")
         
     # macOS 特定配置
     elif system == "Darwin":
@@ -978,15 +1003,21 @@ def get_nuitka_cmd(mode="release", enable_upx=False, upx_path=None, jobs=2):
         import platform as platform_module
         machine = platform_module.machine()  # 'x86_64' 或 'arm64'
         
+        # 获取变体后缀
+        variant_suffix = get_variant_suffix()
+        app_version = f"{VERSION}{variant_suffix}" if variant_suffix else VERSION
+        
         cmd.extend([
             "--macos-create-app-bundle",
             f"--macos-app-icon={ASSETS_DIR / 'icon.icns'}",  # 需要 .icns 格式
             f"--macos-app-name={APP_NAME}",
-            f"--macos-app-version={VERSION}",
+            f"--macos-app-version={app_version}",
             f"--output-filename={APP_NAME}",
             # 自动检测目标架构
             f"--macos-target-arch={machine}",
         ])
+        if variant_suffix:
+            print(f"   应用版本: {app_version}")
     
     cmd.append(MAIN_SCRIPT)
     return cmd

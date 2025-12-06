@@ -18,6 +18,10 @@ GITHUB_REPO: Final[str] = "MTools"
 GITHUB_API_URL: Final[str] = f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO}/releases/latest"
 GITHUB_RELEASES_URL: Final[str] = f"https://github.com/{GITHUB_OWNER}/{GITHUB_REPO}/releases"
 
+# 下载链接配置
+DOWNLOAD_URL_GITHUB: Final[str] = GITHUB_RELEASES_URL  # GitHub 官方下载页面
+DOWNLOAD_URL_CHINA: Final[str] = "https://openlist.wer.plus/MTools"  # 国内镜像下载页面
+
 # GitHub 代理配置（用于中国大陆用户加速下载）
 # 参考：https://gh-proxy.org
 GITHUB_PROXY_URL: Final[str] = "https://gh-proxy.org/"

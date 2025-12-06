@@ -11,7 +11,7 @@ from typing import Optional
 import flet as ft
 
 from components import CustomTitleBar, ToolInfo, ToolSearchDialog
-from constants import APP_VERSION
+from constants import APP_VERSION, DOWNLOAD_URL_GITHUB, DOWNLOAD_URL_CHINA
 from services import ConfigService, EncodingService, ImageService, FFmpegService, UpdateService, UpdateStatus
 from utils.tool_registry import register_all_tools
 from utils import get_all_tools
@@ -598,16 +598,25 @@ class MainView(ft.Column):
         """启动时在后台检测更新。"""
         def check_task():
             try:
+                from utils import logger
+                logger.info("[Update] 开始检查更新...")
+                
                 update_service = UpdateService()
                 update_info = update_service.check_update()
                 
+                logger.info(f"[Update] 检查结果: {update_info.status.value}")
+                
                 # 只在有新版本时提示
                 if update_info.status == UpdateStatus.UPDATE_AVAILABLE:
+                    logger.info(f"[Update] 发现新版本: {update_info.latest_version}")
                     # 在主线程中显示更新对话框
                     self._show_update_dialog(update_info)
-            except Exception:
-                # 静默失败，不打扰用户
-                pass
+                elif update_info.status == UpdateStatus.ERROR:
+                    logger.warning(f"[Update] 检查更新失败: {update_info.error_message}")
+            except Exception as e:
+                # 记录错误但不打扰用户
+                from utils import logger
+                logger.error(f"[Update] 检查更新时发生异常: {e}", exc_info=True)
         
         # 延迟2秒后开始检测，避免影响启动速度
         def delayed_check():
@@ -628,13 +637,23 @@ class MainView(ft.Column):
             dialog.open = False
             self.page.update()
         
-        def open_download(e):
+        def open_github_release(e):
+            """打开 GitHub Release 页面（国际）"""
             dialog.open = False
             self.page.update()
-            # 打开下载页面
-            url = update_info.release_url or update_info.download_url
-            if url:
-                webbrowser.open(url)
+            webbrowser.open(DOWNLOAD_URL_GITHUB)
+        
+        def open_china_release(e):
+            """打开国内镜像下载页面"""
+            dialog.open = False
+            self.page.update()
+            # 在 URL 后添加版本号，例如：https://openlist.wer.plus/MTools/v0.0.2-beta
+            version = update_info.latest_version
+            # 确保版本号有 v 前缀
+            if not version.startswith('v'):
+                version = f'v{version}'
+            url = f"{DOWNLOAD_URL_CHINA}/{version}"
+            webbrowser.open(url)
         
         def skip_this_version(e):
             # 记录跳过的版本
@@ -651,6 +670,24 @@ class MainView(ft.Column):
         release_notes = update_info.release_notes or "暂无更新说明"
         if len(release_notes) > 500:
             release_notes = release_notes[:500] + "..."
+        
+        # 构建按钮列表
+        action_buttons = [
+            ft.TextButton("跳过此版本", on_click=skip_this_version),
+            ft.TextButton("稍后提醒", on_click=close_dialog),
+            ft.FilledButton(
+                "国内下载",
+                icon=ft.Icons.ROCKET_LAUNCH,
+                on_click=open_china_release,
+                tooltip="使用 GitHub 代理加速访问，适合国内用户",
+            ),
+            ft.ElevatedButton(
+                "GitHub下载",
+                icon=ft.Icons.DOWNLOAD,
+                on_click=open_github_release,
+                tooltip="前往 GitHub Release 页面（国际）",
+            ),
+        ]
         
         dialog = ft.AlertDialog(
             modal=True,
@@ -682,15 +719,7 @@ class MainView(ft.Column):
                 ),
                 width=420,
             ),
-            actions=[
-                ft.TextButton("跳过此版本", on_click=skip_this_version),
-                ft.TextButton("稍后提醒", on_click=close_dialog),
-                ft.ElevatedButton(
-                    "前往下载",
-                    icon=ft.Icons.DOWNLOAD,
-                    on_click=open_download,
-                ),
-            ],
+            actions=action_buttons,
             actions_alignment=ft.MainAxisAlignment.END,
         )
         
