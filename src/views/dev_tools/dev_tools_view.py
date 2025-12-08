@@ -70,6 +70,11 @@ class DevToolsView(ft.Container):
         self.markdown_viewer_view: Optional[ft.Container] = None
         self.dns_lookup_view: Optional[ft.Container] = None
         self.port_scanner_view: Optional[ft.Container] = None
+        self.format_convert_view: Optional[ft.Container] = None
+        self.crypto_tool_view: Optional[ft.Container] = None
+        self.text_diff_view: Optional[ft.Container] = None
+        self.sql_formatter_view: Optional[ft.Container] = None
+        self.cron_tool_view: Optional[ft.Container] = None
         
         # 记录当前显示的视图（用于状态恢复）
         self.current_sub_view: Optional[ft.Container] = None
@@ -211,6 +216,46 @@ class DevToolsView(ft.Container):
                     description="端口检测、批量端口、常用端口、范围扫描",
                     gradient_colors=("#FC466B", "#3F5EFB"),
                     on_click=self._open_port_scanner,
+                ),
+                # 数据格式转换
+                FeatureCard(
+                    icon=ft.Icons.SWAP_HORIZ,
+                    title="数据格式转换",
+                    description="JSON、YAML、XML、TOML 互转",
+                    gradient_colors=("#11998E", "#38EF7D"),
+                    on_click=self._open_format_convert,
+                ),
+                # 加解密工具
+                FeatureCard(
+                    icon=ft.Icons.SECURITY,
+                    title="加解密工具",
+                    description="AES, DES, RC4, MD5, SHA 等",
+                    gradient_colors=("#2C3E50", "#4CA1AF"),
+                    on_click=self._open_crypto_tool,
+                ),
+                # 文本对比
+                FeatureCard(
+                    icon=ft.Icons.COMPARE_ARROWS,
+                    title="文本对比",
+                    description="对比文本差异，高亮显示新增和删除",
+                    gradient_colors=("#FF512F", "#DD2476"),
+                    on_click=self._open_text_diff,
+                ),
+                # SQL 格式化
+                FeatureCard(
+                    icon=ft.Icons.CODE,
+                    title="SQL 格式化",
+                    description="格式化/压缩 SQL，支持多种方言",
+                    gradient_colors=("#1FA2FF", "#12D8FA"),
+                    on_click=self._open_sql_formatter,
+                ),
+                # Cron 表达式工具
+                FeatureCard(
+                    icon=ft.Icons.SCHEDULE,
+                    title="Cron 表达式",
+                    description="解析 Cron 表达式，预测执行时间",
+                    gradient_colors=("#A770EF", "#CF8BF3"),
+                    on_click=self._open_cron_tool,
                 ),
             ],
             wrap=True,
@@ -491,6 +536,91 @@ class DevToolsView(ft.Container):
             self.current_sub_view_type = "port_scanner"
             self.parent_container.content = self.port_scanner_view
         self._safe_page_update()
+
+    def _open_format_convert(self, e: ft.ControlEvent) -> None:
+        """打开数据格式转换工具。"""
+        self._hide_search_button()
+        
+        if self.format_convert_view is None:
+            from views.dev_tools.format_convert_view import FormatConvertView
+            self.format_convert_view = FormatConvertView(
+                self._saved_page,
+                on_back=self._back_to_main
+            )
+        
+        if self.parent_container:
+            self.current_sub_view = self.format_convert_view
+            self.current_sub_view_type = "format_convert"
+            self.parent_container.content = self.format_convert_view
+        self._safe_page_update()
+
+    def _open_crypto_tool(self, e: ft.ControlEvent) -> None:
+        """打开加解密工具。"""
+        self._hide_search_button()
+        
+        if self.crypto_tool_view is None:
+            from views.dev_tools.crypto_tool_view import CryptoToolView
+            self.crypto_tool_view = CryptoToolView(
+                self._saved_page,
+                on_back=self._back_to_main
+            )
+        
+        if self.parent_container:
+            self.current_sub_view = self.crypto_tool_view
+            self.current_sub_view_type = "crypto_tool"
+            self.parent_container.content = self.crypto_tool_view
+        self._safe_page_update()
+    
+    def _open_text_diff(self, e: ft.ControlEvent) -> None:
+        """打开文本对比工具。"""
+        self._hide_search_button()
+        
+        if self.text_diff_view is None:
+            from views.dev_tools.text_diff_view import TextDiffView
+            self.text_diff_view = TextDiffView(
+                self._saved_page,
+                on_back=self._back_to_main
+            )
+        
+        if self.parent_container:
+            self.current_sub_view = self.text_diff_view
+            self.current_sub_view_type = "text_diff"
+            self.parent_container.content = self.text_diff_view
+        self._safe_page_update()
+    
+    def _open_sql_formatter(self, e: ft.ControlEvent) -> None:
+        """打开SQL格式化工具。"""
+        self._hide_search_button()
+        
+        if self.sql_formatter_view is None:
+            from views.dev_tools.sql_formatter_view import SqlFormatterView
+            self.sql_formatter_view = SqlFormatterView(
+                self._saved_page,
+                on_back=self._back_to_main
+            )
+        
+        if self.parent_container:
+            self.current_sub_view = self.sql_formatter_view
+            self.current_sub_view_type = "sql_formatter"
+            self.parent_container.content = self.sql_formatter_view
+        self._safe_page_update()
+    
+    def _open_cron_tool(self, e: ft.ControlEvent) -> None:
+        """打开Cron表达式工具。"""
+        self._hide_search_button()
+        
+        if self.cron_tool_view is None:
+            from views.dev_tools.cron_tool_view import CronToolView
+            self.cron_tool_view = CronToolView(
+                self._saved_page,
+                on_back=self._back_to_main
+            )
+        
+        if self.parent_container:
+            self.current_sub_view = self.cron_tool_view
+            self.current_sub_view_type = "cron_tool"
+            self.parent_container.content = self.cron_tool_view
+        self._safe_page_update()
     
     def _back_to_main(self) -> None:
         """返回主界面。"""
@@ -510,6 +640,11 @@ class DevToolsView(ft.Container):
                 "markdown_viewer": "markdown_viewer_view",
                 "dns_lookup": "dns_lookup_view",
                 "port_scanner": "port_scanner_view",
+                "format_convert": "format_convert_view",
+                "crypto_tool": "crypto_tool_view",
+                "text_diff": "text_diff_view",
+                "sql_formatter": "sql_formatter_view",
+                "cron_tool": "cron_tool_view",
             }
             view_attr = view_map.get(self.current_sub_view_type)
             if view_attr:
@@ -569,6 +704,11 @@ class DevToolsView(ft.Container):
             "markdown_viewer": self._open_markdown_viewer,
             "dns_lookup": self._open_dns_lookup,
             "port_scanner": self._open_port_scanner,
+            "format_convert": self._open_format_convert,
+            "crypto_tool": self._open_crypto_tool,
+            "text_diff": self._open_text_diff,
+            "sql_formatter": self._open_sql_formatter,
+            "cron_tool": self._open_cron_tool,
         }
         
         # 查找并调用对应的方法

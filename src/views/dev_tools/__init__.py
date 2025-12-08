@@ -9,6 +9,11 @@ from views.dev_tools.base64_to_image_view import Base64ToImageView
 from views.dev_tools.encoding_convert_view import EncodingConvertView
 from views.dev_tools.json_viewer_view import JsonViewerView
 from views.dev_tools.dns_lookup_view import DnsLookupView
+from views.dev_tools.format_convert_view import FormatConvertView
+from views.dev_tools.crypto_tool_view import CryptoToolView
+from views.dev_tools.text_diff_view import TextDiffView
+from views.dev_tools.sql_formatter_view import SqlFormatterView
+from views.dev_tools.cron_tool_view import CronToolView
 
 __all__ = [
     'DevToolsView',
@@ -16,5 +21,10 @@ __all__ = [
     'EncodingConvertView',
     'JsonViewerView',
     'DnsLookupView',
+    'FormatConvertView',
+    'CryptoToolView',
+    'TextDiffView',
+    'SqlFormatterView',
+    'CronToolView',
 ]
 

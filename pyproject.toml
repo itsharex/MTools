@@ -26,6 +26,11 @@ dependencies = [
   "shapely==2.1.2",
   "httpx[socks]==0.28.1",
   "dnspython==2.8.0",
+  "PyYAML==6.0.2",
+  "xmltodict==0.14.2",
+  "pycryptodome==3.21.0",
+  "sqlparse==0.5.3",
+  "croniter==5.0.1",
 ]
 
 [tool.flet]

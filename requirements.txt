@@ -33,3 +33,8 @@ pyclipper==1.4.0  # OCR 文本框扩展
 shapely==2.1.2  # OCR 几何运算
 httpx[socks]==0.28.1
 dnspython==2.8.0  # DNS查询工具
+PyYAML==6.0.2  # YAML 解析
+xmltodict==0.14.2  # XML 解析
+pycryptodome==3.21.0  # 加密算法库
+sqlparse==0.5.3  # SQL格式化
+croniter==5.0.1  # Cron表达式解析

@@ -468,6 +468,56 @@ def register_all_tools():
         gradient_colors=("#FC466B", "#3F5EFB"),
     )
 
+    register_tool_manual(
+        name="数据格式转换",
+        description="JSON、YAML、XML、TOML 互转",
+        category="开发工具",
+        keywords=["JSON", "YAML", "XML", "TOML", "格式", "转换", "convert", "format", "xml2json", "json2yaml"],
+        icon="SWAP_HORIZ",
+        tool_id="dev.format_convert",
+        gradient_colors=("#11998E", "#38EF7D"),
+    )
+
+    register_tool_manual(
+        name="加解密工具",
+        description="AES, DES, RC4, MD5, SHA 等",
+        category="开发工具",
+        keywords=["加密", "解密", "encrypt", "decrypt", "hash", "md5", "sha", "aes", "des", "rc4", "密码", "crypto"],
+        icon="SECURITY",
+        tool_id="dev.crypto_tool",
+        gradient_colors=("#2C3E50", "#4CA1AF"),
+    )
+
+    register_tool_manual(
+        name="文本对比",
+        description="对比文本差异，高亮显示新增和删除",
+        category="开发工具",
+        keywords=["文本", "对比", "diff", "比较", "compare", "差异", "difference", "merge", "合并", "代码", "配置"],
+        icon="COMPARE_ARROWS",
+        tool_id="dev.text_diff",
+        gradient_colors=("#FF512F", "#DD2476"),
+    )
+
+    register_tool_manual(
+        name="SQL 格式化",
+        description="格式化/压缩 SQL，支持多种方言",
+        category="开发工具",
+        keywords=["SQL", "格式化", "format", "prettify", "美化", "压缩", "MySQL", "PostgreSQL", "数据库", "查询", "语句"],
+        icon="CODE",
+        tool_id="dev.sql_formatter",
+        gradient_colors=("#1FA2FF", "#12D8FA"),
+    )
+
+    register_tool_manual(
+        name="Cron 表达式",
+        description="解析 Cron 表达式，预测执行时间",
+        category="开发工具",
+        keywords=["Cron", "定时", "任务", "表达式", "schedule", "crontab", "时间", "执行", "Linux", "Unix"],
+        icon="SCHEDULE",
+        tool_id="dev.cron_tool",
+        gradient_colors=("#A770EF", "#CF8BF3"),
+    )
+
     # ==================== 其他工具 ====================
     register_tool_manual(
         name="Windows更新管理",

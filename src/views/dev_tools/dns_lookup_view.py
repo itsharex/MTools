@@ -79,6 +79,13 @@ class DnsLookupView(ft.Container):
         self.output_text = ft.Ref[ft.TextField]()
         self.progress_bar = ft.Ref[ft.ProgressBar]()
         self.status_text = ft.Ref[ft.Text]()
+        self.left_panel_ref = ft.Ref[ft.Container]()
+        self.right_panel_ref = ft.Ref[ft.Container]()
+        self.divider_ref = ft.Ref[ft.Container]()
+        self.ratio = 0.5
+        self.left_flex = 500
+        self.right_flex = 500
+        self.is_dragging = False
         
         self._build_ui()
     
@@ -205,6 +212,7 @@ class DnsLookupView(ft.Container):
         
         # 输入区域
         input_section = ft.Container(
+            padding=ft.padding.only(right=PADDING_SMALL),
             content=ft.Column(
                 controls=[
                     ft.Row(
@@ -239,6 +247,7 @@ class DnsLookupView(ft.Container):
         
         # 输出区域
         output_section = ft.Container(
+            padding=ft.padding.only(left=PADDING_SMALL),
             content=ft.Column(
                 controls=[
                     ft.Row(
@@ -279,15 +288,44 @@ class DnsLookupView(ft.Container):
             expand=1,
         )
         
-        # 内容区域
+        # 内容区域（可拖动调整宽度）
+        left_panel = ft.Container(ref=self.left_panel_ref, content=input_section, expand=self.left_flex)
+        divider = ft.GestureDetector(
+            content=ft.Container(
+                ref=self.divider_ref,
+                content=ft.Column(
+                    controls=[
+                        ft.Icon(ft.Icons.CIRCLE, size=4, color=ft.Colors.GREY_500),
+                        ft.Icon(ft.Icons.CIRCLE, size=4, color=ft.Colors.GREY_500),
+                        ft.Icon(ft.Icons.CIRCLE, size=4, color=ft.Colors.GREY_500),
+                    ],
+                    horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                    alignment=ft.MainAxisAlignment.CENTER,
+                    spacing=3,
+                ),
+                width=12,
+                bgcolor=ft.Colors.with_opacity(0.1, ft.Colors.ON_SURFACE),
+                border_radius=6,
+                alignment=ft.alignment.center,
+                margin=ft.margin.only(top=40, bottom=6),
+            ),
+            mouse_cursor=ft.MouseCursor.RESIZE_LEFT_RIGHT,
+            on_pan_start=self._on_divider_pan_start,
+            on_pan_update=self._on_divider_pan_update,
+            on_pan_end=self._on_divider_pan_end,
+            drag_interval=10,
+        )
+        right_panel = ft.Container(ref=self.right_panel_ref, content=output_section, expand=self.right_flex)
+        
         content_area = ft.Row(
             controls=[
-                input_section,
-                ft.VerticalDivider(width=1, color=ft.Colors.OUTLINE_VARIANT),
-                output_section,
+                left_panel,
+                divider,
+                right_panel,
             ],
             expand=True,
-            spacing=PADDING_MEDIUM,
+            spacing=0,
+            vertical_alignment=ft.CrossAxisAlignment.START,
         )
         
         # 主布局
@@ -332,6 +370,42 @@ class DnsLookupView(ft.Container):
             return
         self.page.set_clipboard(text)
         self._show_snack("已复制到剪贴板")
+    
+    def _on_divider_pan_start(self, e: ft.DragStartEvent):
+        """开始拖动分隔条。"""
+        self.is_dragging = True
+        if self.divider_ref.current:
+            self.divider_ref.current.bgcolor = ft.Colors.PRIMARY
+            self.divider_ref.current.update()
+    
+    def _on_divider_pan_update(self, e: ft.DragUpdateEvent):
+        """拖动分隔条时更新左右宽度。"""
+        if not self.is_dragging:
+            return
+        
+        container_width = self.page.width - PADDING_MEDIUM * 2 - 12
+        if container_width <= 0:
+            return
+        
+        delta_ratio = e.delta_x / container_width
+        self.ratio = max(0.2, min(0.8, self.ratio + delta_ratio))
+        
+        total = 1000
+        self.left_flex = int(self.ratio * total)
+        self.right_flex = total - self.left_flex
+        
+        if self.left_panel_ref.current and self.right_panel_ref.current:
+            self.left_panel_ref.current.expand = self.left_flex
+            self.right_panel_ref.current.expand = self.right_flex
+            self.left_panel_ref.current.update()
+            self.right_panel_ref.current.update()
+    
+    def _on_divider_pan_end(self, e: ft.DragEndEvent):
+        """结束拖动分隔条。"""
+        self.is_dragging = False
+        if self.divider_ref.current:
+            self.divider_ref.current.bgcolor = ft.Colors.with_opacity(0.1, ft.Colors.ON_SURFACE)
+            self.divider_ref.current.update()
 
     def _get_resolver(self, dns_server_ip: str) -> dns.resolver.Resolver:
         """获取DNS解析器。"""

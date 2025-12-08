@@ -144,6 +144,7 @@ class MarkdownViewerView(ft.Container):
                     ),
                 ],
                 spacing=5,
+                expand=True,
             ),
             expand=self.left_flex,
         )
@@ -166,6 +167,7 @@ class MarkdownViewerView(ft.Container):
                 bgcolor=ft.Colors.with_opacity(0.1, ft.Colors.ON_SURFACE),
                 border_radius=6,
                 alignment=ft.alignment.center,
+                margin=ft.margin.only(top=40, bottom=6),
             ),
             mouse_cursor=ft.MouseCursor.RESIZE_LEFT_RIGHT,
             on_pan_start=self._on_divider_pan_start,
@@ -194,24 +196,32 @@ class MarkdownViewerView(ft.Container):
                         ref=self.preview_container,
                         content=ft.Column(
                             controls=[
-                                ft.Markdown(
-                                    ref=self.markdown_preview,
-                                    value="# Hello Markdown\n\n在左侧输入 Markdown 内容，这里会实时显示预览。",
-                                    selectable=True,
-                                    extension_set=ft.MarkdownExtensionSet.GITHUB_WEB,
-                                    on_tap_link=lambda e: self.page.launch_url(e.data),
+                                ft.Container(
+                                    content=ft.Markdown(
+                                        ref=self.markdown_preview,
+                                        value="# Hello Markdown\n\n在左侧输入 Markdown 内容，这里会实时显示预览。",
+                                        selectable=True,
+                                        extension_set=ft.MarkdownExtensionSet.GITHUB_WEB,
+                                        on_tap_link=lambda e: self.page.launch_url(e.data),
+                                        expand=True,
+                                    ),
+                                    expand=True,
                                 ),
                             ],
                             scroll=ft.ScrollMode.AUTO,
+                            expand=True,
+                            horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
                         ),
                         border=ft.border.all(1, ft.Colors.OUTLINE),
                         border_radius=8,
                         padding=PADDING_MEDIUM,
                         bgcolor=ft.Colors.with_opacity(0.05, ft.Colors.ON_SURFACE),
                         expand=True,
+                        clip_behavior=ft.ClipBehavior.HARD_EDGE,
                     ),
                 ],
                 spacing=5,
+                expand=True,
             ),
             expand=self.right_flex,
         )
@@ -313,7 +323,7 @@ class MarkdownViewerView(ft.Container):
     
     def _show_help(self, e):
         """显示使用说明。"""
-        help_text = """
+        help_text = r"""
 **Markdown 预览器使用说明**
 
 **功能：**
