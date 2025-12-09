@@ -62,7 +62,7 @@ jobs:
             upx: false  # UPX 不支持 macOS Mach-O 格式
             cuda_variant: none
           # macOS (Intel)
-          - os: macos-13
+          - os: macos-15
             platform: Darwin
             arch: amd64
             artifact_ext: .tar.gz
