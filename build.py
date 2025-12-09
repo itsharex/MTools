@@ -844,7 +844,7 @@ def get_nuitka_cmd(mode="release", enable_upx=False, upx_path=None, jobs=2):
     excluded_packages = [
         "tkinter", "unittest", "test", "pytest", 
         "setuptools", "distutils", "wheel", "pip", 
-        "IPython", "matplotlib", "pdb", "xml"
+        "IPython", "matplotlib", "pdb"
     ]
     for pkg in excluded_packages:
         cmd.append(f"--nofollow-import-to={pkg}")

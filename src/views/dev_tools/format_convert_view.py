@@ -1,13 +1,15 @@
 # -*- coding: utf-8 -*-
 """数据格式转换工具视图模块。
 
-提供 JSON、YAML、XML 之间的相互转换。
+提供 JSON、YAML、XML、TOML 之间的相互转换。
 """
 
 import json
+import tomllib  # Python 3.11+ 内置
 from typing import Callable, Optional
 
 import flet as ft
+import tomli_w
 import yaml
 import xmltodict
 
@@ -17,7 +19,7 @@ from constants import PADDING_MEDIUM, PADDING_SMALL
 class FormatConvertView(ft.Container):
     """数据格式转换工具视图类。"""
     
-    FORMATS = ["JSON", "YAML", "XML"]
+    FORMATS = ["JSON", "YAML", "XML", "TOML"]
     
     def __init__(
         self,
@@ -261,6 +263,8 @@ class FormatConvertView(ft.Container):
                 data = yaml.safe_load(input_val)
             elif source_fmt == "XML":
                 data = xmltodict.parse(input_val)
+            elif source_fmt == "TOML":
+                data = tomllib.loads(input_val)
             
             if data is None:
                 raise ValueError("解析结果为空")
@@ -278,6 +282,8 @@ class FormatConvertView(ft.Container):
                 elif isinstance(data, dict) and len(data.keys()) > 1:
                     data = {"root": data}
                 output_val = xmltodict.unparse(data, pretty=True)
+            elif target_fmt == "TOML":
+                output_val = tomli_w.dumps(data)
             
             self.output_text.current.value = output_val
             self.output_text.current.update()
@@ -295,6 +301,7 @@ class FormatConvertView(ft.Container):
             error_msg += "- JSON 需要正确的语法（引号、逗号、括号等）\n"
             error_msg += "- YAML 需要正确的缩进\n"
             error_msg += "- XML 需要正确的标签结构\n"
+            error_msg += "- TOML 需要正确的键值对格式\n"
             
             self.output_text.current.value = error_msg
             self.output_text.current.update()
@@ -389,6 +396,7 @@ class FormatConvertView(ft.Container):
 - **JSON**: JavaScript Object Notation
 - **YAML**: YAML Ain't Markup Language
 - **XML**: eXtensible Markup Language
+- **TOML**: Tom's Obvious Minimal Language
 
 **使用步骤：**
 1. 选择源格式和目标格式
@@ -434,8 +442,16 @@ skills:
 </root>
 ```
 
+**TOML 格式：**
+```toml
+name = "张三"
+age = 25
+skills = ["Python", "JavaScript"]
+```
+
 **注意事项：**
 - JSON 转 XML 时，如果有多个根元素会自动包裹 `<root>` 标签
+- TOML 不支持顶层数组，转换时请确保数据结构符合 TOML 规范
 - 转换时会自动美化格式（缩进、换行）
 - 确保输入数据语法正确
         """
