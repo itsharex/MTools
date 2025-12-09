@@ -246,6 +246,14 @@ class OCRView(ft.Container):
             on_change=self._on_auto_load_change,
         )
         
+        # GPU加速设置
+        gpu_enabled = self.config_service.get_config_value("gpu_acceleration", True)
+        self.gpu_checkbox = ft.Checkbox(
+            label="启用 GPU 加速",
+            value=gpu_enabled,
+            on_change=self._on_gpu_change,
+        )
+        
         # 模型下载/加载进度显示（在模型区域内）
         self.model_progress_bar = ft.ProgressBar(visible=False)
         self.model_progress_text = ft.Text("", size=12, color=ft.Colors.ON_SURFACE_VARIANT, visible=False)
@@ -258,7 +266,13 @@ class OCRView(ft.Container):
                     self.model_info_text,
                     ft.Container(height=PADDING_SMALL),
                     model_status_row,
-                    self.auto_load_checkbox,
+                    ft.Row(
+                        controls=[
+                            self.auto_load_checkbox,
+                            self.gpu_checkbox,
+                        ],
+                        spacing=PADDING_MEDIUM,
+                    ),
                     # 模型操作进度条
                     self.model_progress_bar,
                     self.model_progress_text,
@@ -342,29 +356,6 @@ class OCRView(ft.Container):
             disabled=True,
         )
         
-        # GPU加速设置
-        gpu_enabled = self.config_service.get_config_value("gpu_acceleration", True)
-        self.gpu_checkbox = ft.Checkbox(
-            label="启用 GPU 加速 (ONNX)",
-            value=gpu_enabled,
-            on_change=self._on_gpu_change,
-        )
-        
-        gpu_hint = ft.Container(
-            content=ft.Row(
-                controls=[
-                    ft.Icon(ft.Icons.INFO_OUTLINE, size=14, color=ft.Colors.BLUE),
-                    ft.Text(
-                        "加载模型后将显示实际使用的加速类型（DirectML/CUDA/CPU等）",
-                        size=11,
-                        color=ft.Colors.ON_SURFACE_VARIANT,
-                    ),
-                ],
-                spacing=4,
-            ),
-            padding=ft.padding.only(left=28),
-        )
-        
         output_section = ft.Container(
             content=ft.Column(
                 controls=[
@@ -380,14 +371,6 @@ class OCRView(ft.Container):
                             self.browse_output_button,
                         ],
                         spacing=PADDING_SMALL,
-                    ),
-                    ft.Container(height=PADDING_SMALL),
-                    ft.Column(
-                        controls=[
-                            self.gpu_checkbox,
-                            gpu_hint,
-                        ],
-                        spacing=4,
                     ),
                 ],
                 spacing=PADDING_SMALL,

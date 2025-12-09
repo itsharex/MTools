@@ -432,10 +432,15 @@ class CryptoToolView(ft.Container):
             modal=True,
             title=ft.Text("使用说明"),
             content=ft.Container(
-                content=ft.Markdown(
-                    help_text,
-                    selectable=True,
-                    extension_set=ft.MarkdownExtensionSet.GITHUB_WEB,
+                content=ft.Column(
+                    controls=[
+                        ft.Markdown(
+                            help_text,
+                            selectable=True,
+                            extension_set=ft.MarkdownExtensionSet.GITHUB_WEB,
+                        ),
+                    ],
+                    scroll=ft.ScrollMode.AUTO,
                 ),
                 width=500,
                 height=450,

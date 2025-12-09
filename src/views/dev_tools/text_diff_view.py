@@ -1,11 +1,12 @@
 # -*- coding: utf-8 -*-
 """文本对比工具视图模块。
 
-提供文本差异对比功能，高亮显示差异。
+提供文本对比功能。
 """
 
 import difflib
-from typing import Callable, Optional, List
+from pathlib import Path
+from typing import Callable, List, Optional
 
 import flet as ft
 
@@ -13,55 +14,50 @@ from constants import PADDING_MEDIUM, PADDING_SMALL
 
 
 class TextDiffView(ft.Container):
-    """文本对比工具视图类。"""
-    
+    """文本对比工具视图类。
+
+    使用 difflib.ndiff 提供详细的字符级差异对比。
+    """
+
+    # 颜色方案
+    COLOR_ADDED = ft.Colors.with_opacity(0.2, ft.Colors.GREEN)
+    COLOR_REMOVED = ft.Colors.with_opacity(0.2, ft.Colors.RED)
+    COLOR_CHANGED = ft.Colors.with_opacity(0.2, ft.Colors.ORANGE)
+    COLOR_EQUAL = ft.Colors.TRANSPARENT
+
     def __init__(
         self,
         page: ft.Page,
-        on_back: Optional[Callable] = None
+        on_back: Optional[Callable] = None,
     ):
         super().__init__()
         self.page = page
         self.on_back = on_back
         self.expand = True
-        self.padding = ft.padding.only(
-            left=PADDING_MEDIUM,
-            right=PADDING_MEDIUM,
-            top=PADDING_MEDIUM,
-            bottom=PADDING_MEDIUM
-        )
-        
+        self.padding = PADDING_MEDIUM
+
         # 控件引用
-        self.text1 = ft.Ref[ft.TextField]()
-        self.text2 = ft.Ref[ft.TextField]()
-        self.ignore_whitespace = ft.Ref[ft.Checkbox]()
+        self.left_input = ft.Ref[ft.TextField]()
+        self.right_input = ft.Ref[ft.TextField]()
+        self.diff_container = ft.Ref[ft.Column]()
+        self.left_stats = ft.Ref[ft.Text]()
+        self.right_stats = ft.Ref[ft.Text]()
+        self.summary_text = ft.Ref[ft.Text]()
+        
+        # 选项
         self.ignore_case = ft.Ref[ft.Checkbox]()
-        self.diff_list_left = ft.Ref[ft.ListView]()
-        self.diff_list_right = ft.Ref[ft.ListView]()
-        self.stats_text = ft.Ref[ft.Text]()
+        self.ignore_whitespace = ft.Ref[ft.Checkbox]()
+        self.show_only_diff = ft.Ref[ft.Checkbox]()
         
-        # 输入/结果视图切换
-        self.input_container = ft.Ref[ft.Container]()
-        self.result_container = ft.Ref[ft.Container]()
-        
-        # 布局引用（拖动调整）
-        self.left_panel_ref = ft.Ref[ft.Container]()
-        self.right_panel_ref = ft.Ref[ft.Container]()
-        self.divider_ref = ft.Ref[ft.Container]()
-        self.ratio = 0.5
-        self.left_flex = 500
-        self.right_flex = 500
-        self.is_dragging = False
-        
-        # 滚动同步
-        self._syncing_scroll = False
-        self._left_max_extent = 0.0
-        self._right_max_extent = 0.0
+        # 对比结果数据
+        self.diff_results = []
         
         self._build_ui()
-    
+
     def _build_ui(self):
-        # 标题栏
+        """构建用户界面。"""
+        
+        # 顶部工具栏
         header = ft.Row(
             controls=[
                 ft.IconButton(
@@ -69,782 +65,638 @@ class TextDiffView(ft.Container):
                     tooltip="返回",
                     on_click=lambda _: self._on_back_click(),
                 ),
-                ft.Text("文本对比工具", size=28, weight=ft.FontWeight.BOLD),
+                ft.Text("文本对比", size=24, weight=ft.FontWeight.BOLD),
                 ft.Container(expand=True),
                 ft.IconButton(
-                    icon=ft.Icons.HELP_OUTLINE,
-                    tooltip="使用说明",
-                    on_click=self._show_help,
+                    icon=ft.Icons.INFO_OUTLINE,
+                    tooltip="关于",
+                    on_click=self._show_about,
                 ),
             ],
-            spacing=PADDING_MEDIUM,
         )
-        
-        # 操作栏
-        operation_bar = ft.Row(
+
+        # 操作按钮栏
+        action_bar = ft.Row(
             controls=[
-                ft.Checkbox(
-                    ref=self.ignore_whitespace,
-                    label="忽略空格",
-                    value=False,
+                ft.ElevatedButton(
+                    "开始对比",
+                    icon=ft.Icons.COMPARE_ARROWS,
+                    on_click=self._compare,
                 ),
+                ft.OutlinedButton(
+                    "交换左右",
+                    icon=ft.Icons.SWAP_HORIZ,
+                    on_click=self._swap_texts,
+                ),
+                ft.OutlinedButton(
+                    "清空全部",
+                    icon=ft.Icons.CLEAR_ALL,
+                    on_click=self._clear_all,
+                ),
+                ft.VerticalDivider(width=1),
+                ft.OutlinedButton(
+                    "导出HTML",
+                    icon=ft.Icons.FILE_DOWNLOAD,
+                    on_click=self._export_html,
+                ),
+                ft.Container(expand=True),
                 ft.Checkbox(
                     ref=self.ignore_case,
                     label="忽略大小写",
                     value=False,
                 ),
-                ft.Text(
-                    ref=self.stats_text,
-                    value="",
-                    size=13,
-                    color=ft.Colors.OUTLINE,
+                ft.Checkbox(
+                    ref=self.ignore_whitespace,
+                    label="忽略空白符",
+                    value=False,
                 ),
-                ft.Container(expand=True),
-                ft.ElevatedButton(
-                    text="开始对比",
-                    icon=ft.Icons.COMPARE_ARROWS,
-                    on_click=self._compare,
-                ),
-                ft.OutlinedButton(
-                    text="返回编辑",
-                    icon=ft.Icons.EDIT,
-                    on_click=self._back_to_input,
-                    visible=False,
-                ),
-                ft.OutlinedButton(
-                    text="清空",
-                    icon=ft.Icons.CLEAR,
-                    on_click=self._clear,
+                ft.Checkbox(
+                    ref=self.show_only_diff,
+                    label="仅显示差异",
+                    value=False,
+                    on_change=lambda _: self._refresh_diff_display(),
                 ),
             ],
             spacing=PADDING_SMALL,
         )
-        
+
         # 输入区域
-        input_section = self._build_input_section()
-        
-        # 结果区域（并排对比视图）
-        result_section = self._build_result_section()
-        
-        # 输入容器（初始显示）
-        input_container = ft.Container(
-            ref=self.input_container,
-            content=input_section,
-            visible=True,
-            expand=True,
-        )
-        
-        # 结果容器（初始隐藏）
-        result_container = ft.Container(
-            ref=self.result_container,
-            content=result_section,
-            visible=False,
-            expand=True,
-        )
-        
-        # 主内容区域（使用 Stack 叠加两个容器）
-        content_stack = ft.Stack(
+        input_area = ft.Row(
             controls=[
-                input_container,
-                result_container,
+                self._build_input_panel("左侧文本", "left"),
+                ft.VerticalDivider(width=1),
+                self._build_input_panel("右侧文本", "right"),
             ],
+            spacing=0,
             expand=True,
         )
-        
+
+        # 对比结果区域
+        result_header = ft.Row(
+            controls=[
+                ft.Icon(ft.Icons.DIFFERENCE, size=20),
+                ft.Text("对比结果", size=16, weight=ft.FontWeight.BOLD),
+                ft.Container(expand=True),
+                ft.Text(
+                    "等待对比...",
+                    ref=self.summary_text,
+                    size=12,
+                    color=ft.Colors.ON_SURFACE_VARIANT,
+                ),
+            ],
+            spacing=PADDING_SMALL,
+        )
+
+        result_area = ft.Container(
+            content=ft.Column(
+                ref=self.diff_container,
+                controls=[
+                    ft.Container(
+                        content=ft.Column(
+                            controls=[
+                                ft.Icon(ft.Icons.COMPARE_ARROWS, size=64, color=ft.Colors.ON_SURFACE_VARIANT),
+                                ft.Text(
+                                    "在上方输入文本后点击「开始对比」",
+                                    size=14,
+                                    color=ft.Colors.ON_SURFACE_VARIANT,
+                                ),
+                            ],
+                            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                            spacing=PADDING_SMALL,
+                        ),
+                        alignment=ft.alignment.center,
+                        expand=True,
+                    )
+                ],
+                scroll=ft.ScrollMode.AUTO,
+                expand=True,
+            ),
+            border=ft.border.all(1, ft.Colors.OUTLINE),
+            border_radius=8,
+            padding=PADDING_SMALL,
+            expand=True,
+        )
+
+        # 主布局 - 让对比结果占更大空间
         self.content = ft.Column(
             controls=[
                 header,
-                ft.Divider(),
+                ft.Divider(height=1),
+                action_bar,
+                ft.Container(
+                    content=input_area,
+                    height=200,  # 固定输入区高度，给结果区更多空间
+                ),
                 ft.Container(height=PADDING_SMALL),
-                operation_bar,
-                ft.Container(height=PADDING_SMALL),
-                content_stack,
+                result_header,
+                ft.Container(
+                    content=result_area,
+                    expand=True,  # 对比结果占据剩余所有空间
+                ),
             ],
-            spacing=0,
+            spacing=PADDING_SMALL,
             expand=True,
         )
-    
-    def _build_input_section(self) -> ft.Row:
-        """构建输入区域。"""
-        # 左侧文本输入
-        text1_section = ft.Column(
-            controls=[
-                ft.Row(
-                    controls=[
-                        ft.Text("文本 1", weight=ft.FontWeight.BOLD, size=16),
-                        ft.Container(expand=True),
-                        ft.IconButton(
-                            icon=ft.Icons.CONTENT_PASTE,
-                            tooltip="粘贴",
-                            icon_size=16,
-                            on_click=lambda _: self._paste_text(self.text1),
-                        ),
-                    ],
-                ),
-                ft.Container(
-                    content=ft.TextField(
-                        ref=self.text1,
-                        multiline=True,
-                        min_lines=25,
-                        hint_text="输入第一个文本...",
-                        text_size=13,
-                        border=ft.InputBorder.NONE,
-                        text_style=ft.TextStyle(font_family="Consolas,Monospace"),
+
+    def _build_input_panel(self, title: str, side: str) -> ft.Container:
+        """构建输入面板。
+        
+        Args:
+            title: 面板标题
+            side: 'left' 或 'right'
+        """
+        ref = self.left_input if side == "left" else self.right_input
+        stats_ref = self.left_stats if side == "left" else self.right_stats
+        
+        return ft.Container(
+            content=ft.Column(
+                controls=[
+                    # 标题栏
+                    ft.Row(
+                        controls=[
+                            ft.Text(title, weight=ft.FontWeight.BOLD, size=14),
+                            ft.Container(expand=True),
+                            ft.Text("0 字符, 0 行", ref=stats_ref, size=11, color=ft.Colors.ON_SURFACE_VARIANT),
+                            ft.IconButton(
+                                icon=ft.Icons.FOLDER_OPEN,
+                                icon_size=18,
+                                tooltip="从文件导入",
+                                on_click=lambda _, s=side: self._import_file(s),
+                            ),
+                            ft.IconButton(
+                                icon=ft.Icons.CONTENT_PASTE,
+                                icon_size=18,
+                                tooltip="粘贴",
+                                on_click=lambda _, s=side: self._paste_text(s),
+                            ),
+                            ft.IconButton(
+                                icon=ft.Icons.CLEAR,
+                                icon_size=18,
+                                tooltip="清空",
+                                on_click=lambda _, s=side: self._clear_text(s),
+                            ),
+                        ],
+                        spacing=4,
                     ),
-                    border=ft.border.all(1, ft.Colors.OUTLINE),
-                    border_radius=8,
-                    padding=PADDING_SMALL,
-                    expand=True,
-                ),
-            ],
-            spacing=5,
-            expand=True,
-        )
-        
-        # 右侧文本输入
-        text2_section = ft.Column(
-            controls=[
-                ft.Row(
-                    controls=[
-                        ft.Text("文本 2", weight=ft.FontWeight.BOLD, size=16),
-                        ft.Container(expand=True),
-                        ft.IconButton(
-                            icon=ft.Icons.CONTENT_PASTE,
-                            tooltip="粘贴",
-                            icon_size=16,
-                            on_click=lambda _: self._paste_text(self.text2),
-                        ),
-                    ],
-                ),
-                ft.Container(
-                    content=ft.TextField(
-                        ref=self.text2,
+                    # 输入框
+                    ft.TextField(
+                        ref=ref,
                         multiline=True,
-                        min_lines=25,
-                        hint_text="输入第二个文本...",
-                        text_size=13,
-                        border=ft.InputBorder.NONE,
-                        text_style=ft.TextStyle(font_family="Consolas,Monospace"),
+                        min_lines=1,
+                        hint_text=f"在此输入{title}内容...",
+                        border=ft.InputBorder.OUTLINE,
+                        text_style=ft.TextStyle(
+                            font_family="Consolas,Monaco,Courier New,monospace",
+                            size=13,
+                        ),
+                        expand=True,
+                        on_change=lambda _, s=side: self._update_stats(s),
                     ),
-                    border=ft.border.all(1, ft.Colors.OUTLINE),
-                    border_radius=8,
-                    padding=PADDING_SMALL,
-                    expand=True,
-                ),
-            ],
-            spacing=5,
-            expand=True,
-        )
-        
-        # 使用共享的分隔条引用，这样输入和结果界面共用同一比例
-        left_panel_input = ft.Container(
-            content=text1_section,
-            expand=self.left_flex,
-        )
-        
-        # 分隔条（输入界面）
-        divider_input = ft.GestureDetector(
-            content=ft.Container(
-                content=ft.Column(
-                    controls=[
-                        ft.Icon(ft.Icons.CIRCLE, size=4, color=ft.Colors.GREY_500),
-                        ft.Icon(ft.Icons.CIRCLE, size=4, color=ft.Colors.GREY_500),
-                        ft.Icon(ft.Icons.CIRCLE, size=4, color=ft.Colors.GREY_500),
-                    ],
-                    horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                    alignment=ft.MainAxisAlignment.CENTER,
-                    spacing=3,
-                ),
-                width=12,
-                bgcolor=ft.Colors.with_opacity(0.1, ft.Colors.ON_SURFACE),
-                border_radius=6,
-                alignment=ft.alignment.center,
-                margin=ft.margin.only(top=40, bottom=6),
+                ],
+                spacing=PADDING_SMALL,
+                expand=True,
             ),
-            mouse_cursor=ft.MouseCursor.RESIZE_LEFT_RIGHT,
-            on_pan_start=self._on_divider_pan_start_input,
-            on_pan_update=self._on_divider_pan_update_input,
-            on_pan_end=self._on_divider_pan_end_input,
-            drag_interval=10,
-        )
-        
-        right_panel_input = ft.Container(
-            content=text2_section,
-            expand=self.right_flex,
-        )
-        
-        # 保存输入面板的引用（用于拖动调整）
-        self.left_panel_input_ref = left_panel_input
-        self.right_panel_input_ref = right_panel_input
-        self.divider_input_ref = divider_input.content
-        
-        return ft.Row(
-            controls=[
-                left_panel_input,
-                divider_input,
-                right_panel_input,
-            ],
-            spacing=0,
             expand=True,
         )
-    
-    def _build_result_section(self) -> ft.Row:
-        """构建结果区域（并排对比视图）。"""
-        # 左侧对比列表
-        left_list = ft.ListView(
-            ref=self.diff_list_left,
-            spacing=0,
-            padding=ft.padding.all(4),
-            expand=True,
-            auto_scroll=False,
-            on_scroll=self._sync_scroll_from_left,
-        )
-        
-        # 右侧对比列表
-        right_list = ft.ListView(
-            ref=self.diff_list_right,
-            spacing=0,
-            padding=ft.padding.all(4),
-            expand=True,
-            auto_scroll=False,
-            on_scroll=self._sync_scroll_from_right,
-        )
-        
-        left_section = ft.Column(
-            controls=[
-                ft.Text("文本 1", weight=ft.FontWeight.BOLD, size=16),
-                ft.Container(
-                    content=left_list,
-                    border=ft.border.all(1, ft.Colors.OUTLINE),
-                    border_radius=8,
-                    expand=True,
-                    clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
-                ),
-            ],
-            spacing=5,
-            expand=True,
-        )
-        
-        right_section = ft.Column(
-            controls=[
-                ft.Text("文本 2", weight=ft.FontWeight.BOLD, size=16),
-                ft.Container(
-                    content=right_list,
-                    border=ft.border.all(1, ft.Colors.OUTLINE),
-                    border_radius=8,
-                    expand=True,
-                    clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
-                ),
-            ],
-            spacing=5,
-            expand=True,
-        )
-        
-        # 左侧面板容器（可调整宽度）
-        left_panel = ft.Container(
-            ref=self.left_panel_ref,
-            content=left_section,
-            expand=self.left_flex,
-        )
-        
-        # 分隔条
-        divider = ft.GestureDetector(
-            content=ft.Container(
-                ref=self.divider_ref,
-                content=ft.Column(
-                    controls=[
-                        ft.Icon(ft.Icons.CIRCLE, size=4, color=ft.Colors.GREY_500),
-                        ft.Icon(ft.Icons.CIRCLE, size=4, color=ft.Colors.GREY_500),
-                        ft.Icon(ft.Icons.CIRCLE, size=4, color=ft.Colors.GREY_500),
-                    ],
-                    horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                    alignment=ft.MainAxisAlignment.CENTER,
-                    spacing=3,
-                ),
-                width=12,
-                bgcolor=ft.Colors.with_opacity(0.1, ft.Colors.ON_SURFACE),
-                border_radius=6,
-                alignment=ft.alignment.center,
-                margin=ft.margin.only(top=40, bottom=6),
-            ),
-            mouse_cursor=ft.MouseCursor.RESIZE_LEFT_RIGHT,
-            on_pan_start=self._on_divider_pan_start,
-            on_pan_update=self._on_divider_pan_update,
-            on_pan_end=self._on_divider_pan_end,
-            drag_interval=10,
-        )
-        
-        # 右侧面板容器（可调整宽度）
-        right_panel = ft.Container(
-            ref=self.right_panel_ref,
-            content=right_section,
-            expand=self.right_flex,
-        )
-        
-        return ft.Row(
-            controls=[
-                left_panel,
-                divider,
-                right_panel,
-            ],
-            spacing=0,
-            expand=True,
-        )
-    
-    def _on_divider_pan_start(self, e: ft.DragStartEvent):
-        """开始拖动分隔条。"""
-        self.is_dragging = True
-        if self.divider_ref.current:
-            self.divider_ref.current.bgcolor = ft.Colors.PRIMARY
-            self.divider_ref.current.update()
-    
-    def _on_divider_pan_update(self, e: ft.DragUpdateEvent):
-        """拖动分隔条时更新面板宽度。"""
-        if not self.is_dragging:
-            return
-        
-        # 获取容器宽度
-        container_width = self.page.width - PADDING_MEDIUM * 2 - 12
-        if container_width <= 0:
-            return
-        
-        # 计算拖动产生的比例变化
-        delta_ratio = e.delta_x / container_width
-        self.ratio += delta_ratio
-        
-        # 限制比例范围 (0.2 到 0.8)
-        self.ratio = max(0.2, min(0.8, self.ratio))
-        
-        # 更新 flex 值
-        new_total_flex = 1000
-        self.left_flex = int(self.ratio * new_total_flex)
-        self.right_flex = new_total_flex - self.left_flex
-        
-        # 同时更新输入界面和结果界面的面板宽度
-        if hasattr(self, 'left_panel_input_ref') and hasattr(self, 'right_panel_input_ref'):
-            self.left_panel_input_ref.expand = self.left_flex
-            self.right_panel_input_ref.expand = self.right_flex
-            self.left_panel_input_ref.update()
-            self.right_panel_input_ref.update()
-        
-        if self.left_panel_ref.current and self.right_panel_ref.current:
-            self.left_panel_ref.current.expand = self.left_flex
-            self.right_panel_ref.current.expand = self.right_flex
-            self.left_panel_ref.current.update()
-            self.right_panel_ref.current.update()
-    
-    def _on_divider_pan_end(self, e: ft.DragEndEvent):
-        """结束拖动分隔条。"""
-        self.is_dragging = False
-        if self.divider_ref.current:
-            self.divider_ref.current.bgcolor = ft.Colors.with_opacity(0.1, ft.Colors.ON_SURFACE)
-            self.divider_ref.current.update()
-    
-    def _on_divider_pan_start_input(self, e: ft.DragStartEvent):
-        """开始拖动输入界面分隔条。"""
-        self.is_dragging = True
-        if self.divider_input_ref:
-            self.divider_input_ref.bgcolor = ft.Colors.PRIMARY
-            self.divider_input_ref.update()
-    
-    def _on_divider_pan_update_input(self, e: ft.DragUpdateEvent):
-        """拖动输入界面分隔条时更新面板宽度。"""
-        if not self.is_dragging:
-            return
-        
-        # 获取容器宽度
-        container_width = self.page.width - PADDING_MEDIUM * 2 - 12
-        if container_width <= 0:
-            return
-        
-        # 计算拖动产生的比例变化
-        delta_ratio = e.delta_x / container_width
-        self.ratio += delta_ratio
-        
-        # 限制比例范围 (0.2 到 0.8)
-        self.ratio = max(0.2, min(0.8, self.ratio))
-        
-        # 更新 flex 值
-        new_total_flex = 1000
-        self.left_flex = int(self.ratio * new_total_flex)
-        self.right_flex = new_total_flex - self.left_flex
-        
-        # 同时更新输入界面和结果界面的面板宽度
-        if hasattr(self, 'left_panel_input_ref') and hasattr(self, 'right_panel_input_ref'):
-            self.left_panel_input_ref.expand = self.left_flex
-            self.right_panel_input_ref.expand = self.right_flex
-            self.left_panel_input_ref.update()
-            self.right_panel_input_ref.update()
-        
-        if self.left_panel_ref.current and self.right_panel_ref.current:
-            self.left_panel_ref.current.expand = self.left_flex
-            self.right_panel_ref.current.expand = self.right_flex
-            self.left_panel_ref.current.update()
-            self.right_panel_ref.current.update()
-    
-    def _on_divider_pan_end_input(self, e: ft.DragEndEvent):
-        """结束拖动输入界面分隔条。"""
-        self.is_dragging = False
-        if self.divider_input_ref:
-            self.divider_input_ref.bgcolor = ft.Colors.with_opacity(0.1, ft.Colors.ON_SURFACE)
-            self.divider_input_ref.update()
-    
-    def _sync_scroll_from_left(self, e: ft.OnScrollEvent):
-        """从左侧列表同步滚动到右侧。"""
-        if self._syncing_scroll:
-            return
-        if not hasattr(e, "pixels"):
-            return
-        
-        self._left_max_extent = getattr(e, "max_scroll_extent", 0) or 0
-        ratio = e.pixels / self._left_max_extent if self._left_max_extent > 0 else 0.0
-        ratio = max(0.0, min(1.0, ratio))
-        
-        self._syncing_scroll = True
-        try:
-            if self.diff_list_right.current:
-                target_extent = self._right_max_extent if self._right_max_extent > 0 else self._left_max_extent
-                target_offset = ratio * target_extent
-                self.diff_list_right.current.scroll_to(offset=target_offset, duration=0)
-        finally:
-            self._syncing_scroll = False
-    
-    def _sync_scroll_from_right(self, e: ft.OnScrollEvent):
-        """从右侧列表同步滚动到左侧。"""
-        if self._syncing_scroll:
-            return
-        if not hasattr(e, "pixels"):
-            return
-        
-        self._right_max_extent = getattr(e, "max_scroll_extent", 0) or 0
-        ratio = e.pixels / self._right_max_extent if self._right_max_extent > 0 else 0.0
-        ratio = max(0.0, min(1.0, ratio))
-        
-        self._syncing_scroll = True
-        try:
-            if self.diff_list_left.current:
-                target_extent = self._left_max_extent if self._left_max_extent > 0 else self._right_max_extent
-                target_offset = ratio * target_extent
-                self.diff_list_left.current.scroll_to(offset=target_offset, duration=0)
-        finally:
-            self._syncing_scroll = False
-    
-    async def _paste_text(self, text_ref: ft.Ref[ft.TextField]):
-        """粘贴文本。"""
-        try:
-            clipboard_text = await self.page.get_clipboard_async()
-            if clipboard_text:
-                text_ref.current.value = clipboard_text
-                text_ref.current.update()
-                self._show_snack("已粘贴")
-            else:
-                self._show_snack("剪贴板为空", error=True)
-        except Exception as e:
-            self._show_snack(f"粘贴失败: {str(e)}", error=True)
+
+    # ==================== 对比逻辑 ==================== #
     
     def _compare(self, e):
-        """执行对比。"""
-        text1 = self.text1.current.value or ""
-        text2 = self.text2.current.value or ""
+        """执行文本对比。"""
+        left_text = (self.left_input.current.value or "").strip()
+        right_text = (self.right_input.current.value or "").strip()
         
-        if not text1 and not text2:
-            self._show_snack("请输入要对比的文本", error=True)
+        if not left_text and not right_text:
+            self._show_snack("请先输入要对比的文本", error=True)
             return
         
-        try:
-            # 处理选项
-            if self.ignore_whitespace.current.value:
-                text1 = " ".join(text1.split())
-                text2 = " ".join(text2.split())
-            
-            if self.ignore_case.current.value:
-                text1 = text1.lower()
-                text2 = text2.lower()
-            
-            # 分行
-            lines1 = text1.splitlines()
-            lines2 = text2.splitlines()
-            
-            # 生成差异
-            diff_result = self._generate_diff(lines1, lines2)
-            
-            # 显示结果
-            self._display_diff(diff_result)
-            
-            # 切换到结果视图
-            self.input_container.current.visible = False
-            self.result_container.current.visible = True
-            
-            # 更新按钮
-            operation_bar = self.content.controls[3]  # operation_bar
-            operation_bar.controls[-2].visible = True  # "返回编辑"按钮
-            
-            self.update()
-            self._show_snack("对比完成")
-            
-        except Exception as e:
-            self._show_snack(f"对比失败: {str(e)}", error=True)
-    
-    def _generate_diff(self, lines1: List[str], lines2: List[str]) -> List[dict]:
-        """生成差异数据。
+        # 应用选项
+        if self.ignore_case.current and self.ignore_case.current.value:
+            left_text = left_text.lower()
+            right_text = right_text.lower()
         
-        返回格式：
-        [
-            {'type': 'equal', 'left': '内容', 'right': '内容'},
-            {'type': 'delete', 'left': '内容', 'right': None},
-            {'type': 'insert', 'left': None, 'right': '内容'},
-            {'type': 'replace', 'left': '旧内容', 'right': '新内容'},
-        ]
-        """
-        result = []
-        matcher = difflib.SequenceMatcher(None, lines1, lines2)
+        if self.ignore_whitespace.current and self.ignore_whitespace.current.value:
+            left_lines = [line.strip() for line in left_text.splitlines()]
+            right_lines = [line.strip() for line in right_text.splitlines()]
+        else:
+            left_lines = left_text.splitlines()
+            right_lines = right_text.splitlines()
         
-        for tag, i1, i2, j1, j2 in matcher.get_opcodes():
-            if tag == 'equal':
-                # 相同的行
-                for i, j in zip(range(i1, i2), range(j1, j2)):
-                    result.append({
-                        'type': 'equal',
-                        'left': lines1[i],
-                        'right': lines2[j],
-                    })
-            elif tag == 'delete':
-                # 只在左边（被删除）
-                for i in range(i1, i2):
-                    result.append({
-                        'type': 'delete',
-                        'left': lines1[i],
-                        'right': None,
-                    })
-            elif tag == 'insert':
-                # 只在右边（新增）
-                for j in range(j1, j2):
-                    result.append({
-                        'type': 'insert',
-                        'left': None,
-                        'right': lines2[j],
-                    })
-            elif tag == 'replace':
-                # 修改的行
-                left_count = i2 - i1
-                right_count = j2 - j1
-                max_count = max(left_count, right_count)
-                
-                for k in range(max_count):
-                    left_line = lines1[i1 + k] if k < left_count else None
-                    right_line = lines2[j1 + k] if k < right_count else None
-                    
-                    if left_line is not None and right_line is not None:
-                        result.append({
-                            'type': 'replace',
-                            'left': left_line,
-                            'right': right_line,
-                        })
-                    elif left_line is not None:
-                        result.append({
-                            'type': 'delete',
-                            'left': left_line,
-                            'right': None,
-                        })
-                    else:
-                        result.append({
-                            'type': 'insert',
-                            'left': None,
-                            'right': right_line,
-                        })
+        # 使用 ndiff 进行对比
+        diff = list(difflib.ndiff(left_lines, right_lines))
         
-        return result
-    
-    def _display_diff(self, diff_result: List[dict]):
-        """显示差异结果。"""
-        left_controls = []
-        right_controls = []
+        # 解析差异
+        self.diff_results = self._parse_diff(diff)
         
-        added_count = 0
-        removed_count = 0
-        modified_count = 0
-        
-        left_line_num = 1
-        right_line_num = 1
-        
-        for item in diff_result:
-            diff_type = item['type']
-            left_text = item.get('left', '')
-            right_text = item.get('right', '')
-            
-            # 颜色方案
-            if diff_type == 'equal':
-                left_bg = None
-                right_bg = None
-            elif diff_type == 'delete':
-                left_bg = ft.Colors.with_opacity(0.3, ft.Colors.RED)
-                right_bg = ft.Colors.with_opacity(0.1, ft.Colors.GREY)
-                removed_count += 1
-            elif diff_type == 'insert':
-                left_bg = ft.Colors.with_opacity(0.1, ft.Colors.GREY)
-                right_bg = ft.Colors.with_opacity(0.3, ft.Colors.GREEN)
-                added_count += 1
-            elif diff_type == 'replace':
-                left_bg = ft.Colors.with_opacity(0.3, ft.Colors.ORANGE)
-                right_bg = ft.Colors.with_opacity(0.3, ft.Colors.BLUE)
-                modified_count += 1
-            else:
-                left_bg = None
-                right_bg = None
-            
-            # 左侧行号和内容
-            if left_text is not None:
-                left_line_content = ft.Row(
-                    controls=[
-                        ft.Text(
-                            value=f"{left_line_num:4d}  ",
-                            size=11,
-                            color=ft.Colors.GREY_500,
-                            font_family="Consolas,Monospace",
-                        ),
-                        ft.Text(
-                            value=left_text,
-                            size=12,
-                            font_family="Consolas,Monospace",
-                            selectable=True,
-                            no_wrap=False,
-                        ),
-                    ],
-                    spacing=0,
-                    tight=True,
-                )
-                left_line_num += 1
-            else:
-                left_line_content = ft.Container(height=20)
-            
-            # 右侧行号和内容
-            if right_text is not None:
-                right_line_content = ft.Row(
-                    controls=[
-                        ft.Text(
-                            value=f"{right_line_num:4d}  ",
-                            size=11,
-                            color=ft.Colors.GREY_500,
-                            font_family="Consolas,Monospace",
-                        ),
-                        ft.Text(
-                            value=right_text,
-                            size=12,
-                            font_family="Consolas,Monospace",
-                            selectable=True,
-                            no_wrap=False,
-                        ),
-                    ],
-                    spacing=0,
-                    tight=True,
-                )
-                right_line_num += 1
-            else:
-                right_line_content = ft.Container(height=20)
-            
-            # 左侧行容器
-            left_line = ft.Container(
-                content=left_line_content,
-                bgcolor=left_bg,
-                padding=ft.padding.symmetric(horizontal=4, vertical=4),
-                border=ft.border.only(bottom=ft.border.BorderSide(0.5, ft.Colors.OUTLINE_VARIANT)),
-            )
-            
-            # 右侧行容器
-            right_line = ft.Container(
-                content=right_line_content,
-                bgcolor=right_bg,
-                padding=ft.padding.symmetric(horizontal=4, vertical=4),
-                border=ft.border.only(bottom=ft.border.BorderSide(0.5, ft.Colors.OUTLINE_VARIANT)),
-            )
-            
-            left_controls.append(left_line)
-            right_controls.append(right_line)
-        
-        # 更新列表
-        self.diff_list_left.current.controls = left_controls
-        self.diff_list_right.current.controls = right_controls
+        # 显示结果
+        self._display_diff()
         
         # 更新统计
-        total = len(diff_result)
-        equal = total - added_count - removed_count - modified_count
-        stats = f"总计 {total} 行 | 相同 {equal} | 新增 {added_count} | 删除 {removed_count} | 修改 {modified_count}"
-        self.stats_text.current.value = stats
-    
-    def _back_to_input(self, e):
-        """返回输入视图。"""
-        self.input_container.current.visible = True
-        self.result_container.current.visible = False
+        self._update_summary()
         
-        # 隐藏"返回编辑"按钮
-        operation_bar = self.content.controls[3]
-        operation_bar.controls[-2].visible = False
+        self._show_snack("对比完成")
+
+    def _parse_diff(self, diff_lines: List[str]) -> List[dict]:
+        """解析 ndiff 输出。
         
-        self.update()
+        Args:
+            diff_lines: ndiff 输出的行列表
+            
+        Returns:
+            解析后的差异列表
+        """
+        results = []
+        i = 0
+        line_num_left = 1
+        line_num_right = 1
+        
+        while i < len(diff_lines):
+            line = diff_lines[i]
+            
+            if line.startswith('  '):  # 相同行
+                results.append({
+                    'type': 'equal',
+                    'left_line': line_num_left,
+                    'right_line': line_num_right,
+                    'content': line[2:],
+                })
+                line_num_left += 1
+                line_num_right += 1
+            elif line.startswith('- '):  # 删除行
+                results.append({
+                    'type': 'delete',
+                    'left_line': line_num_left,
+                    'right_line': None,
+                    'content': line[2:],
+                })
+                line_num_left += 1
+            elif line.startswith('+ '):  # 新增行
+                results.append({
+                    'type': 'insert',
+                    'left_line': None,
+                    'right_line': line_num_right,
+                    'content': line[2:],
+                })
+                line_num_right += 1
+            elif line.startswith('? '):  # 字符级差异提示
+                # 这是 ndiff 的特殊标记，表示字符级差异
+                if results:
+                    results[-1]['hint'] = line[2:]
+            
+            i += 1
+        
+        return results
+
+    def _display_diff(self):
+        """显示对比结果。"""
+        if not self.diff_container.current:
+            return
+        
+        show_only = self.show_only_diff.current and self.show_only_diff.current.value
+        
+        controls = []
+        for item in self.diff_results:
+            # 如果只显示差异，跳过相同的行
+            if show_only and item['type'] == 'equal':
+                continue
+            
+            controls.append(self._create_diff_line(item))
+        
+        if not controls:
+            controls.append(
+                ft.Container(
+                    content=ft.Text(
+                        "没有发现差异" if show_only else "两个文本完全相同",
+                        size=14,
+                        color=ft.Colors.ON_SURFACE_VARIANT,
+                    ),
+                    alignment=ft.alignment.center,
+                    padding=PADDING_MEDIUM,
+                )
+            )
+        
+        self.diff_container.current.controls = controls
+        self.diff_container.current.update()
+
+    def _create_diff_line(self, item: dict) -> ft.Container:
+        """创建差异行显示。
+        
+        Args:
+            item: 差异项
+        """
+        diff_type = item['type']
+        
+        # 确定背景色和图标
+        if diff_type == 'equal':
+            bg_color = self.COLOR_EQUAL
+            icon = None
+            icon_color = None
+        elif diff_type == 'delete':
+            bg_color = self.COLOR_REMOVED
+            icon = ft.Icons.REMOVE
+            icon_color = ft.Colors.RED
+        elif diff_type == 'insert':
+            bg_color = self.COLOR_ADDED
+            icon = ft.Icons.ADD
+            icon_color = ft.Colors.GREEN
+        else:
+            bg_color = self.COLOR_CHANGED
+            icon = ft.Icons.EDIT
+            icon_color = ft.Colors.ORANGE
+        
+        # 行号显示
+        left_num = str(item['left_line']) if item['left_line'] else "-"
+        right_num = str(item['right_line']) if item['right_line'] else "-"
+        
+        return ft.Container(
+            content=ft.Row(
+                controls=[
+                    # 类型图标
+                    ft.Container(
+                        content=ft.Icon(icon, size=16, color=icon_color) if icon else None,
+                        width=24,
+                    ),
+                    # 左侧行号
+                    ft.Text(
+                        left_num,
+                        size=11,
+                        color=ft.Colors.ON_SURFACE_VARIANT,
+                        width=40,
+                        text_align=ft.TextAlign.RIGHT,
+                    ),
+                    # 右侧行号
+                    ft.Text(
+                        right_num,
+                        size=11,
+                        color=ft.Colors.ON_SURFACE_VARIANT,
+                        width=40,
+                        text_align=ft.TextAlign.RIGHT,
+                    ),
+                    # 分隔符
+                    ft.VerticalDivider(width=1),
+                    # 内容
+                    ft.Text(
+                        item['content'] if item['content'] else " ",
+                        size=13,
+                        font_family="Consolas,Monaco,Courier New,monospace",
+                        expand=True,
+                        selectable=True,
+                    ),
+                ],
+                spacing=PADDING_SMALL,
+            ),
+            bgcolor=bg_color,
+            padding=ft.padding.symmetric(horizontal=PADDING_SMALL, vertical=4),
+            border=ft.border.only(bottom=ft.BorderSide(0.5, ft.Colors.OUTLINE_VARIANT)),
+        )
+
+    def _refresh_diff_display(self):
+        """刷新差异显示（当切换"仅显示差异"时）。"""
+        if self.diff_results:
+            self._display_diff()
+
+    def _update_summary(self):
+        """更新统计摘要。"""
+        if not self.summary_text.current:
+            return
+        
+        added = sum(1 for item in self.diff_results if item['type'] == 'insert')
+        removed = sum(1 for item in self.diff_results if item['type'] == 'delete')
+        equal = sum(1 for item in self.diff_results if item['type'] == 'equal')
+        
+        total = len(self.diff_results)
+        
+        self.summary_text.current.value = (
+            f"总计 {total} 行 | "
+            f"新增 {added} | "
+            f"删除 {removed} | "
+            f"相同 {equal}"
+        )
+        self.summary_text.current.update()
+
+    # ==================== 辅助功能 ==================== #
     
-    def _clear(self, e):
+    def _update_stats(self, side: str):
+        """更新文本统计。
+        
+        Args:
+            side: 'left' 或 'right'
+        """
+        input_field = self.left_input.current if side == "left" else self.right_input.current
+        stats_field = self.left_stats.current if side == "left" else self.right_stats.current
+        
+        if not input_field or not stats_field:
+            return
+        
+        text = input_field.value or ""
+        chars = len(text)
+        lines = len(text.splitlines()) if text else 0
+        
+        stats_field.value = f"{chars} 字符, {lines} 行"
+        stats_field.update()
+
+    def _swap_texts(self, e):
+        """交换左右文本。"""
+        if not self.left_input.current or not self.right_input.current:
+            return
+        
+        left_val = self.left_input.current.value
+        right_val = self.right_input.current.value
+        
+        self.left_input.current.value = right_val
+        self.right_input.current.value = left_val
+        
+        self.left_input.current.update()
+        self.right_input.current.update()
+        
+        self._update_stats("left")
+        self._update_stats("right")
+
+    def _clear_text(self, side: str):
+        """清空单侧文本。"""
+        input_field = self.left_input.current if side == "left" else self.right_input.current
+        
+        if input_field:
+            input_field.value = ""
+            input_field.update()
+            self._update_stats(side)
+
+    def _clear_all(self, e):
         """清空所有内容。"""
-        self.text1.current.value = ""
-        self.text2.current.value = ""
-        self.diff_list_left.current.controls = []
-        self.diff_list_right.current.controls = []
-        self.stats_text.current.value = ""
+        self._clear_text("left")
+        self._clear_text("right")
         
-        # 返回输入视图
-        self.input_container.current.visible = True
-        self.result_container.current.visible = False
+        if self.diff_container.current:
+            self.diff_container.current.controls = [
+                ft.Container(
+                    content=ft.Column(
+                        controls=[
+                            ft.Icon(ft.Icons.COMPARE_ARROWS, size=64, color=ft.Colors.ON_SURFACE_VARIANT),
+                            ft.Text(
+                                "已清空，请重新输入文本",
+                                size=14,
+                                color=ft.Colors.ON_SURFACE_VARIANT,
+                            ),
+                        ],
+                        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                        spacing=PADDING_SMALL,
+                    ),
+                    alignment=ft.alignment.center,
+                    expand=True,
+                )
+            ]
+            self.diff_container.current.update()
         
-        # 隐藏"返回编辑"按钮
-        operation_bar = self.content.controls[3]
-        operation_bar.controls[-2].visible = False
+        if self.summary_text.current:
+            self.summary_text.current.value = "等待对比..."
+            self.summary_text.current.update()
         
-        self.update()
-    
-    def _on_back_click(self):
-        if self.on_back:
-            self.on_back()
-    
-    def _show_help(self, e):
-        """显示使用说明。"""
+        self.diff_results = []
+
+    def _import_file(self, side: str):
+        """从文件导入文本。"""
+        def on_file_picked(e: ft.FilePickerResultEvent):
+            if not e.files:
+                return
+            
+            file_path = e.files[0].path
+            try:
+                # 尝试 UTF-8
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+            except UnicodeDecodeError:
+                # 尝试 GBK
+                try:
+                    with open(file_path, 'r', encoding='gbk') as f:
+                        content = f.read()
+                except Exception as ex:
+                    self._show_snack(f"文件读取失败: {ex}", error=True)
+                    return
+            except Exception as ex:
+                self._show_snack(f"文件读取失败: {ex}", error=True)
+                return
+            
+            input_field = self.left_input.current if side == "left" else self.right_input.current
+            if input_field:
+                input_field.value = content
+                input_field.update()
+                self._update_stats(side)
+            
+            self._show_snack(f"已导入: {e.files[0].name}")
+        
+        picker = ft.FilePicker(on_result=on_file_picked)
+        self.page.overlay.append(picker)
+        self.page.update()
+        
+        picker.pick_files(
+            dialog_title="选择文本文件",
+            allowed_extensions=["txt", "log", "md", "py", "js", "json", "xml", "html", "css", "java", "c", "cpp"],
+        )
+
+    def _paste_text(self, side: str):
+        """粘贴文本。"""
+        async def paste():
+            text = await self.page.get_clipboard_async()
+            if not text:
+                self._show_snack("剪贴板为空", error=True)
+                return
+            
+            input_field = self.left_input.current if side == "left" else self.right_input.current
+            if input_field:
+                input_field.value = text
+                input_field.update()
+                self._update_stats(side)
+        
+        self.page.run_task(paste)
+
+    def _export_html(self, e):
+        """导出为 HTML 文件。"""
+        if not self.diff_results:
+            self._show_snack("请先执行对比", error=True)
+            return
+        
+        left_text = (self.left_input.current.value or "").strip()
+        right_text = (self.right_input.current.value or "").strip()
+        
+        left_lines = left_text.splitlines()
+        right_lines = right_text.splitlines()
+        
+        # 使用 difflib.HtmlDiff 生成 HTML
+        html_diff = difflib.HtmlDiff()
+        html = html_diff.make_file(
+            left_lines,
+            right_lines,
+            fromdesc="左侧文本",
+            todesc="右侧文本",
+            context=True,
+            numlines=3,
+        )
+        
+        # 保存文件
+        def save_file(e: ft.FilePickerResultEvent):
+            if e.path:
+                try:
+                    with open(e.path, 'w', encoding='utf-8') as f:
+                        f.write(html)
+                    self._show_snack(f"已导出到: {Path(e.path).name}")
+                except Exception as ex:
+                    self._show_snack(f"导出失败: {ex}", error=True)
+        
+        picker = ft.FilePicker(on_result=save_file)
+        self.page.overlay.append(picker)
+        self.page.update()
+        
+        picker.save_file(
+            dialog_title="导出 HTML",
+            file_name="text_diff.html",
+            allowed_extensions=["html"],
+        )
+
+    def _show_about(self, e):
+        """显示关于信息。"""
         help_text = """
-**文本对比工具使用说明**
+**文本对比工具**
 
-**功能说明：**
-- 并排对比两个文本的差异
-- 用颜色高亮显示不同类型的差异
-- 实时统计差异数量
+**基于 difflib 的高级文本对比工具**
 
-**使用步骤：**
-1. 在左右两侧输入框中粘贴要对比的文本
-2. 可选：勾选"忽略空格"或"忽略大小写"
-3. 点击"开始对比"
-4. 查看并排对比结果
+参考 [pydiff](https://github.com/yelsayd/pydiff) 项目设计理念。
 
-**颜色说明：**
-- **红色背景**：该行仅在文本1中存在（被删除）
-- **绿色背景**：该行仅在文本2中存在（新增）
-- **橙色/蓝色背景**：该行在两个文本中都存在但内容不同（修改）
-- **无背景色**：两个文本中该行完全相同
+**✨ 功能特性**
 
-**使用场景：**
-- 对比两个JSON响应的差异
-- 检查配置文件的修改
-- 对比代码片段
-- 查看文档的改动
+- 使用 ndiff 提供详细的行级和字符级差异
+- 清晰的颜色高亮显示
+- 实时统计信息
+- 支持从文件导入
+- 支持导出 HTML 格式
+- 灵活的对比选项
 
-**提示：**
-- 点击"返回编辑"可以回到输入界面修改文本
-- 点击"清空"会清除所有内容并返回输入界面
+**📖 使用说明**
+
+1. 在左右输入框输入或导入文本
+2. 点击「开始对比」查看差异
+3. 可选择忽略大小写、空白符等选项
+4. 支持导出为 HTML 文件分享
+
+**🎨 颜色说明**
+
+- 🟢 **绿色** - 新增的内容
+- 🔴 **红色** - 删除的内容
+- 🟠 **橙色** - 修改的内容
         """
         
         dialog = ft.AlertDialog(
             modal=True,
-            title=ft.Text("使用说明"),
+            title=ft.Text("关于文本对比工具"),
             content=ft.Container(
-                content=ft.Markdown(
-                    help_text,
-                    selectable=True,
-                    extension_set=ft.MarkdownExtensionSet.GITHUB_WEB,
+                content=ft.Column(
+                    controls=[
+                        ft.Markdown(
+                            help_text,
+                            selectable=True,
+                            extension_set=ft.MarkdownExtensionSet.GITHUB_WEB,
+                        ),
+                    ],
+                    scroll=ft.ScrollMode.AUTO,  # 关键：支持滚动
                 ),
                 width=500,
                 height=450,
@@ -855,11 +707,17 @@ class TextDiffView(ft.Container):
         )
         
         self.page.open(dialog)
-    
+
     def _show_snack(self, message: str, error: bool = False):
+        """显示提示消息。"""
         self.page.snack_bar = ft.SnackBar(
             content=ft.Text(message),
-            bgcolor=ft.Colors.RED_400 if error else ft.Colors.GREEN_400,
+            bgcolor=ft.Colors.ERROR if error else ft.Colors.PRIMARY,
         )
         self.page.snack_bar.open = True
         self.page.update()
+
+    def _on_back_click(self):
+        """返回按钮点击。"""
+        if self.on_back:
+            self.on_back()

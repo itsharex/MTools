@@ -386,11 +386,16 @@ WHERE u.status = 1
             modal=True,
             title=ft.Text("使用说明"),
             content=ft.Container(
-                content=ft.Markdown(
-                    help_text,
-                    selectable=True,
-                    extension_set=ft.MarkdownExtensionSet.GITHUB_WEB,
-                    code_theme="atom-one-dark",
+                content=ft.Column(
+                    controls=[
+                        ft.Markdown(
+                            help_text,
+                            selectable=True,
+                            extension_set=ft.MarkdownExtensionSet.GITHUB_WEB,
+                            code_theme="atom-one-dark",
+                        ),
+                    ],
+                    scroll=ft.ScrollMode.AUTO,
                 ),
                 width=550,
                 height=500,

@@ -71,8 +71,8 @@ class DevToolsView(ft.Container):
         self.dns_lookup_view: Optional[ft.Container] = None
         self.port_scanner_view: Optional[ft.Container] = None
         self.format_convert_view: Optional[ft.Container] = None
-        self.crypto_tool_view: Optional[ft.Container] = None
         self.text_diff_view: Optional[ft.Container] = None
+        self.crypto_tool_view: Optional[ft.Container] = None
         self.sql_formatter_view: Optional[ft.Container] = None
         self.cron_tool_view: Optional[ft.Container] = None
         
@@ -225,6 +225,14 @@ class DevToolsView(ft.Container):
                     gradient_colors=("#11998E", "#38EF7D"),
                     on_click=self._open_format_convert,
                 ),
+                # 文本对比
+                FeatureCard(
+                    icon=ft.Icons.COMPARE,
+                    title="文本对比",
+                    description="左右分栏、高亮显示差异",
+                    gradient_colors=("#3A7BD5", "#00D2FF"),
+                    on_click=self._open_text_diff,
+                ),
                 # 加解密工具
                 FeatureCard(
                     icon=ft.Icons.SECURITY,
@@ -232,14 +240,6 @@ class DevToolsView(ft.Container):
                     description="AES, DES, RC4, MD5, SHA 等",
                     gradient_colors=("#2C3E50", "#4CA1AF"),
                     on_click=self._open_crypto_tool,
-                ),
-                # 文本对比
-                FeatureCard(
-                    icon=ft.Icons.COMPARE_ARROWS,
-                    title="文本对比",
-                    description="对比文本差异，高亮显示新增和删除",
-                    gradient_colors=("#FF512F", "#DD2476"),
-                    on_click=self._open_text_diff,
                 ),
                 # SQL 格式化
                 FeatureCard(
@@ -554,6 +554,23 @@ class DevToolsView(ft.Container):
             self.parent_container.content = self.format_convert_view
         self._safe_page_update()
 
+    def _open_text_diff(self, e: ft.ControlEvent) -> None:
+        """打开文本对比工具。"""
+        self._hide_search_button()
+
+        if self.text_diff_view is None:
+            from views.dev_tools.text_diff_view import TextDiffView
+            self.text_diff_view = TextDiffView(
+                self._saved_page,
+                on_back=self._back_to_main
+            )
+
+        if self.parent_container:
+            self.current_sub_view = self.text_diff_view
+            self.current_sub_view_type = "text_diff"
+            self.parent_container.content = self.text_diff_view
+        self._safe_page_update()
+
     def _open_crypto_tool(self, e: ft.ControlEvent) -> None:
         """打开加解密工具。"""
         self._hide_search_button()
@@ -569,23 +586,6 @@ class DevToolsView(ft.Container):
             self.current_sub_view = self.crypto_tool_view
             self.current_sub_view_type = "crypto_tool"
             self.parent_container.content = self.crypto_tool_view
-        self._safe_page_update()
-    
-    def _open_text_diff(self, e: ft.ControlEvent) -> None:
-        """打开文本对比工具。"""
-        self._hide_search_button()
-        
-        if self.text_diff_view is None:
-            from views.dev_tools.text_diff_view import TextDiffView
-            self.text_diff_view = TextDiffView(
-                self._saved_page,
-                on_back=self._back_to_main
-            )
-        
-        if self.parent_container:
-            self.current_sub_view = self.text_diff_view
-            self.current_sub_view_type = "text_diff"
-            self.parent_container.content = self.text_diff_view
         self._safe_page_update()
     
     def _open_sql_formatter(self, e: ft.ControlEvent) -> None:
@@ -641,8 +641,8 @@ class DevToolsView(ft.Container):
                 "dns_lookup": "dns_lookup_view",
                 "port_scanner": "port_scanner_view",
                 "format_convert": "format_convert_view",
-                "crypto_tool": "crypto_tool_view",
                 "text_diff": "text_diff_view",
+                "crypto_tool": "crypto_tool_view",
                 "sql_formatter": "sql_formatter_view",
                 "cron_tool": "cron_tool_view",
             }
@@ -705,8 +705,8 @@ class DevToolsView(ft.Container):
             "dns_lookup": self._open_dns_lookup,
             "port_scanner": self._open_port_scanner,
             "format_convert": self._open_format_convert,
-            "crypto_tool": self._open_crypto_tool,
             "text_diff": self._open_text_diff,
+            "crypto_tool": self._open_crypto_tool,
             "sql_formatter": self._open_sql_formatter,
             "cron_tool": self._open_cron_tool,
         }

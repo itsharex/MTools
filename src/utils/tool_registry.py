@@ -479,6 +479,16 @@ def register_all_tools():
     )
 
     register_tool_manual(
+        name="文本对比",
+        description="左右分栏对比，逐行高亮差异",
+        category="开发工具",
+        keywords=["对比", "diff", "compare", "文本", "文件", "差异", "比较", "notepad++"],
+        icon="COMPARE",
+        tool_id="dev.text_diff",
+        gradient_colors=("#3A7BD5", "#00D2FF"),
+    )
+
+    register_tool_manual(
         name="加解密工具",
         description="AES, DES, RC4, MD5, SHA 等",
         category="开发工具",
@@ -486,16 +496,6 @@ def register_all_tools():
         icon="SECURITY",
         tool_id="dev.crypto_tool",
         gradient_colors=("#2C3E50", "#4CA1AF"),
-    )
-
-    register_tool_manual(
-        name="文本对比",
-        description="对比文本差异，高亮显示新增和删除",
-        category="开发工具",
-        keywords=["文本", "对比", "diff", "比较", "compare", "差异", "difference", "merge", "合并", "代码", "配置"],
-        icon="COMPARE_ARROWS",
-        tool_id="dev.text_diff",
-        gradient_colors=("#FF512F", "#DD2476"),
     )
 
     register_tool_manual(
