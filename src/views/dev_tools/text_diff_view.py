@@ -10,7 +10,7 @@ from typing import Callable, List, Optional
 
 import flet as ft
 
-from constants import PADDING_MEDIUM, PADDING_SMALL
+from constants import PADDING_MEDIUM, PADDING_SMALL, PADDING_LARGE
 
 
 class TextDiffView(ft.Container):
@@ -121,13 +121,48 @@ class TextDiffView(ft.Container):
         )
 
         # 输入区域
-        input_area = ft.Row(
+        input_area = ft.Column(
             controls=[
-                self._build_input_panel("左侧文本", "left"),
-                ft.VerticalDivider(width=1),
-                self._build_input_panel("右侧文本", "right"),
+                # 标题栏行
+                ft.Row(
+                    controls=[
+                        ft.Container(
+                            content=self._build_panel_header("左侧文本", "left"),
+                            expand=True,
+                        ),
+                        ft.Container(width=PADDING_LARGE), # 与下方分割线宽度一致
+                        ft.Container(
+                            content=self._build_panel_header("右侧文本", "right"),
+                            expand=True,
+                        ),
+                    ],
+                    spacing=0,
+                ),
+                # 输入框行
+                ft.Row(
+                    controls=[
+                        ft.Column(
+                            controls=[self._build_text_field("左侧文本", "left")],
+                            expand=True,
+                            spacing=0,
+                        ),
+                        ft.VerticalDivider(
+                            width=PADDING_LARGE,
+                            thickness=1,
+                            color=ft.Colors.OUTLINE_VARIANT
+                        ),
+                        ft.Column(
+                            controls=[self._build_text_field("右侧文本", "right")],
+                            expand=True,
+                            spacing=0,
+                        ),
+                    ],
+                    spacing=0,
+                    expand=True,
+                    vertical_alignment=ft.CrossAxisAlignment.STRETCH,
+                ),
             ],
-            spacing=0,
+            spacing=PADDING_SMALL,
             expand=True,
         )
 
@@ -187,7 +222,7 @@ class TextDiffView(ft.Container):
                     content=input_area,
                     height=200,  # 固定输入区高度，给结果区更多空间
                 ),
-                ft.Container(height=PADDING_SMALL),
+                ft.Container(height=PADDING_MEDIUM),
                 result_header,
                 ft.Container(
                     content=result_area,
@@ -198,64 +233,69 @@ class TextDiffView(ft.Container):
             expand=True,
         )
 
-    def _build_input_panel(self, title: str, side: str) -> ft.Container:
-        """构建输入面板。
+    def _build_panel_header(self, title: str, side: str) -> ft.Container:
+        """构建面板标题栏。
+        
+        Args:
+            title: 面板标题
+            side: 'left' 或 'right'
+        """
+        stats_ref = self.left_stats if side == "left" else self.right_stats
+        
+        return ft.Container(
+            content=ft.Row(
+                controls=[
+                    ft.Text(title, weight=ft.FontWeight.BOLD, size=14),
+                    ft.Container(expand=True),
+                    ft.Text("0 字符, 0 行", ref=stats_ref, size=11, color=ft.Colors.ON_SURFACE_VARIANT),
+                    ft.IconButton(
+                        icon=ft.Icons.FOLDER_OPEN,
+                        icon_size=18,
+                        tooltip="从文件导入",
+                        on_click=lambda _, s=side: self._import_file(s),
+                    ),
+                    ft.IconButton(
+                        icon=ft.Icons.CONTENT_PASTE,
+                        icon_size=18,
+                        tooltip="粘贴",
+                        on_click=lambda _, s=side: self._paste_text(s),
+                    ),
+                    ft.IconButton(
+                        icon=ft.Icons.CLEAR,
+                        icon_size=18,
+                        tooltip="清空",
+                        on_click=lambda _, s=side: self._clear_text(s),
+                    ),
+                ],
+                spacing=4,
+            ),
+        )
+
+    def _build_text_field(self, title: str, side: str) -> ft.Container:
+        """构建文本输入框。
         
         Args:
             title: 面板标题
             side: 'left' 或 'right'
         """
         ref = self.left_input if side == "left" else self.right_input
-        stats_ref = self.left_stats if side == "left" else self.right_stats
         
         return ft.Container(
-            content=ft.Column(
-                controls=[
-                    # 标题栏
-                    ft.Row(
-                        controls=[
-                            ft.Text(title, weight=ft.FontWeight.BOLD, size=14),
-                            ft.Container(expand=True),
-                            ft.Text("0 字符, 0 行", ref=stats_ref, size=11, color=ft.Colors.ON_SURFACE_VARIANT),
-                            ft.IconButton(
-                                icon=ft.Icons.FOLDER_OPEN,
-                                icon_size=18,
-                                tooltip="从文件导入",
-                                on_click=lambda _, s=side: self._import_file(s),
-                            ),
-                            ft.IconButton(
-                                icon=ft.Icons.CONTENT_PASTE,
-                                icon_size=18,
-                                tooltip="粘贴",
-                                on_click=lambda _, s=side: self._paste_text(s),
-                            ),
-                            ft.IconButton(
-                                icon=ft.Icons.CLEAR,
-                                icon_size=18,
-                                tooltip="清空",
-                                on_click=lambda _, s=side: self._clear_text(s),
-                            ),
-                        ],
-                        spacing=4,
-                    ),
-                    # 输入框
-                    ft.TextField(
-                        ref=ref,
-                        multiline=True,
-                        min_lines=1,
-                        hint_text=f"在此输入{title}内容...",
-                        border=ft.InputBorder.OUTLINE,
-                        text_style=ft.TextStyle(
-                            font_family="Consolas,Monaco,Courier New,monospace",
-                            size=13,
-                        ),
-                        expand=True,
-                        on_change=lambda _, s=side: self._update_stats(s),
-                    ),
-                ],
-                spacing=PADDING_SMALL,
+            content=ft.TextField(
+                ref=ref,
+                multiline=True,
+                min_lines=1,
+                hint_text=f"在此输入内容或从文件导入",
+                border=ft.InputBorder.NONE,
+                text_style=ft.TextStyle(
+                    font_family="Consolas,Monaco,Courier New,monospace",
+                    size=13,
+                ),
                 expand=True,
+                on_change=lambda _, s=side: self._update_stats(s),
             ),
+            border=ft.border.all(1, ft.Colors.OUTLINE),
+            border_radius=4,
             expand=True,
         )
 
@@ -408,6 +448,15 @@ class TextDiffView(ft.Container):
         left_num = str(item['left_line']) if item['left_line'] else "-"
         right_num = str(item['right_line']) if item['right_line'] else "-"
         
+        # 构建文本内容（带高亮）
+        content = item['content'] if item['content'] else " "
+        hint = item.get('hint')
+        
+        if hint:
+            spans = self._get_styled_spans(content, hint, diff_type)
+        else:
+            spans = [ft.TextSpan(content)]
+
         return ft.Container(
             content=ft.Row(
                 controls=[
@@ -436,7 +485,7 @@ class TextDiffView(ft.Container):
                     ft.VerticalDivider(width=1),
                     # 内容
                     ft.Text(
-                        item['content'] if item['content'] else " ",
+                        spans=spans,
                         size=13,
                         font_family="Consolas,Monaco,Courier New,monospace",
                         expand=True,
@@ -449,6 +498,49 @@ class TextDiffView(ft.Container):
             padding=ft.padding.symmetric(horizontal=PADDING_SMALL, vertical=4),
             border=ft.border.only(bottom=ft.BorderSide(0.5, ft.Colors.OUTLINE_VARIANT)),
         )
+
+    def _get_styled_spans(self, content: str, hint: str, diff_type: str) -> List[ft.TextSpan]:
+        """获取带样式的文本段。"""
+        if not hint:
+            return [ft.TextSpan(content)]
+            
+        spans = []
+        i = 0
+        current_segment = ""
+        is_highlighted = False
+        
+        # 高亮颜色配置
+        if diff_type == 'insert':
+            # 绿色背景加深
+            highlight_bg = ft.Colors.with_opacity(0.5, ft.Colors.GREEN)
+        elif diff_type == 'delete':
+            # 红色背景加深
+            highlight_bg = ft.Colors.with_opacity(0.5, ft.Colors.RED)
+        else:
+            highlight_bg = ft.Colors.with_opacity(0.5, ft.Colors.ORANGE)
+            
+        while i < len(content):
+            # 检查当前字符是否需要高亮
+            # hint 可能比 content 短（也可能长，但我们只关心 content 的长度）
+            should_highlight = (i < len(hint)) and (hint[i] != ' ')
+            
+            if should_highlight != is_highlighted:
+                # 状态改变，保存之前的段
+                if current_segment:
+                    style = ft.TextStyle(bgcolor=highlight_bg) if is_highlighted else None
+                    spans.append(ft.TextSpan(current_segment, style=style))
+                    current_segment = ""
+                is_highlighted = should_highlight
+            
+            current_segment += content[i]
+            i += 1
+            
+        # 保存最后一段
+        if current_segment:
+            style = ft.TextStyle(bgcolor=highlight_bg) if is_highlighted else None
+            spans.append(ft.TextSpan(current_segment, style=style))
+            
+        return spans
 
     def _refresh_diff_display(self):
         """刷新差异显示（当切换"仅显示差异"时）。"""

@@ -60,23 +60,25 @@ class PortScannerView(ft.Container):
             bottom=PADDING_MEDIUM
         )
         
-        # 控件引用
-        self.single_host = ft.Ref[ft.TextField]()
-        self.single_port = ft.Ref[ft.TextField]()
-        self.single_output = ft.Ref[ft.TextField]()
+        # 统一控件引用
+        self.host_input = ft.Ref[ft.TextField]()
+        self.mode_selector = ft.Ref[ft.Dropdown]()
+        self.scan_btn = ft.Ref[ft.ElevatedButton]()
         
-        self.range_host = ft.Ref[ft.TextField]()
-        self.range_start = ft.Ref[ft.TextField]()
-        self.range_end = ft.Ref[ft.TextField]()
-        self.range_output = ft.Ref[ft.TextField]()
-        self.range_progress = ft.Ref[ft.ProgressBar]()
+        # 动态输入控件
+        self.port_input = ft.Ref[ft.TextField]()      # 单个端口
+        self.start_port_input = ft.Ref[ft.TextField]() # 范围起始
+        self.end_port_input = ft.Ref[ft.TextField]()   # 范围结束
+        self.port_list_input = ft.Ref[ft.TextField]()  # 自定义列表
         
-        self.common_host = ft.Ref[ft.TextField]()
-        self.common_output = ft.Ref[ft.TextField]()
+        # 容器引用，用于控制显示隐藏
+        self.single_input_container = ft.Ref[ft.Container]()
+        self.range_input_container = ft.Ref[ft.Container]()
+        self.custom_input_container = ft.Ref[ft.Container]()
         
-        self.custom_host = ft.Ref[ft.TextField]()
-        self.custom_ports = ft.Ref[ft.TextField]()
-        self.custom_output = ft.Ref[ft.TextField]()
+        # 输出和进度
+        self.progress_bar = ft.Ref[ft.ProgressBar]()
+        self.log_output = ft.Ref[ft.TextField]()
         
         self._build_ui()
     
@@ -101,236 +103,231 @@ class PortScannerView(ft.Container):
             spacing=PADDING_MEDIUM,
         )
         
-        # 单个端口检测
-        single_port_section = ft.Container(
+        # 控制面板区域
+        control_panel = ft.Container(
             content=ft.Column(
                 controls=[
-                    ft.Text("单个端口检测", weight=ft.FontWeight.BOLD, size=16),
+                    # 第一行：主机地址、模式选择、扫描按钮
                     ft.Row(
                         controls=[
                             ft.TextField(
-                                ref=self.single_host,
-                                label="主机",
-                                hint_text="example.com",
+                                ref=self.host_input,
+                                label="主机地址",
+                                hint_text="example.com 或 192.168.1.1",
                                 expand=True,
+                                prefix_icon=ft.Icons.DNS,
+                                height=45,
+                                text_size=14,
+                                content_padding=10,
                             ),
-                            ft.TextField(
-                                ref=self.single_port,
-                                label="端口",
-                                hint_text="80",
-                                width=100,
+                            ft.Dropdown(
+                                ref=self.mode_selector,
+                                label="扫描模式",
+                                width=180,
+                                options=[
+                                    ft.dropdown.Option("common", "常用端口 (快速)"),
+                                    ft.dropdown.Option("single", "单个端口"),
+                                    ft.dropdown.Option("range", "端口范围"),
+                                    ft.dropdown.Option("custom", "自定义列表"),
+                                ],
+                                value="common",
+                                on_change=self._on_mode_change,
+                                text_size=14,
+                                content_padding=10,
                             ),
                             ft.ElevatedButton(
-                                text="检测",
-                                icon=ft.Icons.WIFI_TETHERING,
-                                on_click=lambda _: self.page.run_task(self._check_single_port),
+                                ref=self.scan_btn,
+                                text="开始扫描",
+                                icon=ft.Icons.PLAY_ARROW,
+                                style=ft.ButtonStyle(
+                                    shape=ft.RoundedRectangleBorder(radius=8),
+                                    padding=20,
+                                ),
+                                on_click=lambda _: self.page.run_task(self._handle_scan),
+                                height=45,
                             ),
                         ],
-                        spacing=PADDING_SMALL,
+                        spacing=PADDING_MEDIUM,
                     ),
+                    
+                    # 第二行：动态输入区域
+                    # 1. 单个端口输入
                     ft.Container(
-                        content=ft.TextField(
-                            ref=self.single_output,
-                            multiline=True,
-                            min_lines=6,
-                            read_only=True,
-                            text_size=13,
-                            border=ft.InputBorder.NONE,
+                        ref=self.single_input_container,
+                        visible=False,
+                        content=ft.Row(
+                            controls=[
+                                ft.TextField(
+                                    ref=self.port_input,
+                                    label="目标端口",
+                                    hint_text="例如: 80",
+                                    width=150,
+                                    keyboard_type=ft.KeyboardType.NUMBER,
+                                    height=40,
+                                    text_size=14,
+                                    content_padding=10,
+                                    prefix_icon=ft.Icons.TAG,
+                                ),
+                                ft.Text("请输入要检测的单个端口号", color=ft.Colors.OUTLINE),
+                            ],
+                            vertical_alignment=ft.CrossAxisAlignment.CENTER,
                         ),
-                        border=ft.border.all(1, ft.Colors.OUTLINE),
-                        border_radius=8,
-                        padding=PADDING_SMALL,
-                        bgcolor=ft.Colors.with_opacity(0.05, ft.Colors.ON_SURFACE),
+                    ),
+                    
+                    # 2. 范围输入
+                    ft.Container(
+                        ref=self.range_input_container,
+                        visible=False,
+                        content=ft.Row(
+                            controls=[
+                                ft.TextField(
+                                    ref=self.start_port_input,
+                                    label="起始端口",
+                                    value="1",
+                                    width=120,
+                                    keyboard_type=ft.KeyboardType.NUMBER,
+                                    height=40,
+                                    text_size=14,
+                                    content_padding=10,
+                                ),
+                                ft.Text("-", size=20, weight=ft.FontWeight.BOLD),
+                                ft.TextField(
+                                    ref=self.end_port_input,
+                                    label="结束端口",
+                                    value="1000",
+                                    width=120,
+                                    keyboard_type=ft.KeyboardType.NUMBER,
+                                    height=40,
+                                    text_size=14,
+                                    content_padding=10,
+                                ),
+                                ft.Text("建议范围不超过 1000 个端口", color=ft.Colors.OUTLINE),
+                            ],
+                            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                        ),
+                    ),
+                    
+                    # 3. 自定义列表输入
+                    ft.Container(
+                        ref=self.custom_input_container,
+                        visible=False,
+                        content=ft.TextField(
+                            ref=self.port_list_input,
+                            label="端口列表",
+                            hint_text="例如: 80, 443, 8080, 3306 (使用逗号或空格分隔)",
+                            expand=True,
+                            height=40,
+                            text_size=14,
+                            content_padding=10,
+                            prefix_icon=ft.Icons.LIST_ALT,
+                        ),
                     ),
                 ],
-                spacing=5,
+                spacing=PADDING_MEDIUM,
             ),
-            padding=PADDING_SMALL,
-            border=ft.border.all(1, ft.Colors.OUTLINE),
+            padding=PADDING_MEDIUM,
+            border=ft.border.all(1, ft.Colors.OUTLINE_VARIANT),
             border_radius=8,
+            bgcolor=ft.Colors.with_opacity(0.02, ft.Colors.ON_SURFACE),
         )
-        
-        # 端口范围扫描
-        range_scan_section = ft.Container(
+
+        # 输出区域
+        output_area = ft.Container(
             content=ft.Column(
                 controls=[
-                    ft.Text("端口范围扫描", weight=ft.FontWeight.BOLD, size=16),
                     ft.Row(
                         controls=[
-                            ft.TextField(
-                                ref=self.range_host,
-                                label="主机",
-                                hint_text="example.com",
-                                expand=True,
-                            ),
-                            ft.TextField(
-                                ref=self.range_start,
-                                label="起始端口",
-                                hint_text="1",
-                                width=100,
-                            ),
-                            ft.TextField(
-                                ref=self.range_end,
-                                label="结束端口",
-                                hint_text="1024",
-                                width=100,
-                            ),
-                            ft.ElevatedButton(
-                                text="扫描",
-                                icon=ft.Icons.RADAR,
-                                on_click=lambda _: self.page.run_task(self._scan_port_range),
+                            ft.Icon(ft.Icons.TERMINAL, size=20),
+                            ft.Text("扫描日志", weight=ft.FontWeight.BOLD),
+                            ft.Container(expand=True),
+                            ft.IconButton(
+                                icon=ft.Icons.CLEAR_ALL,
+                                tooltip="清空日志",
+                                icon_size=20,
+                                on_click=self._clear_log,
                             ),
                         ],
-                        spacing=PADDING_SMALL,
                     ),
                     ft.ProgressBar(
-                        ref=self.range_progress,
+                        ref=self.progress_bar,
                         value=0,
                         visible=False,
+                        bgcolor=ft.Colors.with_opacity(0.1, ft.Colors.PRIMARY),
                     ),
                     ft.Container(
                         content=ft.TextField(
-                            ref=self.range_output,
+                            ref=self.log_output,
                             multiline=True,
-                            min_lines=8,
                             read_only=True,
                             text_size=13,
                             border=ft.InputBorder.NONE,
+                            text_style=ft.TextStyle(font_family="Consolas,Monaco,Courier New,monospace"),
+                            cursor_color=ft.Colors.PRIMARY,
                         ),
-                        border=ft.border.all(1, ft.Colors.OUTLINE),
+                        expand=True,
+                        border=ft.border.all(1, ft.Colors.OUTLINE_VARIANT),
                         border_radius=8,
                         padding=PADDING_SMALL,
                         bgcolor=ft.Colors.with_opacity(0.05, ft.Colors.ON_SURFACE),
                     ),
                 ],
-                spacing=5,
+                spacing=PADDING_SMALL,
             ),
-            padding=PADDING_SMALL,
-            border=ft.border.all(1, ft.Colors.OUTLINE),
-            border_radius=8,
-        )
-        
-        # 批量指定端口扫描
-        custom_ports_section = ft.Container(
-            content=ft.Column(
-                controls=[
-                    ft.Text("批量指定端口", weight=ft.FontWeight.BOLD, size=16),
-                    ft.Row(
-                        controls=[
-                            ft.TextField(
-                                ref=self.custom_host,
-                                label="主机",
-                                hint_text="example.com",
-                                expand=True,
-                            ),
-                            ft.ElevatedButton(
-                                text="扫描",
-                                icon=ft.Icons.PLAY_ARROW,
-                                on_click=lambda _: self.page.run_task(self._scan_custom_ports),
-                            ),
-                        ],
-                        spacing=PADDING_SMALL,
-                    ),
-                    ft.TextField(
-                        ref=self.custom_ports,
-                        label="端口列表",
-                        hint_text="80,443,3306,8080 或 80 443 3306",
-                        multiline=False,
-                    ),
-                    ft.Container(
-                        content=ft.TextField(
-                            ref=self.custom_output,
-                            multiline=True,
-                            min_lines=8,
-                            read_only=True,
-                            text_size=13,
-                            border=ft.InputBorder.NONE,
-                        ),
-                        border=ft.border.all(1, ft.Colors.OUTLINE),
-                        border_radius=8,
-                        padding=PADDING_SMALL,
-                        bgcolor=ft.Colors.with_opacity(0.05, ft.Colors.ON_SURFACE),
-                    ),
-                ],
-                spacing=5,
-            ),
-            padding=PADDING_SMALL,
-            border=ft.border.all(1, ft.Colors.OUTLINE),
-            border_radius=8,
-        )
-        
-        # 常用端口扫描
-        common_ports_section = ft.Container(
-            content=ft.Column(
-                controls=[
-                    ft.Text("常用端口扫描 (快速)", weight=ft.FontWeight.BOLD, size=16),
-                    ft.Row(
-                        controls=[
-                            ft.TextField(
-                                ref=self.common_host,
-                                label="主机",
-                                hint_text="example.com",
-                                expand=True,
-                            ),
-                            ft.ElevatedButton(
-                                text="扫描常用端口",
-                                icon=ft.Icons.SEARCH,
-                                on_click=lambda _: self.page.run_task(self._scan_common_ports),
-                            ),
-                        ],
-                        spacing=PADDING_SMALL,
-                    ),
-                    ft.Container(
-                        content=ft.TextField(
-                            ref=self.common_output,
-                            multiline=True,
-                            min_lines=8,
-                            read_only=True,
-                            text_size=13,
-                            border=ft.InputBorder.NONE,
-                        ),
-                        border=ft.border.all(1, ft.Colors.OUTLINE),
-                        border_radius=8,
-                        padding=PADDING_SMALL,
-                        bgcolor=ft.Colors.with_opacity(0.05, ft.Colors.ON_SURFACE),
-                    ),
-                ],
-                spacing=5,
-            ),
-            padding=PADDING_SMALL,
-            border=ft.border.all(1, ft.Colors.OUTLINE),
-            border_radius=8,
-        )
-        
-        # 布局
-        content_area = ft.Column(
-            controls=[
-                single_port_section,
-                ft.Container(height=PADDING_SMALL),
-                custom_ports_section,
-                ft.Container(height=PADDING_SMALL),
-                common_ports_section,
-                ft.Container(height=PADDING_SMALL),
-                range_scan_section,
-            ],
-            spacing=0,
             expand=True,
-            scroll=ft.ScrollMode.AUTO,
         )
-        
-        # 主列
-        main_column = ft.Column(
+
+        # 主布局
+        self.content = ft.Column(
             controls=[
                 header,
-                ft.Divider(),
-                content_area,
+                ft.Divider(height=1),
+                control_panel,
+                ft.Container(height=PADDING_SMALL),
+                output_area,
             ],
-            spacing=0,
+            spacing=PADDING_SMALL,
             expand=True,
         )
+
+    def _on_mode_change(self, e):
+        """处理模式切换，显示对应的输入框。"""
+        mode = self.mode_selector.current.value
         
-        self.content = main_column
-    
+        self.single_input_container.current.visible = (mode == "single")
+        self.range_input_container.current.visible = (mode == "range")
+        self.custom_input_container.current.visible = (mode == "custom")
+        
+        self.update()
+
+    def _clear_log(self, e):
+        """清空日志。"""
+        if self.log_output.current:
+            self.log_output.current.value = ""
+            self.update()
+
+    async def _handle_scan(self):
+        """处理扫描按钮点击。"""
+        mode = self.mode_selector.current.value
+        
+        # 禁用按钮防止重复点击
+        self.scan_btn.current.disabled = True
+        self.update()
+        
+        try:
+            if mode == "single":
+                await self._check_single_port()
+            elif mode == "range":
+                await self._scan_port_range()
+            elif mode == "custom":
+                await self._scan_custom_ports()
+            elif mode == "common":
+                await self._scan_common_ports()
+        finally:
+            # 恢复按钮
+            if self.scan_btn.current:
+                self.scan_btn.current.disabled = False
+                self.update()
+
     async def _check_port(self, host: str, port: int, timeout: float = 3) -> Tuple[bool, float]:
         """检测单个端口。
         
@@ -338,24 +335,26 @@ class PortScannerView(ft.Container):
             (是否开放, 响应时间ms)
         """
         try:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(timeout)
-            
             start_time = asyncio.get_event_loop().time()
-            result = sock.connect_ex((host, port))
-            end_time = asyncio.get_event_loop().time()
             
-            sock.close()
-            
-            response_time = (end_time - start_time) * 1000
-            return (result == 0, response_time)
-        except:
+            # 使用异步方式连接，避免阻塞UI
+            try:
+                await asyncio.wait_for(
+                    asyncio.open_connection(host, port),
+                    timeout=timeout
+                )
+                end_time = asyncio.get_event_loop().time()
+                response_time = (end_time - start_time) * 1000
+                return (True, response_time)
+            except (asyncio.TimeoutError, ConnectionRefusedError, OSError):
+                return (False, 0)
+        except Exception:
             return (False, 0)
     
     async def _check_single_port(self):
         """检测单个端口。"""
-        host = self.single_host.current.value
-        port_str = self.single_port.current.value
+        host = self.host_input.current.value
+        port_str = self.port_input.current.value
         
         if not host or not host.strip():
             self._show_snack("请输入主机地址", error=True)
@@ -374,7 +373,7 @@ class PortScannerView(ft.Container):
             self._show_snack("请输入有效的端口号", error=True)
             return
         
-        self.single_output.current.value = f"正在检测 {host}:{port}...\n"
+        self.log_output.current.value = f"正在检测 {host}:{port}...\n"
         self.update()
         
         is_open, response_time = await self._check_port(host, port)
@@ -400,14 +399,14 @@ class PortScannerView(ft.Container):
         else:
             result_lines.append("❌ 端口关闭或无法访问")
         
-        self.single_output.current.value = '\n'.join(result_lines)
+        self.log_output.current.value = '\n'.join(result_lines)
         self.update()
         self._show_snack("端口检测完成")
     
     async def _scan_custom_ports(self):
         """扫描批量指定的端口。"""
-        host = self.custom_host.current.value
-        ports_str = self.custom_ports.current.value
+        host = self.host_input.current.value
+        ports_str = self.port_list_input.current.value
         
         if not host or not host.strip():
             self._show_snack("请输入主机地址", error=True)
@@ -442,7 +441,9 @@ class PortScannerView(ft.Container):
         # 去重并排序
         port_numbers = sorted(set(port_numbers))
         
-        self.custom_output.current.value = f"正在扫描 {host} 的 {len(port_numbers)} 个端口...\n\n"
+        self.log_output.current.value = f"正在扫描 {host} 的 {len(port_numbers)} 个端口...\n\n"
+        self.progress_bar.current.value = 0
+        self.progress_bar.current.visible = True
         self.update()
         
         open_ports = []
@@ -464,7 +465,10 @@ class PortScannerView(ft.Container):
             else:
                 closed_ports.append((port, service_name))
             
-            # 实时更新
+            # 更新进度
+            self.progress_bar.current.value = i / len(port_numbers)
+            
+            # 实时更新日志
             result_lines = [f"扫描进度: {i}/{len(port_numbers)}\n"]
             
             if open_ports:
@@ -481,33 +485,43 @@ class PortScannerView(ft.Container):
                 if len(closed_ports) > 5:
                     result_lines.append(f"  ... 还有 {len(closed_ports) - 5} 个")
             
-            self.custom_output.current.value = '\n'.join(result_lines)
+            self.log_output.current.value = '\n'.join(result_lines)
             self.update()
+        
+        self.progress_bar.current.visible = False
         
         # 添加统计
         result_lines.append("\n" + "="*50)
         result_lines.append(f"\n📊 统计: 开放 {len(open_ports)} / 关闭 {len(closed_ports)} / 总计 {len(port_numbers)}")
         
-        self.custom_output.current.value = '\n'.join(result_lines)
+        self.log_output.current.value = '\n'.join(result_lines)
         self.update()
         self._show_snack(f"扫描完成: 发现 {len(open_ports)} 个开放端口")
     
     async def _scan_common_ports(self):
         """扫描常用端口。"""
-        host = self.common_host.current.value
+        host = self.host_input.current.value
         
         if not host or not host.strip():
             self._show_snack("请输入主机地址", error=True)
             return
         
-        self.common_output.current.value = f"正在扫描 {host} 的常用端口...\n\n"
+        self.log_output.current.value = f"正在扫描 {host} 的常用端口...\n\n"
+        self.progress_bar.current.value = 0
+        self.progress_bar.current.visible = True
         self.update()
         
         open_ports = []
         closed_ports = []
         
+        total_ports = len(self.COMMON_PORTS)
+        current_count = 0
+        
         for port, service in sorted(self.COMMON_PORTS.items()):
             is_open, response_time = await self._check_port(host, port, timeout=2)
+            
+            current_count += 1
+            self.progress_bar.current.value = current_count / total_ports
             
             if is_open:
                 open_ports.append((port, service, response_time))
@@ -515,7 +529,7 @@ class PortScannerView(ft.Container):
                 closed_ports.append((port, service))
             
             # 实时更新结果
-            result_lines = [f"扫描进度: {len(open_ports) + len(closed_ports)}/{len(self.COMMON_PORTS)}\n"]
+            result_lines = [f"扫描进度: {current_count}/{total_ports}\n"]
             
             if open_ports:
                 result_lines.append("✅ 开放的端口:")
@@ -532,22 +546,24 @@ class PortScannerView(ft.Container):
                 if len(closed_ports) > 5:
                     result_lines.append(f"  ... 还有 {len(closed_ports) - 5} 个")
             
-            self.common_output.current.value = '\n'.join(result_lines)
+            self.log_output.current.value = '\n'.join(result_lines)
             self.update()
+        
+        self.progress_bar.current.visible = False
         
         # 添加统计
         result_lines.append("\n" + "="*50)
-        result_lines.append(f"\n📊 统计: 开放 {len(open_ports)} / 关闭 {len(closed_ports)} / 总计 {len(self.COMMON_PORTS)}")
+        result_lines.append(f"\n📊 统计: 开放 {len(open_ports)} / 关闭 {len(closed_ports)} / 总计 {total_ports}")
         
-        self.common_output.current.value = '\n'.join(result_lines)
+        self.log_output.current.value = '\n'.join(result_lines)
         self.update()
         self._show_snack(f"扫描完成: 发现 {len(open_ports)} 个开放端口")
     
     async def _scan_port_range(self):
         """扫描端口范围。"""
-        host = self.range_host.current.value
-        start_str = self.range_start.current.value
-        end_str = self.range_end.current.value
+        host = self.host_input.current.value
+        start_str = self.start_port_input.current.value
+        end_str = self.end_port_input.current.value
         
         if not host or not host.strip():
             self._show_snack("请输入主机地址", error=True)
@@ -572,9 +588,9 @@ class PortScannerView(ft.Container):
             self._show_snack("请输入有效的端口号", error=True)
             return
         
-        self.range_output.current.value = f"正在扫描 {host} 端口 {start_port}-{end_port}...\n\n"
-        self.range_progress.current.value = 0
-        self.range_progress.current.visible = True
+        self.log_output.current.value = f"正在扫描 {host} 端口 {start_port}-{end_port}...\n\n"
+        self.progress_bar.current.value = 0
+        self.progress_bar.current.visible = True
         self.update()
         
         open_ports = []
@@ -598,9 +614,9 @@ class PortScannerView(ft.Container):
             scanned += 1
             
             # 更新进度
-            self.range_progress.current.value = scanned / total_ports
+            self.progress_bar.current.value = scanned / total_ports
             
-            # 每10个端口更新一次显示
+            # 每10个端口更新一次显示，或者发现开放端口时立即更新
             if scanned % 10 == 0 or is_open:
                 result_lines = [f"扫描进度: {scanned}/{total_ports}\n"]
                 
@@ -611,11 +627,11 @@ class PortScannerView(ft.Container):
                 else:
                     result_lines.append("未发现开放端口...")
                 
-                self.range_output.current.value = '\n'.join(result_lines)
+                self.log_output.current.value = '\n'.join(result_lines)
                 self.update()
         
         # 完成
-        self.range_progress.current.visible = False
+        self.progress_bar.current.visible = False
         
         result_lines = []
         if open_ports:
@@ -629,7 +645,7 @@ class PortScannerView(ft.Container):
         result_lines.append(f"\n📊 扫描范围: {start_port}-{end_port} ({total_ports} 个端口)")
         result_lines.append(f"📊 开放端口: {len(open_ports)} 个")
         
-        self.range_output.current.value = '\n'.join(result_lines)
+        self.log_output.current.value = '\n'.join(result_lines)
         self.update()
         self._show_snack(f"扫描完成: 发现 {len(open_ports)} 个开放端口")
     
