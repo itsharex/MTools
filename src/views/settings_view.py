@@ -10,6 +10,7 @@ import threading
 import time
 import shutil
 from utils import logger
+from utils.file_utils import get_system_fonts
 
 import flet as ft
 import httpx
@@ -59,11 +60,66 @@ class SettingsView(ft.Container):
         self.current_wallpaper_index: int = 0  # 当前壁纸索引
         self.auto_switch_timer: Optional[threading.Timer] = None  # 自动切换定时器
         
+        # 恢复自定义字体（如果之前已设置）- 提前调用以验证字体有效性
+        self._restore_custom_font()
+        
         # 创建UI组件
         self._build_ui()
         
         # 恢复自动切换状态（如果之前已启用）
         self._restore_auto_switch_state()
+        
+        # 初始化文件选择器
+        self._init_file_picker()
+
+    def _init_file_picker(self) -> None:
+        """初始化文件选择器。"""
+        def on_font_file_picked(e: ft.FilePickerResultEvent):
+            if e.files and len(e.files) > 0:
+                file_path = e.files[0].path
+                self._load_custom_font_file(file_path)
+        
+        self.font_file_picker = ft.FilePicker(
+            on_result=on_font_file_picked
+        )
+        # 注意：这里不能直接添加到 page.overlay，因为 page 可能还没准备好
+        # 我们会在 did_mount 或者第一次打开对话框时添加
+    
+    def _restore_custom_font(self) -> None:
+        """恢复自定义字体（在初始化时调用）。"""
+        try:
+            custom_font_file = self.config_service.get_config_value("custom_font_file", None)
+            
+            if custom_font_file:
+                from pathlib import Path
+                font_path = Path(custom_font_file)
+                
+                if font_path.exists():
+                    # 获取字体名称
+                    font_name = font_path.stem
+                    custom_font_key = f"CustomFont_{font_name}"
+                    
+                    # 将字体添加到页面
+                    if not hasattr(self.page, 'fonts') or self.page.fonts is None:
+                        self.page.fonts = {}
+                    
+                    self.page.fonts[custom_font_key] = str(font_path)
+                    self.page.update()
+                    
+                    logger.info(f"成功恢复自定义字体: {custom_font_file}")
+                else:
+                    logger.warning(f"自定义字体文件不存在: {custom_font_file}")
+                    # 清除无效的字体配置
+                    self.config_service.set_config_value("custom_font_file", None)
+                    
+                    # 如果当前字体设置了自定义字体，重置为系统默认
+                    current_font = self.config_service.get_config_value("font_family", "System")
+                    if current_font != "System":
+                        self.config_service.set_config_value("font_family", "System")
+                        logger.info("因自定义字体文件丢失，已重置为系统默认字体")
+                    
+        except Exception as e:
+            logger.error(f"恢复自定义字体失败: {e}")
     
     def _restore_auto_switch_state(self) -> None:
         """恢复自动切换状态（在初始化时调用）。"""
@@ -2354,41 +2410,69 @@ class SettingsView(ft.Container):
             weight=ft.FontWeight.W_600,
         )
         
-        # 常用字体列表
-        common_fonts = [
-            ("System", "系统默认"),
-            ("Microsoft YaHei", "微软雅黑"),
-            ("SimSun", "宋体"),
-            ("SimHei", "黑体"),
-            ("KaiTi", "楷体"),
-            ("FangSong", "仿宋"),
-            ("Arial", "Arial"),
-            ("Consolas", "Consolas"),
-            ("Courier New", "Courier New"),
-            ("Times New Roman", "Times New Roman"),
-            ("Verdana", "Verdana"),
-        ]
+        # 获取系统已安装的字体列表（保存为实例变量）
+        self.system_fonts = get_system_fonts()
         
         # 获取当前字体
         current_font = self.config_service.get_config_value("font_family", "System")
         current_scale = self.config_service.get_config_value("font_scale", 1.0)
         
-        # 字体下拉选择
-        self.font_dropdown = ft.Dropdown(
-            label="选择字体",
-            options=[
-                ft.dropdown.Option(key=font[0], text=font[1])
-                for font in common_fonts
-            ],
-            value=current_font,
-            on_change=self._on_font_change,
-            width=300,
+        # 确保当前字体在列表中（如果不在，添加它）
+        font_keys = [font[0] for font in self.system_fonts]
+        if current_font and current_font not in font_keys:
+            # 只有当 current_font 有效时才添加
+            self.system_fonts.insert(1, (current_font, current_font))
+        
+        # 获取当前字体的显示名称
+        current_font_display = current_font
+        for font_key, font_name in self.system_fonts:
+            if font_key == current_font:
+                current_font_display = font_name
+                break
+        
+        # 当前字体显示文本
+        self.current_font_text = ft.Text(
+            current_font_display,
+            size=14,
+            color=ft.Colors.ON_SURFACE_VARIANT,
+            max_lines=1,
+            overflow=ft.TextOverflow.ELLIPSIS,
+        )
+        
+        # 字体选择区域（重新设计为卡片样式）
+        self.font_selector_tile = ft.Container(
+            content=ft.Row(
+                controls=[
+                    ft.Container(
+                        content=ft.Icon(ft.Icons.FONT_DOWNLOAD_OUTLINED, size=24, color=ft.Colors.PRIMARY),
+                        padding=10,
+                        bgcolor=ft.Colors.with_opacity(0.1, ft.Colors.PRIMARY),
+                        border_radius=8,
+                    ),
+                    ft.Container(width=12),
+                    ft.Column(
+                        controls=[
+                            ft.Text("字体系列", size=15, weight=ft.FontWeight.W_500),
+                            self.current_font_text,
+                        ],
+                        spacing=2,
+                        expand=True,
+                    ),
+                    ft.Icon(ft.Icons.CHEVRON_RIGHT, size=20, color=ft.Colors.OUTLINE),
+                ],
+                alignment=ft.MainAxisAlignment.START,
+            ),
+            padding=PADDING_MEDIUM,
+            border=ft.border.all(1, ft.Colors.OUTLINE_VARIANT),
+            border_radius=BORDER_RADIUS_MEDIUM,
+            ink=True,
+            on_click=self._open_font_selector_dialog,
         )
         
         # 字体大小滑块
         self.font_scale_text = ft.Text(
-            f"字体大小: {int(current_scale * 100)}%",
-            size=14,
+            f"{int(current_scale * 100)}%",
+            size=13,
             weight=ft.FontWeight.W_500,
         )
         
@@ -2404,7 +2488,13 @@ class SettingsView(ft.Container):
         # 字体大小容器
         font_size_container = ft.Column(
             controls=[
-                self.font_scale_text,
+                ft.Row(
+                    controls=[
+                        ft.Text("字体大小", size=14, weight=ft.FontWeight.W_500),
+                        self.font_scale_text,
+                    ],
+                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                ),
                 self.font_scale_slider,
                 ft.Text(
                     "80% (较小) - 100% (标准) - 150% (特大)",
@@ -2412,7 +2502,7 @@ class SettingsView(ft.Container):
                     color=ft.Colors.ON_SURFACE_VARIANT,
                 ),
             ],
-            spacing=PADDING_MEDIUM // 2,
+            spacing=PADDING_SMALL,
         )
         
         # 预览文本
@@ -2436,6 +2526,7 @@ class SettingsView(ft.Container):
             padding=PADDING_MEDIUM,
             border=ft.border.all(1, ft.Colors.OUTLINE),
             border_radius=BORDER_RADIUS_MEDIUM,
+            bgcolor=ft.Colors.with_opacity(0.02, ft.Colors.ON_SURFACE),
         )
         
         # 说明文字
@@ -2451,10 +2542,10 @@ class SettingsView(ft.Container):
                 controls=[
                     section_title,
                     ft.Container(height=PADDING_MEDIUM),
-                    self.font_dropdown,
-                    ft.Container(height=PADDING_MEDIUM),
+                    self.font_selector_tile,
+                    ft.Container(height=PADDING_LARGE),
                     font_size_container,
-                    ft.Container(height=PADDING_MEDIUM),
+                    ft.Container(height=PADDING_LARGE),
                     preview_container,
                     ft.Container(height=PADDING_MEDIUM // 2),
                     info_text,
@@ -3177,6 +3268,410 @@ class SettingsView(ft.Container):
                 subprocess.run(["xdg-open", str(data_dir)])
         except Exception as ex:
             self._show_snackbar(f"打开目录失败: {ex}", ft.Colors.RED)
+    
+    def _create_font_tile(self, font_key: str, font_display: str) -> ft.Container:
+        """创建字体列表项。
+        
+        Args:
+            font_key: 字体键名
+            font_display: 字体显示名
+            
+        Returns:
+            字体列表项容器
+        """
+        current_font = self.config_service.get_config_value("font_family", "System")
+        is_selected = font_key == current_font
+        
+        return ft.Container(
+            content=ft.Row(
+                controls=[
+                    # 左侧：字体信息
+                    ft.Column(
+                        controls=[
+                            ft.Text(
+                                font_display,
+                                size=14,
+                                weight=ft.FontWeight.BOLD if is_selected else ft.FontWeight.NORMAL,
+                                color=ft.Colors.PRIMARY if is_selected else ft.Colors.ON_SURFACE,
+                            ),
+                            ft.Text(
+                                "The quick brown fox jumps over the lazy dog",
+                                size=13,
+                                font_family=font_key,
+                                color=ft.Colors.ON_SURFACE_VARIANT,
+                                no_wrap=True,
+                                overflow=ft.TextOverflow.ELLIPSIS,
+                            ),
+                        ],
+                        spacing=4,
+                        expand=True,
+                    ),
+                    # 右侧：选中标记
+                    ft.Icon(
+                        ft.Icons.CHECK_CIRCLE,
+                        color=ft.Colors.PRIMARY,
+                        size=24,
+                        visible=is_selected,
+                    ),
+                ],
+                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+            ),
+            padding=ft.padding.all(12),
+            ink=True,
+            on_click=lambda e, fk=font_key, fd=font_display: self._apply_font_selection(fk, fd),
+            border=ft.border.all(1, ft.Colors.PRIMARY if is_selected else ft.Colors.TRANSPARENT),
+            border_radius=BORDER_RADIUS_MEDIUM,
+            bgcolor=ft.Colors.with_opacity(0.1, ft.Colors.PRIMARY) if is_selected else ft.Colors.with_opacity(0.02, ft.Colors.ON_SURFACE),
+        )
+
+    def _open_font_selector_dialog(self, e: ft.ControlEvent) -> None:
+        """打开字体选择对话框。
+        
+        Args:
+            e: 控件事件对象
+        """
+        # 确保文件选择器在页面overlay中
+        if hasattr(self, 'font_file_picker') and self.font_file_picker not in self.page.overlay:
+            self.page.overlay.append(self.font_file_picker)
+            self.page.update()
+        
+        # 搜索框
+        search_field = ft.TextField(
+            hint_text="搜索字体...",
+            prefix_icon=ft.Icons.SEARCH,
+            on_change=lambda e: self._filter_font_list(e.control.value),
+            expand=True,
+            height=40,
+            content_padding=10,
+            border_radius=BORDER_RADIUS_MEDIUM,
+            text_size=14,
+        )
+        
+        # 导入文件按钮
+        import_btn = ft.ElevatedButton(
+            "导入字体文件",
+            icon=ft.Icons.UPLOAD_FILE,
+            on_click=lambda e: self._pick_font_file(),
+            style=ft.ButtonStyle(
+                padding=ft.padding.symmetric(horizontal=16, vertical=0),
+                shape=ft.RoundedRectangleBorder(radius=BORDER_RADIUS_MEDIUM),
+            ),
+            height=40,
+        )
+        
+        # 初始化分页相关变量
+        self.filtered_fonts = self.system_fonts
+        self.current_page = 0
+        self.PAGE_SIZE = 15  # 每页显示15个字体
+        
+        # 字体列表列
+        self.font_list_column = ft.Column(
+            controls=[],
+            spacing=4,
+            scroll=ft.ScrollMode.AUTO,
+            expand=True,
+        )
+        
+        # 翻页控制组件
+        self.page_info_text = ft.Text("0 / 0", size=12)
+        
+        self.first_page_btn = ft.IconButton(
+            ft.Icons.FIRST_PAGE,
+            on_click=lambda e: self._goto_first_page(),
+            disabled=True,
+            tooltip="首页",
+            icon_size=20,
+        )
+        
+        self.prev_page_btn = ft.IconButton(
+            ft.Icons.CHEVRON_LEFT,
+            on_click=lambda e: self._change_font_page(-1),
+            disabled=True,
+            tooltip="上一页",
+            icon_size=20,
+        )
+        
+        self.next_page_btn = ft.IconButton(
+            ft.Icons.CHEVRON_RIGHT,
+            on_click=lambda e: self._change_font_page(1),
+            disabled=True,
+            tooltip="下一页",
+            icon_size=20,
+        )
+        
+        self.last_page_btn = ft.IconButton(
+            ft.Icons.LAST_PAGE,
+            on_click=lambda e: self._goto_last_page(),
+            disabled=True,
+            tooltip="尾页",
+            icon_size=20,
+        )
+        
+        # 字体列表容器
+        font_list_container = ft.Container(
+            content=self.font_list_column,
+            expand=True,
+            border=ft.border.all(1, ft.Colors.OUTLINE_VARIANT),
+            border_radius=BORDER_RADIUS_MEDIUM,
+            padding=4,
+            bgcolor=ft.Colors.with_opacity(0.01, ft.Colors.ON_SURFACE),
+        )
+        
+        # 对话框内容
+        dialog_content = ft.Container(
+            width=600,
+            height=700,
+            padding=PADDING_MEDIUM,
+            content=ft.Column(
+                controls=[
+                    # 标题栏
+                    ft.Row(
+                        controls=[
+                            ft.Text("选择字体", size=20, weight=ft.FontWeight.W_600),
+                            ft.IconButton(ft.Icons.CLOSE, on_click=lambda e: self._close_font_selector_dialog()),
+                        ],
+                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                    ),
+                    ft.Container(height=10),
+                    
+                    # 搜索栏和导入按钮
+                    ft.Row(
+                        controls=[
+                            search_field,
+                            import_btn,
+                        ],
+                        spacing=10,
+                    ),
+                    ft.Container(height=10),
+                    ft.Text(f"共 {len(self.system_fonts)} 个字体", size=12, color=ft.Colors.ON_SURFACE_VARIANT),
+                    ft.Container(height=5),
+                    
+                    # 列表区域
+                    font_list_container,
+                    
+                    # 底部区域（分页）
+                    ft.Container(
+                        content=ft.Row(
+                            controls=[
+                                self.first_page_btn,
+                                self.prev_page_btn,
+                                self.page_info_text,
+                                self.next_page_btn,
+                                self.last_page_btn,
+                            ],
+                            alignment=ft.MainAxisAlignment.CENTER,
+                        ),
+                        padding=ft.padding.only(top=PADDING_SMALL),
+                    ),
+                ],
+                spacing=0,
+            )
+        )
+        
+        # 创建对话框
+        self.font_selector_dialog = ft.AlertDialog(
+            content=dialog_content,
+            modal=True, # 模态对话框
+            shape=ft.RoundedRectangleBorder(radius=BORDER_RADIUS_MEDIUM),
+            content_padding=0,
+        )
+        
+        # 显示对话框
+        self.page.overlay.append(self.font_selector_dialog)
+        self.font_selector_dialog.open = True
+        self.page.update()
+        
+        # 初始加载第一页数据
+        self._update_font_page()
+    
+    def _change_font_page(self, delta: int) -> None:
+        """切换字体列表页码。
+        
+        Args:
+            delta: 页码变化值（+1 或 -1）
+        """
+        new_page = self.current_page + delta
+        max_page = max(0, (len(self.filtered_fonts) - 1) // self.PAGE_SIZE)
+        
+        if 0 <= new_page <= max_page:
+            self.current_page = new_page
+            self._update_font_page()
+            
+    def _goto_first_page(self) -> None:
+        """跳转到第一页。"""
+        self.current_page = 0
+        self._update_font_page()
+        
+    def _goto_last_page(self) -> None:
+        """跳转到最后一页。"""
+        total_fonts = len(self.filtered_fonts)
+        total_pages = max(1, (total_fonts + self.PAGE_SIZE - 1) // self.PAGE_SIZE)
+        self.current_page = max(0, total_pages - 1)
+        self._update_font_page()
+            
+    def _update_font_page(self) -> None:
+        """更新当前页的字体列表。"""
+        start_index = self.current_page * self.PAGE_SIZE
+        end_index = start_index + self.PAGE_SIZE
+        
+        # 获取当前页的字体
+        current_batch = self.filtered_fonts[start_index:end_index]
+        
+        # 创建控件
+        new_tiles = [self._create_font_tile(font[0], font[1]) for font in current_batch]
+        self.font_list_column.controls = new_tiles
+        self.font_list_column.update()
+        
+        # 更新分页信息
+        total_fonts = len(self.filtered_fonts)
+        total_pages = max(1, (total_fonts + self.PAGE_SIZE - 1) // self.PAGE_SIZE)
+        self.page_info_text.value = f"{self.current_page + 1} / {total_pages}"
+        self.page_info_text.update()
+        
+        # 更新按钮状态
+        is_first = self.current_page <= 0
+        is_last = self.current_page >= total_pages - 1
+        
+        self.first_page_btn.disabled = is_first
+        self.prev_page_btn.disabled = is_first
+        self.next_page_btn.disabled = is_last
+        self.last_page_btn.disabled = is_last
+        
+        self.first_page_btn.update()
+        self.prev_page_btn.update()
+        self.next_page_btn.update()
+        self.last_page_btn.update()
+    
+    def _filter_font_list(self, search_text: str) -> None:
+        """过滤字体列表。
+        
+        Args:
+            search_text: 搜索文本
+        """
+        search_text = search_text.lower().strip()
+        
+        if not search_text:
+            # 显示所有字体
+            self.filtered_fonts = self.system_fonts
+        else:
+            # 根据搜索文本过滤
+            self.filtered_fonts = [
+                font for font in self.system_fonts
+                if search_text in font[0].lower() or search_text in font[1].lower()
+            ]
+        
+        # 重置到第一页
+        self.current_page = 0
+        self._update_font_page()
+    
+    def _apply_font_selection(self, font_key: str, font_display: str) -> None:
+        """应用选中的字体。
+        
+        Args:
+            font_key: 字体键名
+            font_display: 字体显示名
+        """
+        # 保存字体设置
+        if self.config_service.set_config_value("font_family", font_key):
+            # 更新当前字体显示
+            self.current_font_text.value = font_display
+            self.current_font_text.update()
+            
+            # 更新预览文本字体
+            self.font_preview_text.font_family = font_key
+            self.font_preview_text.update()
+            
+            # 尝试更新页面字体（部分生效）
+            if self.page.theme:
+                self.page.theme.font_family = font_key
+            if self.page.dark_theme:
+                self.page.dark_theme.font_family = font_key
+            self.page.update()
+            
+            # 关闭对话框
+            self._close_font_selector_dialog()
+            
+            self._show_snackbar("字体已更新，重启应用后完全生效", ft.Colors.GREEN)
+        else:
+            self._show_snackbar("字体更新失败", ft.Colors.RED)
+    
+    def _close_font_selector_dialog(self) -> None:
+        """关闭字体选择对话框。"""
+        if hasattr(self, 'font_selector_dialog'):
+            self.font_selector_dialog.open = False
+            self.page.update()
+    
+    def _pick_font_file(self) -> None:
+        """打开文件选择器选择字体文件。"""
+        # 确保文件选择器已初始化
+        if not hasattr(self, 'font_file_picker'):
+            self._init_file_picker()
+            
+        # 确保文件选择器在页面overlay中
+        if self.font_file_picker not in self.page.overlay:
+            self.page.overlay.append(self.font_file_picker)
+            self.page.update()
+            
+        self.font_file_picker.pick_files(
+            dialog_title="选择字体文件",
+            allowed_extensions=["ttf", "otf", "ttc", "woff", "woff2"],
+            allow_multiple=False,
+        )
+    
+    def _load_custom_font_file(self, file_path: str) -> None:
+        """加载自定义字体文件。
+        
+        Args:
+            file_path: 字体文件路径
+        """
+        try:
+            from pathlib import Path
+            import shutil
+            
+            font_file = Path(file_path)
+            if not font_file.exists():
+                self._show_snackbar("字体文件不存在", ft.Colors.RED)
+                return
+            
+            # 获取字体文件名（不含扩展名）
+            font_name = font_file.stem
+            
+            # 创建自定义字体目录
+            # 将字体文件保存在数据目录下的 custom_fonts 子目录中
+            data_dir = self.config_service.get_data_dir()
+            custom_fonts_dir = data_dir / "custom_fonts"
+            custom_fonts_dir.mkdir(parents=True, exist_ok=True)
+            
+            # 复制字体文件到自定义字体目录
+            dest_font_file = custom_fonts_dir / font_file.name
+            shutil.copy2(font_file, dest_font_file)
+            
+            # 保存字体文件路径到配置
+            self.config_service.set_config_value("custom_font_file", str(dest_font_file))
+            
+            # 在Flet中注册字体
+            try:
+                # 为字体创建一个唯一名称
+                custom_font_key = f"CustomFont_{font_name}"
+                
+                # 将字体添加到页面
+                if not hasattr(self.page, 'fonts') or self.page.fonts is None:
+                    self.page.fonts = {}
+                
+                self.page.fonts[custom_font_key] = str(dest_font_file)
+                
+                # 应用字体
+                self._apply_font_selection(custom_font_key, f"{font_name} (自定义)")
+                
+                logger.info(f"成功加载字体文件: {file_path}")
+                
+            except Exception as e:
+                logger.error(f"注册字体失败: {e}")
+                self._show_snackbar(f"注册字体失败: {e}", ft.Colors.RED)
+                
+        except Exception as e:
+            logger.error(f"加载字体文件失败: {e}")
+            self._show_snackbar(f"加载字体文件失败: {e}", ft.Colors.RED)
     
     def _on_font_change(self, e: ft.ControlEvent) -> None:
         """字体更改事件处理。

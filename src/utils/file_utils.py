@@ -5,10 +5,12 @@
 """
 
 import os
+import platform
 import shutil
+import subprocess
 import sys
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional, Tuple
 from utils import logger
 
 
@@ -186,4 +188,317 @@ def list_files_by_extension(directory: Path, extensions: List[str]) -> List[Path
         logger.error(f"列出文件失败: {e}")
     
     return files
+
+
+def get_system_fonts() -> List[Tuple[str, str]]:
+    """获取系统已安装的所有字体列表。
+    
+    返回格式为 [(字体名称, 显示名称), ...] 的列表。
+    字体名称用于设置字体，显示名称用于在界面上展示。
+    
+    Returns:
+        字体列表，每项为 (字体名称, 显示名称) 元组
+    """
+    fonts: List[Tuple[str, str]] = []
+    
+    # 添加系统默认字体
+    fonts.append(("System", "系统默认"))
+    
+    try:
+        system = platform.system()
+        
+        if system == "Windows":
+            fonts.extend(_get_windows_fonts())
+        elif system == "Darwin":  # macOS
+            fonts.extend(_get_macos_fonts())
+        elif system == "Linux":
+            fonts.extend(_get_linux_fonts())
+        else:
+            logger.warning(f"未知系统类型: {system}")
+            
+    except Exception as e:
+        logger.error(f"获取系统字体失败: {e}")
+    
+    # 去重并排序（保持"系统默认"在最前面）
+    seen = {"System"}
+    unique_fonts = [fonts[0]]  # 保留系统默认
+    for font in fonts[1:]:
+        if font[0] not in seen:
+            seen.add(font[0])
+            unique_fonts.append(font)
+    
+    # 常用中文字体推荐顺序（优先级最高）
+    priority_fonts = [
+        "微软雅黑", "Microsoft YaHei",
+        "微软雅黑 UI", "Microsoft YaHei UI",
+        "黑体", "SimHei", "Heiti SC", "STHeiti",
+        "宋体", "SimSun", "STSong",
+        "楷体", "KaiTi", "STKaiti",
+        "仿宋", "FangSong", "STFangsong",
+        "新宋体", "NSimSun",
+        "苹方-简", "PingFang SC",
+        "思源黑体-简", "Noto Sans CJK SC",
+        "思源宋体-简", "Noto Serif CJK SC",
+        "文泉驿微米黑", "WenQuanYi Micro Hei",
+    ]
+
+    def sort_key(font_tuple):
+        name, display_name = font_tuple
+        
+        # 1. 优先级最高：在推荐列表中的字体
+        if display_name in priority_fonts:
+            return (0, priority_fonts.index(display_name))
+        if name in priority_fonts:
+            return (0, priority_fonts.index(name))
+            
+        # 2. 其次：包含中文的字体（认为中文字体对用户更重要）
+        # 判断显示名称是否包含中文字符
+        is_chinese = any('\u4e00' <= char <= '\u9fff' for char in display_name)
+        if is_chinese:
+            return (1, display_name)
+            
+        # 3. 最后：其他字体（主要是英文），按名称排序
+        return (2, display_name)
+    
+    # 对除第一个之外的字体应用自定义排序
+    unique_fonts[1:] = sorted(unique_fonts[1:], key=sort_key)
+    
+    return unique_fonts
+
+
+def _get_windows_fonts() -> List[Tuple[str, str]]:
+    """获取 Windows 系统字体。
+    
+    Returns:
+        字体列表
+    """
+    fonts: List[Tuple[str, str]] = []
+    
+    try:
+        # Windows 字体目录
+        system_root = os.environ.get("SystemRoot", "C:\\Windows")
+        fonts_dir = Path(system_root) / "Fonts"
+        
+        if not fonts_dir.exists():
+            return fonts
+        
+        # 常见字体文件扩展名
+        font_extensions = {".ttf", ".otf", ".ttc", ".fon"}
+        
+        # 遍历字体文件
+        for font_file in fonts_dir.iterdir():
+            if font_file.is_file() and font_file.suffix.lower() in font_extensions:
+                font_name = font_file.stem
+                
+                # 处理常见中文字体名称映射
+                display_name = _get_font_display_name(font_name)
+                
+                fonts.append((font_name, display_name))
+        
+        # 添加常见 Windows 字体（即使未在目录中找到）
+        common_windows_fonts = [
+            ("Microsoft YaHei", "微软雅黑"),
+            ("Microsoft YaHei UI", "微软雅黑 UI"),
+            ("SimSun", "宋体"),
+            ("SimHei", "黑体"),
+            ("KaiTi", "楷体"),
+            ("FangSong", "仿宋"),
+            ("NSimSun", "新宋体"),
+            ("Arial", "Arial"),
+            ("Calibri", "Calibri"),
+            ("Consolas", "Consolas"),
+            ("Courier New", "Courier New"),
+            ("Georgia", "Georgia"),
+            ("Times New Roman", "Times New Roman"),
+            ("Trebuchet MS", "Trebuchet MS"),
+            ("Verdana", "Verdana"),
+            ("Segoe UI", "Segoe UI"),
+        ]
+        
+        fonts.extend(common_windows_fonts)
+        
+    except Exception as e:
+        logger.error(f"获取 Windows 字体失败: {e}")
+    
+    return fonts
+
+
+def _get_macos_fonts() -> List[Tuple[str, str]]:
+    """获取 macOS 系统字体。
+    
+    Returns:
+        字体列表
+    """
+    fonts: List[Tuple[str, str]] = []
+    
+    try:
+        # macOS 字体目录
+        font_dirs = [
+            Path("/System/Library/Fonts"),
+            Path("/Library/Fonts"),
+            Path.home() / "Library" / "Fonts",
+        ]
+        
+        font_extensions = {".ttf", ".otf", ".ttc", ".dfont"}
+        
+        for fonts_dir in font_dirs:
+            if not fonts_dir.exists():
+                continue
+            
+            for font_file in fonts_dir.rglob("*"):
+                if font_file.is_file() and font_file.suffix.lower() in font_extensions:
+                    font_name = font_file.stem
+                    display_name = _get_font_display_name(font_name)
+                    fonts.append((font_name, display_name))
+        
+        # 添加常见 macOS 字体
+        common_macos_fonts = [
+            ("PingFang SC", "苹方-简"),
+            ("PingFang TC", "苹方-繁"),
+            ("Heiti SC", "黑体-简"),
+            ("Heiti TC", "黑体-繁"),
+            ("STHeiti", "华文黑体"),
+            ("STKaiti", "华文楷体"),
+            ("STSong", "华文宋体"),
+            ("STFangsong", "华文仿宋"),
+            ("Helvetica", "Helvetica"),
+            ("Helvetica Neue", "Helvetica Neue"),
+            ("Arial", "Arial"),
+            ("Times New Roman", "Times New Roman"),
+            ("Courier New", "Courier New"),
+            ("Monaco", "Monaco"),
+            ("Menlo", "Menlo"),
+            ("San Francisco", "San Francisco"),
+        ]
+        
+        fonts.extend(common_macos_fonts)
+        
+    except Exception as e:
+        logger.error(f"获取 macOS 字体失败: {e}")
+    
+    return fonts
+
+
+def _get_linux_fonts() -> List[Tuple[str, str]]:
+    """获取 Linux 系统字体。
+    
+    Returns:
+        字体列表
+    """
+    fonts: List[Tuple[str, str]] = []
+    
+    try:
+        # 尝试使用 fc-list 命令获取字体列表
+        try:
+            result = subprocess.run(
+                ["fc-list", ":", "family"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            
+            if result.returncode == 0:
+                for line in result.stdout.split("\n"):
+                    line = line.strip()
+                    if line:
+                        # fc-list 输出格式可能包含多个字体名，用逗号分隔
+                        font_names = [f.strip() for f in line.split(",")]
+                        for font_name in font_names:
+                            if font_name:
+                                display_name = _get_font_display_name(font_name)
+                                fonts.append((font_name, display_name))
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            # fc-list 不可用，尝试遍历字体目录
+            font_dirs = [
+                Path("/usr/share/fonts"),
+                Path("/usr/local/share/fonts"),
+                Path.home() / ".fonts",
+                Path.home() / ".local" / "share" / "fonts",
+            ]
+            
+            font_extensions = {".ttf", ".otf", ".ttc"}
+            
+            for fonts_dir in font_dirs:
+                if not fonts_dir.exists():
+                    continue
+                
+                for font_file in fonts_dir.rglob("*"):
+                    if font_file.is_file() and font_file.suffix.lower() in font_extensions:
+                        font_name = font_file.stem
+                        display_name = _get_font_display_name(font_name)
+                        fonts.append((font_name, display_name))
+        
+        # 添加常见 Linux 字体
+        common_linux_fonts = [
+            ("Noto Sans CJK SC", "思源黑体-简"),
+            ("Noto Serif CJK SC", "思源宋体-简"),
+            ("WenQuanYi Micro Hei", "文泉驿微米黑"),
+            ("WenQuanYi Zen Hei", "文泉驿正黑"),
+            ("Droid Sans Fallback", "Droid Sans Fallback"),
+            ("Ubuntu", "Ubuntu"),
+            ("DejaVu Sans", "DejaVu Sans"),
+            ("DejaVu Serif", "DejaVu Serif"),
+            ("DejaVu Sans Mono", "DejaVu Sans Mono"),
+            ("Liberation Sans", "Liberation Sans"),
+            ("Liberation Serif", "Liberation Serif"),
+            ("Liberation Mono", "Liberation Mono"),
+        ]
+        
+        fonts.extend(common_linux_fonts)
+        
+    except Exception as e:
+        logger.error(f"获取 Linux 字体失败: {e}")
+    
+    return fonts
+
+
+def _get_font_display_name(font_name: str) -> str:
+    """获取字体的显示名称。
+    
+    对于中文字体，返回中文名称；对于英文字体，保持原名。
+    
+    Args:
+        font_name: 字体名称
+    
+    Returns:
+        显示名称
+    """
+    # 常见字体名称映射
+    font_name_map = {
+        # Windows 中文字体
+        "Microsoft YaHei": "微软雅黑",
+        "Microsoft YaHei UI": "微软雅黑 UI",
+        "SimSun": "宋体",
+        "SimHei": "黑体",
+        "KaiTi": "楷体",
+        "FangSong": "仿宋",
+        "NSimSun": "新宋体",
+        "MingLiU": "细明体",
+        "PMingLiU": "新细明体",
+        
+        # macOS 中文字体
+        "PingFang SC": "苹方-简",
+        "PingFang TC": "苹方-繁",
+        "Heiti SC": "黑体-简",
+        "Heiti TC": "黑体-繁",
+        "STHeiti": "华文黑体",
+        "STKaiti": "华文楷体",
+        "STSong": "华文宋体",
+        "STFangsong": "华文仿宋",
+        "STXihei": "华文细黑",
+        "STZhongsong": "华文中宋",
+        
+        # Linux 中文字体
+        "Noto Sans CJK SC": "思源黑体-简",
+        "Noto Serif CJK SC": "思源宋体-简",
+        "WenQuanYi Micro Hei": "文泉驿微米黑",
+        "WenQuanYi Zen Hei": "文泉驿正黑",
+    }
+    
+    # 如果在映射表中找到，返回对应的中文名
+    if font_name in font_name_map:
+        return font_name_map[font_name]
+    
+    # 否则返回原名
+    return font_name
 
