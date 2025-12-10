@@ -586,9 +586,33 @@ class ImageWatermarkView(ft.Container):
             value="same",
         )
         
-        self.overwrite_checkbox = ft.Checkbox(
-            label="覆盖原文件",
-            value=False,
+        self.output_mode_radio = ft.RadioGroup(
+            content=ft.Column(
+                controls=[
+                    ft.Radio(value="overwrite", label="覆盖原文件"),
+                    ft.Radio(value="same", label="保存到原文件目录"),
+                    ft.Radio(value="custom", label="自定义输出目录"),
+                ],
+                spacing=PADDING_SMALL // 2,
+            ),
+            value="same",
+            on_change=self._on_output_mode_change,
+        )
+        
+        default_output = self.config_service.get_output_dir() / "watermarked_images"
+        self.custom_output_dir = ft.TextField(
+            label="输出目录",
+            value=str(default_output),
+            disabled=True,
+            expand=True,
+            dense=True,
+        )
+        
+        self.browse_output_button = ft.IconButton(
+            icon=ft.Icons.FOLDER_OPEN,
+            tooltip="浏览",
+            on_click=self._on_browse_output,
+            disabled=True,
         )
         
         output_section = ft.Container(
@@ -596,12 +620,16 @@ class ImageWatermarkView(ft.Container):
                 controls=[
                     ft.Text("输出设置", size=16, weight=ft.FontWeight.BOLD),
                     ft.Container(height=PADDING_SMALL),
+                    self.output_format_dropdown,
+                    ft.Container(height=PADDING_SMALL),
+                    ft.Text("输出路径:", size=13),
+                    self.output_mode_radio,
                     ft.Row(
                         controls=[
-                            self.output_format_dropdown,
-                            self.overwrite_checkbox,
+                            self.custom_output_dir,
+                            self.browse_output_button,
                         ],
-                        spacing=PADDING_MEDIUM,
+                        spacing=PADDING_SMALL,
                     ),
                 ],
                 spacing=PADDING_SMALL,
@@ -1371,6 +1399,31 @@ class ImageWatermarkView(ft.Container):
             elif was_first and self.preview_image.visible:
                 self._on_preview(None)
     
+    def _on_output_mode_change(self, e: ft.ControlEvent) -> None:
+        """输出模式变化事件。"""
+        is_custom = e.control.value == "custom"
+        self.custom_output_dir.disabled = not is_custom
+        self.browse_output_button.disabled = not is_custom
+        try:
+            self.page.update()
+        except:
+            pass
+    
+    def _on_browse_output(self, e: ft.ControlEvent) -> None:
+        """浏览输出目录按钮点击事件。"""
+        def on_result(result: ft.FilePickerResultEvent) -> None:
+            if result.path:
+                self.custom_output_dir.value = result.path
+                try:
+                    self.page.update()
+                except:
+                    pass
+        
+        picker = ft.FilePicker(on_result=on_result)
+        self.page.overlay.append(picker)
+        self.page.update()
+        picker.get_directory_path(dialog_title="选择输出目录")
+    
     def _on_preview(self, e: Optional[ft.ControlEvent]) -> None:
         """预览按钮点击事件。"""
         if not self.selected_files:
@@ -1788,18 +1841,24 @@ class ImageWatermarkView(ft.Container):
                     watermarked = Image.alpha_composite(img, txt_layer)
                     
                     # 确定输出路径和格式
-                    if self.overwrite_checkbox.value:
+                    output_mode = self.output_mode_radio.value
+                    
+                    # 确定输出格式和扩展名
+                    if self.output_format_dropdown.value == "same":
+                        output_format = file_path.suffix[1:].upper()
+                        ext = file_path.suffix
+                    else:
+                        output_format = self.output_format_dropdown.value.upper()
+                        ext = f".{self.output_format_dropdown.value}"
+                    
+                    if output_mode == "overwrite":
                         output_path = file_path
                         output_format = file_path.suffix[1:].upper()
-                    else:
-                        # 确定输出格式
-                        if self.output_format_dropdown.value == "same":
-                            output_format = file_path.suffix[1:].upper()
-                            ext = file_path.suffix
-                        else:
-                            output_format = self.output_format_dropdown.value.upper()
-                            ext = f".{self.output_format_dropdown.value}"
-                        
+                    elif output_mode == "custom":
+                        output_dir = Path(self.custom_output_dir.value)
+                        output_dir.mkdir(parents=True, exist_ok=True)
+                        output_path = output_dir / f"{file_path.stem}{ext}"
+                    else:  # same
                         # 生成新文件名
                         output_path = file_path.parent / f"{file_path.stem}_watermark{ext}"
                         counter = 1

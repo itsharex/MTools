@@ -139,8 +139,8 @@ class AudioFormatView(ft.Container):
             horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
         )
         
-        # 右侧：转换选项
-        # 1. 输出格式
+        # 转换选项
+        # 输出格式选择
         format_options = []
         for fmt in self.audio_service.get_supported_formats():
             format_options.append(
@@ -153,26 +153,13 @@ class AudioFormatView(ft.Container):
         self.output_format_dropdown: ft.Dropdown = ft.Dropdown(
             options=format_options,
             value="mp3",
-            label="输出格式",
+            label="目标格式",
             width=320,
             dense=True,
             on_change=self._on_format_change,
         )
         
-        format_section: ft.Container = ft.Container(
-            content=ft.Column(
-                controls=[
-                    ft.Text("输出格式", size=14, weight=ft.FontWeight.W_500),
-                    self.output_format_dropdown,
-                ],
-                spacing=PADDING_SMALL,
-            ),
-            padding=PADDING_MEDIUM,
-            border=ft.border.all(1, ft.Colors.OUTLINE_VARIANT),
-            border_radius=BORDER_RADIUS_MEDIUM,
-        )
-        
-        # 2. 音质设置
+        # 音质设置
         self.quality_mode_radio: ft.RadioGroup = ft.RadioGroup(
             content=ft.Column(
                 controls=[
@@ -237,14 +224,17 @@ class AudioFormatView(ft.Container):
             disabled=True,
         )
         
-        quality_section: ft.Container = ft.Container(
+        # 左侧：音频设置（格式 + 音质）
+        audio_settings_section: ft.Container = ft.Container(
             content=ft.Column(
                 controls=[
-                    ft.Text("音质设置", size=14, weight=ft.FontWeight.W_500),
+                    ft.Text("音频设置", size=14, weight=ft.FontWeight.W_500),
+                    ft.Container(height=PADDING_SMALL),
                     self.quality_mode_radio,
                     ft.Container(height=PADDING_SMALL),
                     self.bitrate_dropdown,
                     self.sample_rate_dropdown,
+                    ft.Container(height=PADDING_SMALL // 2),
                     ft.Text("声道", size=13),
                     self.channels_radio,
                 ],
@@ -255,24 +245,26 @@ class AudioFormatView(ft.Container):
             border_radius=BORDER_RADIUS_MEDIUM,
         )
         
-        # 3. 输出选项
+        # 右侧：输出选项（包含输出格式）
         self.output_mode_radio: ft.RadioGroup = ft.RadioGroup(
             content=ft.Column(
                 controls=[
-                    ft.Radio(value="new", label="保存为新文件（添加后缀）"),
+                    ft.Radio(value="same", label="保存到原文件目录"),
                     ft.Radio(value="custom", label="自定义输出目录"),
                 ],
-                spacing=PADDING_SMALL,
+                spacing=PADDING_SMALL // 2,
             ),
-            value="new",
+            value="same",
             on_change=self._on_output_mode_change,
         )
         
+        default_output = self.config_service.get_output_dir() / "audio_converted"
         self.custom_output_dir: ft.TextField = ft.TextField(
             label="输出目录",
-            value=str(self.config_service.get_data_dir() / "audio_converted"),
+            value=str(default_output),
             disabled=True,
             expand=True,
+            dense=True,
         )
         
         self.browse_output_button: ft.IconButton = ft.IconButton(
@@ -286,6 +278,10 @@ class AudioFormatView(ft.Container):
             content=ft.Column(
                 controls=[
                     ft.Text("输出选项", size=14, weight=ft.FontWeight.W_500),
+                    ft.Container(height=PADDING_SMALL),
+                    self.output_format_dropdown,
+                    ft.Container(height=PADDING_MEDIUM),
+                    ft.Text("输出路径:", size=13),
                     self.output_mode_radio,
                     ft.Row(
                         controls=[
@@ -302,39 +298,9 @@ class AudioFormatView(ft.Container):
             border_radius=BORDER_RADIUS_MEDIUM,
         )
         
-        # 选项可滚动区域
-        options_scroll: ft.Column = ft.Column(
-            controls=[
-                format_section,
-                quality_section,
-                output_section,
-            ],
-            spacing=PADDING_MEDIUM,
-            scroll=ft.ScrollMode.AUTO,
-            expand=True,
-        )
-        
-        # 主内容区域 - 左右分栏
-        main_content: ft.Row = ft.Row(
-            controls=[
-                ft.Container(
-                    content=file_select_area,
-                    expand=3,
-                    height=380,
-                ),
-                ft.Container(
-                    content=options_scroll,
-                    expand=2,
-                    height=380,
-                ),
-            ],
-            spacing=PADDING_LARGE,
-            vertical_alignment=ft.CrossAxisAlignment.START,
-        )
-        
         # 进度显示
-        self.progress_bar: ft.ProgressBar = ft.ProgressBar(value=0, visible=False)
-        self.progress_text: ft.Text = ft.Text("", size=12, color=ft.Colors.ON_SURFACE_VARIANT, visible=False)
+        self.progress_bar: ft.ProgressBar = ft.ProgressBar(value=0, bar_height=8)
+        self.progress_text: ft.Text = ft.Text("", size=13, color=ft.Colors.ON_SURFACE_VARIANT)
         
         progress_container: ft.Container = ft.Container(
             content=ft.Column(
@@ -344,7 +310,13 @@ class AudioFormatView(ft.Container):
                 ],
                 spacing=PADDING_SMALL,
             ),
+            padding=PADDING_MEDIUM,
+            border=ft.border.all(1, ft.Colors.OUTLINE_VARIANT),
+            border_radius=BORDER_RADIUS_MEDIUM,
+            visible=False,
         )
+        
+        self.progress_container = progress_container
         
         # 底部处理按钮
         self.process_button: ft.Container = ft.Container(
@@ -365,6 +337,38 @@ class AudioFormatView(ft.Container):
                 ),
             ),
             alignment=ft.alignment.center,
+            margin=ft.margin.only(top=PADDING_MEDIUM, bottom=PADDING_SMALL),
+        )
+        
+        # 主内容区域 - 垂直布局
+        main_content: ft.Column = ft.Column(
+            controls=[
+                file_select_area,
+                ft.Container(height=PADDING_LARGE),
+                ft.Row(
+                    controls=[
+                        ft.Container(
+                            content=audio_settings_section,
+                            expand=True,
+                            height=360,  # 固定高度让两边对齐
+                        ),
+                        ft.Container(
+                            content=output_section,
+                            expand=True,
+                            height=360,  # 固定高度让两边对齐
+                        ),
+                    ],
+                    spacing=PADDING_LARGE,
+                ),
+                ft.Container(height=PADDING_MEDIUM),
+                progress_container,
+                ft.Container(height=PADDING_MEDIUM),
+                self.process_button,
+                ft.Container(height=PADDING_LARGE),
+            ],
+            scroll=ft.ScrollMode.HIDDEN,
+            spacing=0,
+            expand=True,
         )
         
         # 组装主界面
@@ -373,10 +377,6 @@ class AudioFormatView(ft.Container):
                 header,
                 ft.Divider(),
                 main_content,
-                ft.Container(height=PADDING_MEDIUM),
-                progress_container,
-                ft.Container(height=PADDING_SMALL),
-                self.process_button,
             ],
             spacing=0,
             expand=True,
@@ -649,8 +649,7 @@ class AudioFormatView(ft.Container):
         # 禁用处理按钮并显示进度
         button = self.process_button.content
         button.disabled = True
-        self.progress_bar.visible = True
-        self.progress_text.visible = True
+        self.progress_container.visible = True
         self.progress_bar.value = 0
         self.progress_text.value = "准备转换..."
         
