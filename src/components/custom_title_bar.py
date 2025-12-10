@@ -395,23 +395,74 @@ class CustomTitleBar(ft.Container):
             self.tray_icon = None
     
     def _show_window_from_tray(self, icon=None, item=None) -> None:
-        """从托盘显示窗口。
+        """从托盘显示窗口（带淡入动画）。
         
         Args:
             icon: 托盘图标对象
             item: 菜单项对象
         """
         try:
+            # 获取用户配置的透明度
+            target_opacity = 1.0
+            if self.config_service:
+                target_opacity = self.config_service.get_config_value("window_opacity", 1.0)
+            
+            # 先显示窗口但设置为透明
+            self.page.window.opacity = 0.0
             self.page.window.visible = True
             self.page.update()
+            
+            # 使用定时器实现淡入动画
+            import time
+            def fade_in():
+                try:
+                    # 分10步淡入，总耗时约150ms
+                    for i in range(1, 11):
+                        self.page.window.opacity = (i / 10.0) * target_opacity
+                        self.page.update()
+                        time.sleep(0.015)
+                    
+                    # 确保最终透明度准确
+                    self.page.window.opacity = target_opacity
+                    self.page.update()
+                except Exception:
+                    pass
+            
+            # 在后台线程执行动画
+            threading.Thread(target=fade_in, daemon=True).start()
         except Exception:
             pass
     
     def _hide_to_tray(self) -> None:
-        """隐藏窗口到托盘。"""
+        """隐藏窗口到托盘（带淡出动画）。"""
         try:
-            self.page.window.visible = False
-            self.page.update()
+            import time
+            
+            # 获取用户配置的透明度（作为动画起始值）
+            start_opacity = 1.0
+            if self.config_service:
+                start_opacity = self.config_service.get_config_value("window_opacity", 1.0)
+            
+            # 淡出动画
+            def fade_out():
+                try:
+                    # 分10步淡出，总耗时约150ms
+                    for i in range(9, -1, -1):
+                        self.page.window.opacity = (i / 10.0) * start_opacity
+                        self.page.update()
+                        time.sleep(0.015)
+                    
+                    # 动画结束后隐藏窗口
+                    self.page.window.visible = False
+                    self.page.update()
+                    
+                    # 恢复用户设置的透明度（下次显示时使用）
+                    self.page.window.opacity = start_opacity
+                except Exception:
+                    pass
+            
+            # 在后台线程执行动画
+            threading.Thread(target=fade_out, daemon=True).start()
         except Exception:
             pass
     
@@ -422,12 +473,29 @@ class CustomTitleBar(ft.Container):
             icon: 托盘图标对象
             item: 菜单项对象
         """
-        # 停止托盘图标
-        if self.tray_icon:
-            self.tray_icon.stop()
-        
-        # 执行正常的关闭流程
-        self._close_window(None)
+        try:
+            # 如果窗口当前不可见，先显示窗口（不带动画，直接显示）
+            if not self.page.window.visible:
+                # 获取用户配置的透明度
+                target_opacity = 1.0
+                if self.config_service:
+                    target_opacity = self.config_service.get_config_value("window_opacity", 1.0)
+                
+                self.page.window.opacity = target_opacity
+                self.page.window.visible = True
+                self.page.update()
+            
+            # 停止托盘图标
+            if self.tray_icon:
+                self.tray_icon.stop()
+                self.tray_icon = None
+            
+            # 执行真正的关闭流程（传递 force=True 强制退出）
+            self._close_window(None, force=True)
+        except Exception as e:
+            # 如果出错，确保能退出
+            import sys
+            sys.exit(0)
     
     def set_minimize_to_tray(self, enabled: bool) -> None:
         """设置是否启用最小化到托盘。
@@ -447,14 +515,15 @@ class CustomTitleBar(ft.Container):
                 self.tray_icon.stop()
                 self.tray_icon = None
     
-    def _close_window(self, e: Optional[ft.ControlEvent]) -> None:
+    def _close_window(self, e: Optional[ft.ControlEvent], force: bool = False) -> None:
         """关闭窗口。
         
         Args:
             e: 控件事件对象
+            force: 是否强制退出（True时忽略托盘设置，直接退出应用）
         """
-        # 如果启用了托盘功能，则隐藏到托盘而不是关闭
-        if self.minimize_to_tray and self.tray_icon:
+        # 如果启用了托盘功能且不是强制退出，则隐藏到托盘而不是关闭
+        if not force and self.minimize_to_tray and self.tray_icon:
             self._hide_to_tray()
             return
         
