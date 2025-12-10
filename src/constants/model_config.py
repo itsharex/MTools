@@ -723,10 +723,10 @@ SENSEVOICE_MODELS: Final[dict[str, SenseVoiceModelInfo]] = {
         tokens_url="https://www.modelscope.cn/models/yiminger/MyTools_Models/resolve/master/models/whisper/sensevoice_zh_en_ja_ko_yue/tokens.txt",
         size_mb=940,
         quality="极高质量",
-        performance="极速 | 内存占用 ~1GB | 无长度限制 | 需要 opset 17",
+        performance="极速 | 内存占用 ~1GB | 无长度限制",
         model_filename="model.onnx",  # FP32 完整版（需要新版 onnxruntime 支持 opset 17）
         tokens_filename="tokens.txt",
-        language_support="中文、英文、日文、韩文、粤语",
+        language_support="中文、英文、等五十多种语言和方言",
         version="2024-07-17",
         model_type="sensevoice"
     ),
@@ -740,7 +740,7 @@ SENSEVOICE_MODELS: Final[dict[str, SenseVoiceModelInfo]] = {
         performance="极速 | 内存占用 ~500MB | 无长度限制 | 兼容性好",
         model_filename="model.int8.onnx",  # INT8 量化版（兼容 opset 10，适合标准 onnxruntime）
         tokens_filename="tokens.txt",
-        language_support="中文、英文、日文、韩文、粤语",
+        language_support="中文、英文、等五十多种语言和方言",
         version="2024-07-17",
         model_type="sensevoice"
     ),

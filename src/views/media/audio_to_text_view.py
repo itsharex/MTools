@@ -234,7 +234,7 @@ class AudioToTextView(ft.Container):
             label="选择模型",
             hint_text="选择语音识别模型",
             on_change=self._on_model_change,
-            width=600,
+            width=690,
             dense=True,
             text_size=13,
         )
@@ -369,12 +369,13 @@ class AudioToTextView(ft.Container):
         )
         
         # 语言选择
-        saved_language = self.config_service.get_config_value("whisper_language", "zh")
+        saved_language = self.config_service.get_config_value("whisper_language", "auto")
         self.language_dropdown = ft.Dropdown(
             label="音频语言",
             hint_text="选择音频语言",
             value=saved_language,
             options=[
+                ft.dropdown.Option(key="auto", text="自动检测 (Auto Detect)"),
                 ft.dropdown.Option(key="zh", text="中文-普通话 (Mandarin)"),
                 ft.dropdown.Option(key="yue", text="中文-粤语 (Cantonese)"),
                 ft.dropdown.Option(key="en", text="英语 (English)"),
@@ -405,7 +406,7 @@ class AudioToTextView(ft.Container):
             width=230,
             dense=True,
             on_change=self._on_task_change,
-            visible=True,  # Whisper 引擎时可见
+            visible=(self.current_engine == "whisper"),  # 根据当前引擎决定是否可见
         )
         
         # 引擎特性提示
@@ -418,14 +419,14 @@ class AudioToTextView(ft.Container):
                             controls=[
                                 ft.Icon(ft.Icons.INFO_OUTLINE, size=14, color=ft.Colors.BLUE),
                                 ft.Text(
-                                    "Whisper: 转录模式即正常识别，也可转录为其他语言，但会影响精确度。翻译模式统一翻译为英文",
+                                    "Whisper: 支持自动检测或指定语言。转录模式保持原语言，翻译模式统一翻译为英文",
                                     size=11,
                                     color=ft.Colors.ON_SURFACE_VARIANT,
                                 ),
                             ],
                             spacing=6,
                         ),
-                        visible=True,  # Whisper 引擎时显示
+                        visible=(self.current_engine == "whisper"),  # 根据当前引擎决定是否显示
                     ),
                     # SenseVoice 提示
                     ft.Container(
@@ -433,14 +434,14 @@ class AudioToTextView(ft.Container):
                             controls=[
                                 ft.Icon(ft.Icons.INFO_OUTLINE, size=14, color=ft.Colors.BLUE),
                                 ft.Text(
-                                    "SenseVoice: 自动检测并转录，不受语言选择影响（仅支持中英日韩粤）",
+                                    "SenseVoice: 支持自动语言检测（中英日韩粤等），也可指定语言提高准确度",
                                     size=11,
                                     color=ft.Colors.ON_SURFACE_VARIANT,
                                 ),
                             ],
                             spacing=6,
                         ),
-                        visible=False,  # SenseVoice 引擎时显示
+                        visible=(self.current_engine == "sensevoice"),  # 根据当前引擎决定是否显示
                     ),
                 ],
                 spacing=4,
@@ -963,6 +964,7 @@ class AudioToTextView(ft.Container):
             
             # 获取选择的语言和任务类型
             language = self.config_service.get_config_value("whisper_language", "auto")
+            # sherpa-onnx 使用空字符串表示自动检测
             sherpa_language = "" if language == "auto" else language
             task = self.config_service.get_config_value("whisper_task", "transcribe")
             
@@ -1402,7 +1404,7 @@ class AudioToTextView(ft.Container):
                     output_format = self.output_format_dropdown.value
                     
                     # 获取识别参数
-                    language = self.config_service.get_config_value("whisper_language", "zh")
+                    language = self.config_service.get_config_value("whisper_language", "auto")
                     task = self.config_service.get_config_value("whisper_task", "transcribe")
                     
                     # 根据输出格式选择识别方法
