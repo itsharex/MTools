@@ -14,8 +14,6 @@ from typing import Callable, Optional, Tuple, Dict
 import ffmpeg
 import httpx
 import re
-import shutil
-import shlex
 
 from utils.file_utils import get_app_root
 
@@ -29,11 +27,25 @@ class FFmpegService:
     - 安装到应用程序目录
     """
     
-    # FFmpeg 下载链接
-    # essentials 版本已包含 NVIDIA GPU 硬件加速支持（NVENC/NVDEC/CUVID）
-    FFMPEG_WINDOWS_URL = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
-    FFMPEG_MACOS_URL = "https://evermeet.cx/ffmpeg/getrelease/zip"  # FFmpeg macOS 版本
-    FFMPEG_LINUX_URL = "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz"  # FFmpeg Linux 版本
+    # FFmpeg 下载链接（支持多个备用地址）
+    # Windows essentials 版本已包含 NVIDIA GPU 硬件加速支持（NVENC/NVDEC/CUVID）
+    # macOS 使用 zip 格式静态编译版本，Linux 使用 tar.xz 静态编译版本
+    FFMPEG_WINDOWS_URLS = [
+        "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip",
+        "https://openlist.wer.plus/d/share/MTools/Tools/ffmpeg-release-essentials.zip",
+    ]
+    FFMPEG_MACOS_URLS = [
+        "https://evermeet.cx/ffmpeg/ffmpeg-8.0.1.zip",
+        "https://openlist.wer.plus/d/share/MTools/Tools/ffmpeg-8.0.1.zip",
+    ]
+    FFPROBE_MACOS_URLS = [
+        "https://evermeet.cx/ffmpeg/ffprobe-8.0.1.zip",
+        "https://openlist.wer.plus/d/share/MTools/Tools/ffprobe-8.0.1.zip",
+    ]
+    FFMPEG_LINUX_URLS = [
+        "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz",
+        "https://openlist.wer.plus/d/share/MTools/Tools/ffmpeg-release-amd64-static.tar.xz",
+    ]
     
     def __init__(self, config_service=None) -> None:
         """初始化FFmpeg服务。
@@ -226,39 +238,114 @@ class FFmpegService:
             
             # 根据平台选择下载链接和文件格式
             if system == "Darwin":
-                download_url = self.FFMPEG_MACOS_URL
-                archive_path = temp_dir / "ffmpeg.zip"
+                download_urls = self.FFMPEG_MACOS_URLS
+                ffprobe_urls = self.FFPROBE_MACOS_URLS
+                archive_path = temp_dir / "ffmpeg.zip"  # macOS 使用 zip 格式
+                ffprobe_path = temp_dir / "ffprobe.zip"
             elif system == "Linux":
-                download_url = self.FFMPEG_LINUX_URL
+                download_urls = self.FFMPEG_LINUX_URLS
                 archive_path = temp_dir / "ffmpeg.tar.xz"
             else:  # Windows
-                download_url = self.FFMPEG_WINDOWS_URL
+                download_urls = self.FFMPEG_WINDOWS_URLS
                 archive_path = temp_dir / "ffmpeg.zip"
             
-            # 下载ffmpeg
+            # 尝试多个下载地址
             if progress_callback:
                 progress_callback(0.0, "开始下载FFmpeg...")
             
-            with httpx.stream("GET", download_url, follow_redirects=True) as response:
-                response.raise_for_status()
+            last_error = None
+            for url_index, download_url in enumerate(download_urls):
+                try:
+                    if progress_callback:
+                        url_name = "主下载地址" if url_index == 0 else f"备用地址 {url_index}"
+                        progress_callback(0.0, f"正在尝试从 {url_name} 下载 FFmpeg...")
+                    
+                    # 下载ffmpeg
+                    with httpx.stream("GET", download_url, follow_redirects=True, timeout=120.0) as response:
+                        response.raise_for_status()
+                        
+                        total_size = int(response.headers.get('content-length', 0))
+                        downloaded = 0
+                        
+                        with open(archive_path, 'wb') as f:
+                            for chunk in response.iter_bytes(chunk_size=8192):
+                                if chunk:
+                                    f.write(chunk)
+                                    downloaded += len(chunk)
+                                    
+                                    if progress_callback and total_size > 0:
+                                        progress = downloaded / total_size * 0.7  # 下载占70%进度
+                                        size_mb = downloaded / (1024 * 1024)
+                                        total_mb = total_size / (1024 * 1024)
+                                        progress_callback(
+                                            progress,
+                                            f"下载中: {size_mb:.1f}/{total_mb:.1f} MB"
+                                        )
+                    
+                    # 下载成功，跳出循环
+                    break
                 
-                total_size = int(response.headers.get('content-length', 0))
-                downloaded = 0
+                except Exception as e:
+                    last_error = str(e)
+                    from utils import logger
+                    logger.warning(f"从地址 {url_index + 1} 下载 FFmpeg 失败: {e}")
+                    
+                    # 如果不是最后一个地址，继续尝试下一个
+                    if url_index < len(download_urls) - 1:
+                        continue
+                    else:
+                        # 所有地址都失败了
+                        return False, f"所有下载地址均失败，最后错误: {last_error}"
+            
+            # macOS 需要单独下载 ffprobe
+            if system == "Darwin":
+                if progress_callback:
+                    progress_callback(0.5, "ffmpeg 下载完成，开始下载 ffprobe...")
                 
-                with open(archive_path, 'wb') as f:
-                    for chunk in response.iter_bytes(chunk_size=8192):
-                        if chunk:
-                            f.write(chunk)
-                            downloaded += len(chunk)
+                last_error = None
+                for url_index, download_url in enumerate(ffprobe_urls):
+                    try:
+                        if progress_callback:
+                            url_name = "主下载地址" if url_index == 0 else f"备用地址 {url_index}"
+                            progress_callback(0.5, f"正在从 {url_name} 下载 ffprobe...")
+                        
+                        # 下载 ffprobe
+                        with httpx.stream("GET", download_url, follow_redirects=True, timeout=120.0) as response:
+                            response.raise_for_status()
                             
-                            if progress_callback and total_size > 0:
-                                progress = downloaded / total_size * 0.7  # 下载占70%进度
-                                size_mb = downloaded / (1024 * 1024)
-                                total_mb = total_size / (1024 * 1024)
-                                progress_callback(
-                                    progress,
-                                    f"下载中: {size_mb:.1f}/{total_mb:.1f} MB"
-                                )
+                            total_size = int(response.headers.get('content-length', 0))
+                            downloaded = 0
+                            
+                            with open(ffprobe_path, 'wb') as f:
+                                for chunk in response.iter_bytes(chunk_size=8192):
+                                    if chunk:
+                                        f.write(chunk)
+                                        downloaded += len(chunk)
+                                        
+                                        if progress_callback and total_size > 0:
+                                            # ffprobe 下载占 50%-70% 进度
+                                            progress = 0.5 + (downloaded / total_size * 0.2)
+                                            size_mb = downloaded / (1024 * 1024)
+                                            total_mb = total_size / (1024 * 1024)
+                                            progress_callback(
+                                                progress,
+                                                f"下载 ffprobe: {size_mb:.1f}/{total_mb:.1f} MB"
+                                            )
+                        
+                        # 下载成功，跳出循环
+                        break
+                    
+                    except Exception as e:
+                        last_error = str(e)
+                        from utils import logger
+                        logger.warning(f"从地址 {url_index + 1} 下载 ffprobe 失败: {e}")
+                        
+                        # 如果不是最后一个地址，继续尝试下一个
+                        if url_index < len(ffprobe_urls) - 1:
+                            continue
+                        else:
+                            # 所有地址都失败了
+                            return False, f"ffprobe 所有下载地址均失败，最后错误: {last_error}"
             
             if progress_callback:
                 progress_callback(0.7, "下载完成，开始解压...")
@@ -271,13 +358,27 @@ class FFmpegService:
             extract_dir.mkdir(parents=True, exist_ok=True)
             
             # 根据平台使用不同的解压方法
-            if system == "Linux":
+            if system == "Darwin":
+                # macOS: 解压 zip (ffmpeg 和 ffprobe)
+                with zipfile.ZipFile(archive_path, 'r') as zip_ref:
+                    zip_ref.extractall(extract_dir)
+                
+                # 解压 ffprobe
+                ffprobe_extract_dir = temp_dir / "ffprobe_extracted"
+                if ffprobe_extract_dir.exists():
+                    import shutil
+                    shutil.rmtree(ffprobe_extract_dir)
+                ffprobe_extract_dir.mkdir(parents=True, exist_ok=True)
+                
+                with zipfile.ZipFile(ffprobe_path, 'r') as zip_ref:
+                    zip_ref.extractall(ffprobe_extract_dir)
+            elif system == "Linux":
                 # Linux: 解压 tar.xz
                 import tarfile
                 with tarfile.open(archive_path, 'r:xz') as tar_ref:
                     tar_ref.extractall(extract_dir)
             else:
-                # Windows/macOS: 解压 zip
+                # Windows: 解压 zip
                 with zipfile.ZipFile(archive_path, 'r') as zip_ref:
                     zip_ref.extractall(extract_dir)
             
@@ -292,56 +393,27 @@ class FFmpegService:
             import stat
             
             if system == "Darwin":
-                # macOS: evermeet.cx 的 FFmpeg 直接包含可执行文件
+                # macOS: evermeet.cx 下载的 zip 包含独立的可执行文件
                 # 创建 bin 目录
                 if self.ffmpeg_bin.exists():
                     shutil.rmtree(self.ffmpeg_bin)
                 self.ffmpeg_bin.mkdir(parents=True, exist_ok=True)
                 
-                # 复制所有可执行文件到 bin 目录
-                for item in extract_dir.iterdir():
-                    if item.is_file():
-                        dest = self.ffmpeg_bin / item.name
-                        shutil.copy2(item, dest)
-                        # 确保可执行权限
-                        dest.chmod(dest.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+                # 复制 ffmpeg
+                ffmpeg_exe = extract_dir / "ffmpeg"
+                if ffmpeg_exe.exists():
+                    dest = self.ffmpeg_bin / "ffmpeg"
+                    shutil.copy2(ffmpeg_exe, dest)
+                    # 确保可执行权限
+                    dest.chmod(dest.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
                 
-                # 同时需要下载 ffprobe（如果包中没有的话）
-                # evermeet.cx 的 ffmpeg.zip 只包含 ffmpeg，需要单独下载 ffprobe
-                if not (self.ffmpeg_bin / "ffprobe").exists():
-                    try:
-                        if progress_callback:
-                            progress_callback(0.90, "下载 ffprobe...")
-                        
-                        ffprobe_url = "https://evermeet.cx/ffmpeg/getrelease/ffprobe/zip"
-                        ffprobe_zip = temp_dir / "ffprobe.zip"
-                        
-                        with httpx.stream("GET", ffprobe_url, follow_redirects=True) as ffprobe_response:
-                            ffprobe_response.raise_for_status()
-                            with open(ffprobe_zip, 'wb') as f:
-                                for chunk in ffprobe_response.iter_bytes(chunk_size=8192):
-                                    if chunk:
-                                        f.write(chunk)
-                        
-                        # 解压 ffprobe
-                        ffprobe_extract = temp_dir / "ffprobe_extracted"
-                        ffprobe_extract.mkdir(parents=True, exist_ok=True)
-                        with zipfile.ZipFile(ffprobe_zip, 'r') as zip_ref:
-                            zip_ref.extractall(ffprobe_extract)
-                        
-                        # 复制 ffprobe
-                        for item in ffprobe_extract.iterdir():
-                            if item.is_file() and item.name == "ffprobe":
-                                dest = self.ffmpeg_bin / "ffprobe"
-                                shutil.copy2(item, dest)
-                                dest.chmod(dest.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
-                        
-                        # 清理
-                        ffprobe_zip.unlink()
-                        shutil.rmtree(ffprobe_extract)
-                    except Exception as e:
-                        # ffprobe 下载失败不影响 ffmpeg 的安装
-                        pass
+                # 复制 ffprobe
+                ffprobe_exe = ffprobe_extract_dir / "ffprobe"
+                if ffprobe_exe.exists():
+                    dest = self.ffmpeg_bin / "ffprobe"
+                    shutil.copy2(ffprobe_exe, dest)
+                    # 确保可执行权限
+                    dest.chmod(dest.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
             elif system == "Linux":
                 # Linux: johnvansickle 的静态编译版本，包含在子目录中
                 # 创建 bin 目录
@@ -403,6 +475,13 @@ class FFmpegService:
             try:
                 archive_path.unlink()
                 shutil.rmtree(extract_dir)
+                
+                # macOS 还需要清理 ffprobe 文件
+                if system == "Darwin":
+                    if ffprobe_path.exists():
+                        ffprobe_path.unlink()
+                    if ffprobe_extract_dir.exists():
+                        shutil.rmtree(ffprobe_extract_dir)
             except Exception:
                 pass  # 清理失败不影响安装结果
             

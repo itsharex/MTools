@@ -12,35 +12,39 @@ import numpy as np
 
 if TYPE_CHECKING:
     from services import FFmpegService
-    from constants import WhisperModelInfo
+    from constants import WhisperModelInfo, SenseVoiceModelInfo
 
 
 class SpeechRecognitionService:
     """语音识别服务类。
     
-    使用 sherpa-onnx Whisper 模型进行音视频转文字。
+    支持 sherpa-onnx Whisper 和 SenseVoice/Paraformer 模型进行音视频转文字。
     """
     
     def __init__(
         self,
         model_dir: Optional[Path] = None,
-        ffmpeg_service: Optional['FFmpegService'] = None
+        ffmpeg_service: Optional['FFmpegService'] = None,
+        debug_mode: bool = False
     ):
         """初始化语音识别服务。
         
         Args:
             model_dir: 模型存储目录，默认为用户数据目录下的 models/whisper
             ffmpeg_service: FFmpeg 服务实例
+            debug_mode: 是否启用调试模式（输出详细信息）
         """
         self.ffmpeg_service = ffmpeg_service
         self.model_dir = model_dir
+        self.debug_mode = debug_mode
         # 确保目录存在
         if self.model_dir:
             self.model_dir.mkdir(parents=True, exist_ok=True)
         
         self.recognizer = None
         self.current_model: Optional[str] = None
-        self.sample_rate: int = 16000  # Whisper 固定使用 16kHz
+        self.model_type: str = "whisper"  # whisper 或 sensevoice
+        self.sample_rate: int = 16000  # 固定使用 16kHz
         self.current_provider: str = "未加载"
         
         # 设置 FFmpeg 环境
@@ -231,6 +235,114 @@ class SpeechRecognitionService:
                         pass
             raise RuntimeError(f"下载模型失败: {e}")
     
+    def download_sensevoice_model(
+        self,
+        model_key: str,
+        model_info: 'SenseVoiceModelInfo',
+        progress_callback: Optional[Callable[[float, str], None]] = None
+    ) -> tuple[Path, Path]:
+        """下载 SenseVoice 模型文件（model.onnx + tokens.txt）。
+        
+        Args:
+            model_key: 模型键名
+            model_info: SenseVoice 模型信息
+            progress_callback: 进度回调函数 (进度0-1, 状态消息)
+            
+        Returns:
+            (model路径, tokens路径)
+        """
+        import httpx
+        
+        # 获取模型专属目录
+        model_dir = self.get_model_dir(model_key)
+        
+        model_path = model_dir / model_info.model_filename
+        tokens_path = model_dir / model_info.tokens_filename
+        
+        # 检查文件是否已存在
+        if model_path.exists() and tokens_path.exists():
+            return model_path, tokens_path
+        
+        files_to_download = []
+        
+        if not model_path.exists():
+            files_to_download.append(('模型文件', model_info.model_url, model_path))
+        if not tokens_path.exists():
+            files_to_download.append(('词表文件', model_info.tokens_url, tokens_path))
+        
+        if not files_to_download:
+            return model_path, tokens_path
+        
+        total_files = len(files_to_download)
+        downloaded_files = []  # 记录成功下载的文件
+        
+        try:
+            for i, (file_type, url, file_path) in enumerate(files_to_download):
+                if progress_callback:
+                    progress_callback(i / total_files, f"下载{file_type}...")
+                
+                # 使用临时文件下载，避免损坏原文件
+                temp_path = file_path.with_suffix(file_path.suffix + '.tmp')
+                
+                try:
+                    with httpx.stream("GET", url, follow_redirects=True, timeout=300.0) as response:
+                        response.raise_for_status()
+                        
+                        total_size = int(response.headers.get('content-length', 0))
+                        downloaded = 0
+                        
+                        with open(temp_path, 'wb') as f:
+                            for chunk in response.iter_bytes(chunk_size=8192):
+                                if chunk:
+                                    f.write(chunk)
+                                    downloaded += len(chunk)
+                                    
+                                    if progress_callback and total_size > 0:
+                                        file_progress = (i + downloaded / total_size) / total_files
+                                        size_mb = downloaded / (1024 * 1024)
+                                        total_mb = total_size / (1024 * 1024)
+                                        progress_callback(
+                                            file_progress,
+                                            f"下载{file_type}: {size_mb:.1f}/{total_mb:.1f} MB"
+                                        )
+                        
+                        # 验证文件大小
+                        if total_size > 0:
+                            actual_size = temp_path.stat().st_size
+                            if actual_size != total_size:
+                                raise RuntimeError(
+                                    f"{file_type}大小不匹配: "
+                                    f"预期 {total_size / (1024*1024):.1f}MB, "
+                                    f"实际 {actual_size / (1024*1024):.1f}MB"
+                                )
+                        
+                        # 重命名为正式文件
+                        temp_path.replace(file_path)
+                        downloaded_files.append(file_path)
+                        
+                        logger.info(f"✓ {file_type}下载完成: {file_path.name}")
+                    
+                except Exception as e:
+                    if temp_path.exists():
+                        temp_path.unlink()
+                    raise RuntimeError(f"下载{file_type}失败: {e}")
+            
+            if progress_callback:
+                progress_callback(1.0, "下载完成!")
+            
+            return model_path, tokens_path
+            
+        except Exception as e:
+            # 删除本次下载的所有文件（保留之前已存在的文件）
+            for file_path in downloaded_files:
+                if file_path.exists():
+                    try:
+                        file_path.unlink()
+                        logger.warning(f"已删除不完整的文件: {file_path.name}")
+                    except:
+                        pass
+            raise RuntimeError(f"下载 SenseVoice 模型失败: {e}")
+    
     def load_model(
         self, 
         encoder_path: Path,
@@ -282,13 +394,17 @@ class SpeechRecognitionService:
                     tokens_path = file
                     break
         
-        # 如果没有 tokens 文件，尝试使用空字符串（某些模型可能不需要）
-        tokens_str = ""
-        if tokens_path.exists():
-            tokens_str = str(tokens_path)
-            logger.info(f"使用 tokens 文件: {tokens_path.name}")
-        else:
-            logger.warning(f"tokens 文件未找到，将使用内置词表（可能影响识别效果）")
+        # tokens 文件是必需的，如果找不到则抛出错误
+        if not tokens_path.exists():
+            raise FileNotFoundError(
+                f"tokens 文件未找到: {tokens_path}\n"
+                f"请确保 tokens 文件与模型文件在同一目录下。\n"
+                f"尝试查找的路径: {encoder_path.parent}\n"
+                f"缺少 tokens 文件会导致识别效果差、漏字等问题。"
+            )
+        
+        tokens_str = str(tokens_path)
+        logger.info(f"使用 tokens 文件: {tokens_path.name}")
         
         # 构建 sherpa-onnx 配置
         # 配置执行提供者
@@ -312,7 +428,15 @@ class SpeechRecognitionService:
                 logger.warning("onnxruntime 未安装，使用 CPU")
         
         # 将语言代码转换为 sherpa-onnx 支持的格式
-        lang_code = language if language != "auto" else "zh"  # 默认英文
+        # auto 时使用空字符串让模型自动检测，或者指定具体语言
+        if language == "auto":
+            lang_code = ""  # 空字符串表示自动检测语言
+        else:
+            lang_code = language
+        
+        # 获取可用的 CPU 线程数，最多使用 8 个线程
+        import os
+        num_threads = min(os.cpu_count() or 4, 8)
         
         # 创建识别器
         try:
@@ -325,9 +449,11 @@ class SpeechRecognitionService:
                 tokens=tokens_str,
                 language=lang_code,
                 task=task,
-                num_threads=4,
-                debug=False,
+                num_threads=num_threads,
+                debug=self.debug_mode,  # 调试模式：输出详细的识别过程
                 provider=provider,
+                tail_paddings=1500,  # 尾部填充：增加到1500以确保音频末尾不被截断（默认800）
+                decoding_method="greedy_search",  # 使用贪婪搜索，更稳定
             )
             self.current_model = encoder_path.stem
             self.current_provider = provider
@@ -341,10 +467,104 @@ class SpeechRecognitionService:
             if "version" in error_msg.lower() and "not supported" in error_msg.lower():
                 raise RuntimeError(
                     f"模型版本不兼容: {error_msg}\n\n"
-                    "sherpa-onnx 需要使用特定版本的 Whisper ONNX 模型。\n"
-                    "请从 https://github.com/k2-fsa/sherpa-onnx/releases/tag/asr-models 下载兼容的模型。"
                 )
             raise RuntimeError(f"加载模型失败: {e}")
+    
+    def load_sensevoice_model(
+        self,
+        model_path: Path,
+        tokens_path: Path,
+        use_gpu: bool = True,
+        gpu_device_id: int = 0,
+        language: str = "auto",
+        model_type: str = "sensevoice"
+    ) -> None:
+        """加载 SenseVoice/Paraformer 模型（使用 sherpa-onnx）。
+        
+        支持两种模型文件：
+        - model.onnx: FP32 完整版（高精度，需要 onnxruntime 支持 opset 17）
+        - model.int8.onnx: INT8 量化版（兼容性好，支持标准 onnxruntime）
+        
+        Args:
+            model_path: 模型文件路径（model.onnx 或 model.int8.onnx）
+            tokens_path: tokens.txt 文件路径
+            use_gpu: 是否使用GPU加速
+            gpu_device_id: GPU设备ID
+            language: 识别语言（"auto" 自动检测，或 "zh", "en" 等）
+            model_type: 模型类型（"sensevoice" 或 "paraformer"）
+        """
+        try:
+            import sherpa_onnx
+        except ImportError:
+            raise RuntimeError(
+                "sherpa-onnx 未安装。\n"
+                "请运行: pip install sherpa-onnx"
+            )
+        
+        if not model_path.exists():
+            raise FileNotFoundError(f"模型文件不存在: {model_path}")
+        if not tokens_path.exists():
+            raise FileNotFoundError(f"tokens 文件不存在: {tokens_path}")
+        
+        # 配置执行提供者
+        provider = "cpu"
+        if use_gpu:
+            try:
+                import onnxruntime as ort
+                import platform
+                available_providers = ort.get_available_providers()
+                
+                if 'CUDAExecutionProvider' in available_providers:
+                    provider = "cuda"
+                    logger.info(f"语音识别使用 CUDA GPU (设备 {gpu_device_id})")
+                elif 'DmlExecutionProvider' in available_providers and platform.system() == 'Windows':
+                    provider = "directml"
+                    logger.info("语音识别使用 DirectML (Windows GPU)")
+                elif 'CoreMLExecutionProvider' in available_providers and platform.system() == 'Darwin':
+                    provider = "coreml"
+                    logger.info("语音识别使用 CoreML (Apple Silicon)")
+                else:
+                    logger.info("语音识别使用 CPU (GPU 不可用)")
+            except ImportError:
+                logger.warning("onnxruntime 未安装，使用 CPU")
+        
+        # 根据模型类型创建识别器
+        try:
+            num_threads = min(os.cpu_count() or 4, 8)
+            
+            if model_type == "paraformer":
+                # 加载 Paraformer 模型
+                self.recognizer = sherpa_onnx.OfflineRecognizer.from_paraformer(
+                    paraformer=str(model_path),
+                    tokens=str(tokens_path),
+                    num_threads=num_threads,
+                    debug=self.debug_mode,
+                    provider=provider,
+                )
+                model_name = "Paraformer"
+            else:
+                # 加载 SenseVoice 模型
+                self.recognizer = sherpa_onnx.OfflineRecognizer.from_sense_voice(
+                    model=str(model_path),
+                    tokens=str(tokens_path),
+                    num_threads=num_threads,
+                    debug=self.debug_mode,
+                    provider=provider,
+                    use_itn=True,  # 使用逆文本规范化（数字、日期等）
+                    language=language if language != "auto" else "",
+                )
+                model_name = "SenseVoice"
+            
+            self.current_model = model_path.stem
+            self.model_type = model_type
+            self.current_provider = provider
+            
+            logger.info(
+                f"{model_name}模型已加载: {model_path.name}, "
+                f"执行提供者: {provider.upper()}"
+            )
+        except Exception as e:
+            raise RuntimeError(f"加载SenseVoice模型失败: {e}")
     
     def _load_audio_ffmpeg(self, audio_path: Path) -> np.ndarray:
         """使用 ffmpeg 加载音频。
@@ -370,6 +590,9 @@ class SpeechRecognitionService:
             # 使用 ffmpeg-python 读取音频为 PCM 数据
             # Whisper/sherpa-onnx 需要单声道 16kHz float32
             stream = ffmpeg.input(str(audio_path))
+            
+            # 音频预处理：转换为单声道 16kHz
+            # 注意：不使用 loudnorm 等滤镜，避免改变音频特征导致识别不准
             stream = ffmpeg.output(stream, 'pipe:', format='f32le', acodec='pcm_f32le', ac=1, ar=str(self.sample_rate))
             
             out, err = ffmpeg.run(stream, cmd=ffmpeg_cmd, capture_stdout=True, capture_stderr=True)
@@ -392,6 +615,86 @@ class SpeechRecognitionService:
         except Exception as e:
             raise RuntimeError(f"加载音频时出错: {type(e).__name__}: {str(e)}")
     
+    def _merge_segments_text(self, segments: List[str]) -> str:
+        """智能合并多个文本片段（中文直接连接，英文用空格）。
+        
+        Args:
+            segments: 文本片段列表
+            
+        Returns:
+            合并后的文本
+        """
+        if not segments:
+            return ""
+        
+        if len(segments) == 1:
+            return segments[0]
+        
+        # 检查第一个片段是否主要是中文
+        first_segment = segments[0]
+        # 计算中文字符占比
+        chinese_chars = sum(1 for c in first_segment if '\u4e00' <= c <= '\u9fff')
+        total_chars = len(first_segment.replace(' ', '').replace('\n', ''))
+        
+        if total_chars > 0 and chinese_chars / total_chars > 0.3:
+            # 中文为主：直接连接，但在片段之间可能需要标点
+            merged = []
+            for i, seg in enumerate(segments):
+                seg = seg.strip()
+                if not seg:
+                    continue
+                
+                # 如果前一个片段没有结束标点，且当前片段不是以标点开头，添加逗号
+                if merged and not merged[-1][-1] in '。！？，、；：,.!?;:':
+                    if seg[0] not in '。！？，、；：,.!?;:':
+                        merged[-1] = merged[-1] + '，'
+                
+                merged.append(seg)
+            
+            return ''.join(merged)
+        else:
+            # 英文为主：用空格连接
+            return ' '.join(seg.strip() for seg in segments if seg.strip())
+    
+    def _recognize_audio_chunk(self, audio_chunk: np.ndarray) -> str:
+        """识别单个音频片段（内部方法）。
+        
+        Args:
+            audio_chunk: 音频数据（不超过 30 秒）
+            
+        Returns:
+            识别的文字内容
+        """
+        import sherpa_onnx
+        
+        try:
+            # 创建离线音频流
+            stream = self.recognizer.create_stream()
+            
+            # 接受音频样本
+            stream.accept_waveform(self.sample_rate, audio_chunk)
+            
+            # 解码
+            self.recognizer.decode_stream(stream)
+            
+            # 获取结果
+            result = stream.result
+            return result.text.strip()
+            
+        except Exception as e:
+            error_msg = str(e)
+            
+            # 处理已知的 sherpa-onnx 异常
+            if "invalid expand shape" in error_msg.lower():
+                logger.warning(
+                    f"音频片段处理异常（可能音频质量问题）: {error_msg}\n"
+                    f"跳过此片段，继续处理..."
+                )
+                return ""  # 返回空字符串，继续处理其他片段
+            
+            # 其他未知异常，向上抛出
+            raise RuntimeError(f"音频片段识别失败: {error_msg}")
+    
     def recognize(
         self,
         audio_path: Path,
@@ -402,12 +705,16 @@ class SpeechRecognitionService:
         """识别音频中的语音并转换为文字。
         
         注意：language 和 task 参数在此方法中不再使用，
-        需要在 load_model() 时指定。此处保留参数仅为了向后兼容。
+        需要在 load_model() 或 load_sensevoice_model() 时指定。此处保留参数仅为了向后兼容。
+        
+        模型限制：
+        - Whisper: 单次最多支持 30 秒音频，会自动分段处理
+        - SenseVoice/Paraformer: 无长度限制，可直接识别任意长度音频
         
         Args:
             audio_path: 输入音频文件路径
-            language: （已弃用）语言代码，请在 load_model 时指定
-            task: （已弃用）任务类型，请在 load_model 时指定
+            language: （已弃用）语言代码，请在加载模型时指定
+            task: （已弃用）任务类型，请在加载模型时指定
             progress_callback: 进度回调函数 (状态消息, 进度0-1)
             
         Returns:
@@ -427,37 +734,90 @@ class SpeechRecognitionService:
         
         # 加载音频
         if progress_callback:
-            progress_callback("正在加载音频...", 0.2)
+            progress_callback("正在加载音频...", 0.1)
         
         audio = self._load_audio_ffmpeg(audio_path)
         
-        # 创建音频流
-        if progress_callback:
-            progress_callback("正在识别语音...", 0.5)
+        # 计算音频时长（秒）
+        audio_duration = len(audio) / self.sample_rate
         
         try:
             import sherpa_onnx
             
-            # 创建离线音频流
-            stream = self.recognizer.create_stream()
+            # SenseVoice/Paraformer 无长度限制，直接识别
+            if self.model_type == "sensevoice":
+                if progress_callback:
+                    progress_callback(f"正在识别语音（{audio_duration:.1f}秒）...", 0.5)
+                
+                text = self._recognize_audio_chunk(audio)
+                
+                if progress_callback:
+                    progress_callback("完成!", 1.0)
+                
+                return text if text else "[未识别到语音内容]"
             
-            # 接受音频样本（对于离线识别，只需调用一次）
-            stream.accept_waveform(self.sample_rate, audio)
+            # Whisper 限制：单次最多 30 秒
+            # 为了稳妥，使用 28 秒作为分段长度（留 2 秒缓冲）
+            max_chunk_duration = 28.0
+            chunk_samples = int(max_chunk_duration * self.sample_rate)
             
-            # 解码（对于离线识别器，不需要 input_finished()）
-            self.recognizer.decode_stream(stream)
+            # 如果音频短于 28 秒，直接识别
+            if audio_duration <= max_chunk_duration:
+                if progress_callback:
+                    progress_callback("正在识别语音...", 0.5)
+                
+                text = self._recognize_audio_chunk(audio)
+                
+                if progress_callback:
+                    progress_callback("完成!", 1.0)
+                
+                return text if text else "[未识别到语音内容]"
             
-            # 获取结果
-            result = stream.result
-            text = result.text.strip()
+            # 长音频：分段识别
+            # sherpa-onnx Whisper 限制：最多 30 秒，参考 https://github.com/k2-fsa/sherpa-onnx/issues/896
+            num_chunks = int(np.ceil(len(audio) / chunk_samples))
+            logger.info(
+                f"音频时长 {audio_duration:.1f} 秒 > 28 秒，"
+                f"将自动分成 {num_chunks} 个片段进行识别"
+            )
+            
+            results = []
+            
+            for i in range(num_chunks):
+                start_idx = i * chunk_samples
+                end_idx = min((i + 1) * chunk_samples, len(audio))
+                chunk = audio[start_idx:end_idx]
+                
+                chunk_start_time = start_idx / self.sample_rate
+                chunk_end_time = end_idx / self.sample_rate
+                
+                if progress_callback:
+                    progress = 0.2 + (i / num_chunks) * 0.7
+                    progress_callback(
+                        f"识别片段 {i+1}/{num_chunks} ({chunk_start_time:.1f}s - {chunk_end_time:.1f}s)...",
+                        progress
+                    )
+                
+                chunk_text = self._recognize_audio_chunk(chunk)
+                if chunk_text:
+                    results.append(chunk_text)
+                    logger.info(f"片段 {i+1}/{num_chunks} 识别完成: {len(chunk_text)} 字符")
+            
+            if progress_callback:
+                progress_callback("合并结果...", 0.95)
+            
+            # 合并所有片段的识别结果
+            if not results:
+                return "[未识别到语音内容]"
+            
+            # 智能合并文本（中文直接连接，英文用空格）
+            full_text = self._merge_segments_text(results)
             
             if progress_callback:
                 progress_callback("完成!", 1.0)
             
-            if not text:
-                return "[未识别到语音内容]"
-            
-            return text
+            logger.info(f"识别完成，总共 {len(results)} 个片段，{len(full_text)} 字符")
+            return full_text
             
         except Exception as e:
             raise RuntimeError(f"识别失败: {e}")
@@ -471,10 +831,14 @@ class SpeechRecognitionService:
     ) -> List[Dict[str, Any]]:
         """识别音频中的语音并返回带时间戳的分段结果。
         
+        模型限制：
+        - Whisper: 单次最多支持 30 秒音频，会自动分段处理
+        - SenseVoice/Paraformer: 无长度限制，可直接识别任意长度音频
+        
         Args:
             audio_path: 输入音频文件路径
-            language: （已弃用）语言代码，请在 load_model 时指定
-            task: （已弃用）任务类型，请在 load_model 时指定
+            language: （已弃用）语言代码，请在加载模型时指定
+            task: （已弃用）任务类型，请在加载模型时指定
             progress_callback: 进度回调函数 (状态消息, 进度0-1)
             
         Returns:
@@ -499,53 +863,244 @@ class SpeechRecognitionService:
         
         # 加载音频
         if progress_callback:
-            progress_callback("正在加载音频...", 0.2)
+            progress_callback("正在加载音频...", 0.1)
         
         audio = self._load_audio_ffmpeg(audio_path)
         
-        # 创建音频流
-        if progress_callback:
-            progress_callback("正在识别语音...", 0.5)
+        # 计算音频时长（秒）
+        audio_duration = len(audio) / self.sample_rate
         
         try:
             import sherpa_onnx
             
-            # 创建离线音频流
-            stream = self.recognizer.create_stream()
+            all_segments = []
             
-            # 接受音频样本
-            stream.accept_waveform(self.sample_rate, audio)
-            
-            # 解码
-            self.recognizer.decode_stream(stream)
-            
-            # 获取结果
-            result = stream.result
-            
-            # sherpa-onnx 的 Whisper 离线识别器目前不提供详细的时间戳信息
-            # 我们需要通过其他方式估算时间戳
-            # 这里使用一个简单的策略：根据句子长度和音频总长度估算
-            
-            text = result.text.strip()
-            
-            if not text or text == "[未识别到语音内容]":
+            # SenseVoice/Paraformer 无长度限制，直接识别并获取真实时间戳
+            if self.model_type == "sensevoice":
+                if progress_callback:
+                    progress_callback(f"正在识别语音（{audio_duration:.1f}秒）...", 0.5)
+                
+                # 获取字符级时间戳
+                text, tokens, timestamps = self._get_sensevoice_timestamps(audio)
+                
+                if not text or text == "[未识别到语音内容]":
+                    if progress_callback:
+                        progress_callback("完成!", 1.0)
+                    return []
+                
+                # 将字符级时间戳转换为句子级分段
+                segments = self._tokens_to_segments(text, tokens, timestamps)
+                
                 if progress_callback:
                     progress_callback("完成!", 1.0)
-                return []
+                
+                logger.info(f"识别完成，使用真实时间戳生成 {len(segments)} 个分段")
+                return segments
             
-            # 计算音频总时长（秒）
-            audio_duration = len(audio) / self.sample_rate
+            # Whisper 限制：单次最多 30 秒
+            max_chunk_duration = 28.0
+            chunk_samples = int(max_chunk_duration * self.sample_rate)
             
-            # 将文本分割成句子（简单分割）
-            segments = self._split_into_segments(text, audio_duration)
+            # 如果音频短于 28 秒，直接识别
+            if audio_duration <= max_chunk_duration:
+                if progress_callback:
+                    progress_callback("正在识别语音...", 0.5)
+                
+                text = self._recognize_audio_chunk(audio)
+                
+                if not text or text == "[未识别到语音内容]":
+                    if progress_callback:
+                        progress_callback("完成!", 1.0)
+                    return []
+                
+                # 将文本分割成句子
+                segments = self._split_into_segments(text, audio_duration)
+                
+                if progress_callback:
+                    progress_callback("完成!", 1.0)
+                
+                return segments
+            
+            # 长音频：分段识别
+            # sherpa-onnx Whisper 限制：最多 30 秒，参考 https://github.com/k2-fsa/sherpa-onnx/issues/896
+            num_chunks = int(np.ceil(len(audio) / chunk_samples))
+            logger.info(
+                f"音频时长 {audio_duration:.1f} 秒 > 28 秒，"
+                f"将自动分成 {num_chunks} 个片段进行识别"
+            )
+            
+            for i in range(num_chunks):
+                start_idx = i * chunk_samples
+                end_idx = min((i + 1) * chunk_samples, len(audio))
+                chunk = audio[start_idx:end_idx]
+                
+                chunk_start_time = start_idx / self.sample_rate
+                chunk_end_time = end_idx / self.sample_rate
+                chunk_duration = (end_idx - start_idx) / self.sample_rate
+                
+                if progress_callback:
+                    progress = 0.2 + (i / num_chunks) * 0.7
+                    progress_callback(
+                        f"识别片段 {i+1}/{num_chunks} ({chunk_start_time:.1f}s - {chunk_end_time:.1f}s)...",
+                        progress
+                    )
+                
+                chunk_text = self._recognize_audio_chunk(chunk)
+                
+                if chunk_text:
+                    # 为这个片段生成带时间戳的分段
+                    chunk_segments = self._split_into_segments(chunk_text, chunk_duration)
+                    
+                    # 调整时间戳（加上片段的起始时间）
+                    for segment in chunk_segments:
+                        segment['start'] += chunk_start_time
+                        segment['end'] += chunk_start_time
+                    
+                    all_segments.extend(chunk_segments)
+                    logger.info(f"片段 {i+1}/{num_chunks} 识别完成: {len(chunk_segments)} 个分段")
             
             if progress_callback:
                 progress_callback("完成!", 1.0)
             
-            return segments
+            logger.info(f"识别完成，总共 {len(all_segments)} 个分段")
+            return all_segments
             
         except Exception as e:
             raise RuntimeError(f"识别失败: {e}")
+    
+    def _get_sensevoice_timestamps(self, audio_chunk: np.ndarray) -> tuple[str, List[str], List[float]]:
+        """获取 SenseVoice 的字符级时间戳。
+        
+        Args:
+            audio_chunk: 音频数据
+            
+        Returns:
+            (文本, token列表, 时间戳列表)
+        """
+        import sherpa_onnx
+        
+        # 创建离线音频流
+        stream = self.recognizer.create_stream()
+        stream.accept_waveform(self.sample_rate, audio_chunk)
+        self.recognizer.decode_stream(stream)
+        
+        # 获取结果
+        result = stream.result
+        return result.text.strip(), result.tokens, result.timestamps
+    
+    def _tokens_to_segments(
+        self,
+        text: str,
+        tokens: List[str],
+        timestamps: List[float],
+        max_segment_length: int = 80
+    ) -> List[Dict[str, Any]]:
+        """将 SenseVoice 的字符级时间戳转换为句子级分段。
+        
+        Args:
+            text: 完整文本
+            tokens: 字符列表
+            timestamps: 对应的时间戳列表（秒）
+            max_segment_length: 每段的最大字符数
+            
+        Returns:
+            分段结果列表
+        """
+        import re
+        
+        if not text or not tokens or not timestamps:
+            return []
+        
+        # 按标点符号分割句子
+        sentence_endings = r'[。！？!?\n]+'
+        sentences = re.split(f'({sentence_endings})', text)
+        
+        # 合并句子和标点
+        merged_sentences = []
+        i = 0
+        while i < len(sentences):
+            if i + 1 < len(sentences) and re.match(sentence_endings, sentences[i + 1]):
+                merged_sentences.append(sentences[i] + sentences[i + 1])
+                i += 2
+            else:
+                if sentences[i].strip():
+                    merged_sentences.append(sentences[i])
+                i += 1
+        
+        if not merged_sentences:
+            merged_sentences = [text]
+        
+        # 为每个句子找到时间戳
+        segments = []
+        char_index = 0
+        
+        for sentence in merged_sentences:
+            sentence = sentence.strip()
+            if not sentence:
+                continue
+            
+            # 进一步分割过长的句子
+            if len(sentence) > max_segment_length:
+                # 按逗号分割
+                parts = re.split(r'([，,、；;])', sentence)
+                current_part = ""
+                
+                for part in parts:
+                    if len(current_part + part) <= max_segment_length:
+                        current_part += part
+                    else:
+                        if current_part.strip():
+                            # 找到这部分的时间戳
+                            seg_len = len(current_part)
+                            start_idx = char_index
+                            end_idx = min(char_index + seg_len, len(timestamps))
+                            
+                            if start_idx < len(timestamps) and end_idx <= len(timestamps):
+                                start_time = timestamps[start_idx] if start_idx < len(timestamps) else 0
+                                end_time = timestamps[end_idx - 1] if end_idx > 0 and end_idx <= len(timestamps) else start_time + 1.0
+                                
+                                segments.append({
+                                    'text': current_part.strip(),
+                                    'start': start_time,
+                                    'end': end_time,
+                                })
+                                char_index = end_idx
+                        
+                        current_part = part
+                
+                if current_part.strip():
+                    seg_len = len(current_part)
+                    start_idx = char_index
+                    end_idx = min(char_index + seg_len, len(timestamps))
+                    
+                    if start_idx < len(timestamps) and end_idx <= len(timestamps):
+                        start_time = timestamps[start_idx] if start_idx < len(timestamps) else 0
+                        end_time = timestamps[end_idx - 1] if end_idx > 0 and end_idx <= len(timestamps) else start_time + 1.0
+                        
+                        segments.append({
+                            'text': current_part.strip(),
+                            'start': start_time,
+                            'end': end_time,
+                        })
+                        char_index = end_idx
+            else:
+                # 句子不太长，直接处理
+                seg_len = len(sentence)
+                start_idx = char_index
+                end_idx = min(char_index + seg_len, len(timestamps))
+                
+                if start_idx < len(timestamps) and end_idx <= len(timestamps):
+                    start_time = timestamps[start_idx] if start_idx < len(timestamps) else 0
+                    end_time = timestamps[end_idx - 1] if end_idx > 0 and end_idx <= len(timestamps) else start_time + 1.0
+                    
+                    segments.append({
+                        'text': sentence,
+                        'start': start_time,
+                        'end': end_time,
+                    })
+                    char_index = end_idx
+        
+        return segments
     
     def _split_into_segments(
         self, 
@@ -553,7 +1108,7 @@ class SpeechRecognitionService:
         audio_duration: float,
         max_segment_length: int = 80
     ) -> List[Dict[str, Any]]:
-        """将长文本分割成带时间戳的段落。
+        """将长文本分割成带时间戳的段落（估算方法，用于 Whisper）。
         
         Args:
             text: 识别的完整文本

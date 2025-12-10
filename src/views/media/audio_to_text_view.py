@@ -13,10 +13,14 @@ import flet as ft
 from constants import (
     BORDER_RADIUS_MEDIUM,
     DEFAULT_WHISPER_MODEL_KEY,
+    DEFAULT_SENSEVOICE_MODEL_KEY,
     PADDING_MEDIUM,
     PADDING_SMALL,
     PADDING_LARGE,
     WHISPER_MODELS,
+    SENSEVOICE_MODELS,
+    SenseVoiceModelInfo,
+    WhisperModelInfo,
 )
 from services import ConfigService, SpeechRecognitionService, FFmpegService
 from utils import format_file_size, logger, segments_to_srt, segments_to_vtt, segments_to_txt
@@ -75,15 +79,30 @@ class AudioToTextView(ft.Container):
         self.model_loaded: bool = False
         self.auto_load_model: bool = self.config_service.get_config_value("whisper_auto_load_model", True)
         
+        # 当前选择的模型引擎（whisper 或 sensevoice）
+        self.current_engine: str = self.config_service.get_config_value("asr_engine", "whisper")
+        if self.current_engine not in ["whisper", "sensevoice"]:
+            self.current_engine = "whisper"
+        
         # 当前选择的模型
-        saved_model_key = self.config_service.get_config_value(
-            "whisper_model_key",
-            DEFAULT_WHISPER_MODEL_KEY
-        )
-        if saved_model_key not in WHISPER_MODELS:
-            saved_model_key = DEFAULT_WHISPER_MODEL_KEY
-        self.current_model_key: str = saved_model_key
-        self.current_model = WHISPER_MODELS[self.current_model_key]
+        if self.current_engine == "whisper":
+            saved_model_key = self.config_service.get_config_value(
+                "whisper_model_key",
+                DEFAULT_WHISPER_MODEL_KEY
+            )
+            if saved_model_key not in WHISPER_MODELS:
+                saved_model_key = DEFAULT_WHISPER_MODEL_KEY
+            self.current_model_key: str = saved_model_key
+            self.current_model = WHISPER_MODELS[self.current_model_key]
+        else:  # sensevoice
+            saved_model_key = self.config_service.get_config_value(
+                "sensevoice_model_key",
+                DEFAULT_SENSEVOICE_MODEL_KEY
+            )
+            if saved_model_key not in SENSEVOICE_MODELS:
+                saved_model_key = DEFAULT_SENSEVOICE_MODEL_KEY
+            self.current_model_key: str = saved_model_key
+            self.current_model = SENSEVOICE_MODELS[self.current_model_key]
         
         # 构建界面
         self._build_ui()
@@ -195,16 +214,22 @@ class AudioToTextView(ft.Container):
             spacing=PADDING_MEDIUM,
         )
         
-        # 模型选择区域
-        model_options = []
-        for model_key, model_info in WHISPER_MODELS.items():
-            option_text = f"{model_info.display_name}  |  {model_info.size_mb}MB  |  {model_info.language_support}"
-            model_options.append(
-                ft.dropdown.Option(key=model_key, text=option_text)
-            )
+        # 模型引擎选择
+        self.engine_selector = ft.RadioGroup(
+            content=ft.Row(
+                controls=[
+                    ft.Radio(value="whisper", label="Whisper（多语言）"),
+                    ft.Radio(value="sensevoice", label="SenseVoice（中文优化）"),
+                ],
+                spacing=PADDING_LARGE,
+            ),
+            value=self.current_engine,
+            on_change=self._on_engine_change,
+        )
         
+        # 模型选择区域（根据引擎动态生成）
         self.model_dropdown = ft.Dropdown(
-            options=model_options,
+            options=[],  # 初始为空，由 _update_model_options 填充
             value=self.current_model_key,
             label="选择模型",
             hint_text="选择语音识别模型",
@@ -213,6 +238,9 @@ class AudioToTextView(ft.Container):
             dense=True,
             text_size=13,
         )
+        
+        # 初始化模型选项
+        self._update_model_options()
         
         # 模型信息显示
         self.model_info_text = ft.Text(
@@ -298,6 +326,16 @@ class AudioToTextView(ft.Container):
             content=ft.Column(
                 controls=[
                     ft.Text("模型设置", size=14, weight=ft.FontWeight.W_500),
+                    ft.Container(
+                        content=ft.Column(
+                            controls=[
+                                ft.Text("识别引擎", size=12, color=ft.Colors.ON_SURFACE_VARIANT),
+                                self.engine_selector,
+                            ],
+                            spacing=4,
+                        ),
+                        margin=ft.margin.only(bottom=PADDING_SMALL),
+                    ),
                     self.model_dropdown,
                     self.model_info_text,
                     ft.Container(height=PADDING_SMALL),
@@ -337,7 +375,8 @@ class AudioToTextView(ft.Container):
             hint_text="选择音频语言",
             value=saved_language,
             options=[
-                ft.dropdown.Option(key="zh", text="中文 (Chinese)"),
+                ft.dropdown.Option(key="zh", text="中文-普通话 (Mandarin)"),
+                ft.dropdown.Option(key="yue", text="中文-粤语 (Cantonese)"),
                 ft.dropdown.Option(key="en", text="英语 (English)"),
                 ft.dropdown.Option(key="ja", text="日语 (Japanese)"),
                 ft.dropdown.Option(key="ko", text="韩语 (Korean)"),
@@ -348,9 +387,65 @@ class AudioToTextView(ft.Container):
                 ft.dropdown.Option(key="ar", text="阿拉伯语 (Arabic)"),
                 ft.dropdown.Option(key="pt", text="葡萄牙语 (Portuguese)"),
             ],
-            width=180,
+            width=200,
             dense=True,
             on_change=self._on_language_change,
+        )
+        
+        # 任务类型选择（Whisper 专用）
+        saved_task = self.config_service.get_config_value("whisper_task", "transcribe")
+        self.task_dropdown = ft.Dropdown(
+            label="任务类型",
+            hint_text="选择识别任务",
+            value=saved_task,
+            options=[
+                ft.dropdown.Option(key="transcribe", text="转录（保持原语言）"),
+                ft.dropdown.Option(key="translate", text="翻译（翻译为英文）"),
+            ],
+            width=230,
+            dense=True,
+            on_change=self._on_task_change,
+            visible=True,  # Whisper 引擎时可见
+        )
+        
+        # 引擎特性提示
+        self.engine_hint = ft.Container(
+            content=ft.Column(
+                controls=[
+                    # Whisper 提示
+                    ft.Container(
+                        content=ft.Row(
+                            controls=[
+                                ft.Icon(ft.Icons.INFO_OUTLINE, size=14, color=ft.Colors.BLUE),
+                                ft.Text(
+                                    "Whisper: 转录模式即正常识别，也可转录为其他语言，但会影响精确度。翻译模式统一翻译为英文",
+                                    size=11,
+                                    color=ft.Colors.ON_SURFACE_VARIANT,
+                                ),
+                            ],
+                            spacing=6,
+                        ),
+                        visible=True,  # Whisper 引擎时显示
+                    ),
+                    # SenseVoice 提示
+                    ft.Container(
+                        content=ft.Row(
+                            controls=[
+                                ft.Icon(ft.Icons.INFO_OUTLINE, size=14, color=ft.Colors.BLUE),
+                                ft.Text(
+                                    "SenseVoice: 自动检测并转录，不受语言选择影响（仅支持中英日韩粤）",
+                                    size=11,
+                                    color=ft.Colors.ON_SURFACE_VARIANT,
+                                ),
+                            ],
+                            spacing=6,
+                        ),
+                        visible=False,  # SenseVoice 引擎时显示
+                    ),
+                ],
+                spacing=4,
+            ),
+            margin=ft.margin.only(top=4, left=4),
         )
         
         # GPU加速设置
@@ -371,7 +466,7 @@ class AudioToTextView(ft.Container):
             hint_icon = ft.Icons.CHECK_CIRCLE
             hint_color = ft.Colors.GREEN
         else:
-            hint_text = "sherpa要求使用CUDA，未检测到 CUDA 支持。请下载 MTools_Windows_CUDA 或 MTools_Linux_CUDA 版本"
+            hint_text = "sherpa要求使用CUDA，未检测到 CUDA 支持。请下载 CUDA 或 CUDA_FULL 版本"
             hint_icon = ft.Icons.INFO_OUTLINE
             hint_color = ft.Colors.ORANGE
         
@@ -395,6 +490,7 @@ class AudioToTextView(ft.Container):
             controls=[
                 self.output_format_dropdown,
                 self.language_dropdown,
+                self.task_dropdown,
                 ft.Column(
                     controls=[
                         self.gpu_checkbox,
@@ -405,6 +501,14 @@ class AudioToTextView(ft.Container):
             ],
             spacing=PADDING_LARGE,
             wrap=True,
+        )
+        
+        # 引擎特性提示行
+        engine_hint_row = ft.Row(
+            controls=[
+                self.engine_hint,
+            ],
+            spacing=PADDING_MEDIUM,
         )
         
         # 格式说明
@@ -457,6 +561,7 @@ class AudioToTextView(ft.Container):
                 controls=[
                     ft.Text("输出设置", size=14, weight=ft.FontWeight.W_500),
                     settings_row,
+                    engine_hint_row,
                     format_hint,
                     ft.Container(height=PADDING_SMALL),
                     ft.Text("输出路径:", size=13),
@@ -583,21 +688,33 @@ class AudioToTextView(ft.Container):
     def _check_all_model_files_exist(self) -> bool:
         """检查当前模型的所有必需文件是否存在。"""
         model_dir = self.speech_service.get_model_dir(self.current_model_key)
-        encoder_path = model_dir / self.current_model.encoder_filename
-        decoder_path = model_dir / self.current_model.decoder_filename
-        config_path = model_dir / self.current_model.config_filename
         
-        all_exist = encoder_path.exists() and decoder_path.exists() and config_path.exists()
+        # 根据模型类型检查文件
+        if isinstance(self.current_model, SenseVoiceModelInfo):
+            # SenseVoice/Paraformer 单文件结构: model.onnx 和 tokens.txt
+            model_path = model_dir / self.current_model.model_filename
+            tokens_path = model_dir / self.current_model.tokens_filename
+            return model_path.exists() and tokens_path.exists()
         
-        # 检查外部权重文件（如果需要）
-        if self.current_model.encoder_weights_filename:
-            weights_path = model_dir / self.current_model.encoder_weights_filename
-            all_exist = all_exist and weights_path.exists()
-        if self.current_model.decoder_weights_filename:
-            weights_path = model_dir / self.current_model.decoder_weights_filename
-            all_exist = all_exist and weights_path.exists()
+        elif isinstance(self.current_model, WhisperModelInfo):
+            # Whisper/Paraformer encoder-decoder 结构: encoder + decoder + tokens
+            encoder_path = model_dir / self.current_model.encoder_filename
+            decoder_path = model_dir / self.current_model.decoder_filename
+            config_path = model_dir / self.current_model.config_filename
+            
+            all_exist = encoder_path.exists() and decoder_path.exists() and config_path.exists()
+            
+            # 检查外部权重文件（如果需要）
+            if hasattr(self.current_model, 'encoder_weights_filename') and self.current_model.encoder_weights_filename:
+                weights_path = model_dir / self.current_model.encoder_weights_filename
+                all_exist = all_exist and weights_path.exists()
+            if hasattr(self.current_model, 'decoder_weights_filename') and self.current_model.decoder_weights_filename:
+                weights_path = model_dir / self.current_model.decoder_weights_filename
+                all_exist = all_exist and weights_path.exists()
+            
+            return all_exist
         
-        return all_exist
+        return False
     
     def _init_model_status(self) -> None:
         """初始化模型状态显示。"""
@@ -632,6 +749,80 @@ class AudioToTextView(ft.Container):
         if self._check_all_model_files_exist() and not self.model_loaded:
             threading.Thread(target=self._load_model_thread, daemon=True).start()
     
+    def _update_model_options(self) -> None:
+        """根据当前引擎更新模型选项列表。"""
+        model_options = []
+        
+        if self.current_engine == "whisper":
+            for model_key, model_info in WHISPER_MODELS.items():
+                option_text = f"{model_info.display_name}  |  {model_info.size_mb}MB  |  {model_info.language_support}"
+                model_options.append(
+                    ft.dropdown.Option(key=model_key, text=option_text)
+                )
+        else:  # sensevoice
+            for model_key, model_info in SENSEVOICE_MODELS.items():
+                option_text = f"{model_info.display_name}  |  {model_info.size_mb}MB  |  {model_info.language_support}"
+                model_options.append(
+                    ft.dropdown.Option(key=model_key, text=option_text)
+                )
+        
+        self.model_dropdown.options = model_options
+        
+        # 更新模型信息显示
+        if hasattr(self, 'model_info_text') and self.current_model:
+            if self.current_engine == "whisper":
+                self.model_info_text.value = f"{self.current_model.quality} | {self.current_model.performance}"
+            else:
+                self.model_info_text.value = f"{self.current_model.quality} | {self.current_model.performance}"
+    
+    def _on_engine_change(self, e: ft.ControlEvent) -> None:
+        """模型引擎切换事件。"""
+        new_engine = e.control.value
+        if new_engine == self.current_engine:
+            return
+        
+        # 如果有模型已加载，先卸载
+        if self.model_loaded:
+            self.speech_service.unload_model()
+            self.model_loaded = False
+        
+        # 切换引擎
+        self.current_engine = new_engine
+        self.config_service.set_config_value("asr_engine", new_engine)
+        
+        # 加载对应引擎的默认模型
+        if new_engine == "whisper":
+            self.current_model_key = self.config_service.get_config_value(
+                "whisper_model_key",
+                DEFAULT_WHISPER_MODEL_KEY
+            )
+            self.current_model = WHISPER_MODELS.get(self.current_model_key, WHISPER_MODELS[DEFAULT_WHISPER_MODEL_KEY])
+        else:  # sensevoice
+            self.current_model_key = self.config_service.get_config_value(
+                "sensevoice_model_key",
+                DEFAULT_SENSEVOICE_MODEL_KEY
+            )
+            self.current_model = SENSEVOICE_MODELS.get(self.current_model_key, SENSEVOICE_MODELS[DEFAULT_SENSEVOICE_MODEL_KEY])
+        
+        # 更新界面
+        self._update_model_options()
+        self.model_dropdown.value = self.current_model_key
+        self._init_model_status()
+        
+        # 更新控件可见性
+        is_whisper = (new_engine == "whisper")
+        self.task_dropdown.visible = is_whisper  # 任务类型只对 Whisper 可见
+        
+        # 更新提示文本可见性
+        if hasattr(self.engine_hint.content, 'controls'):
+            self.engine_hint.content.controls[0].visible = is_whisper  # Whisper 提示
+            self.engine_hint.content.controls[1].visible = not is_whisper  # SenseVoice 提示
+        
+        try:
+            self.page.update()
+        except:
+            pass
+    
     def _on_model_change(self, e: ft.ControlEvent) -> None:
         """模型选择变更事件。"""
         new_key = e.control.value
@@ -642,10 +833,15 @@ class AudioToTextView(ft.Container):
         if self.model_loaded:
             self._unload_model()
         
-        # 更新当前模型
+        # 更新当前模型（根据引擎类型）
         self.current_model_key = new_key
-        self.current_model = WHISPER_MODELS[new_key]
-        self.config_service.set_config_value("whisper_model_key", new_key)
+        
+        if self.current_engine == "whisper":
+            self.current_model = WHISPER_MODELS[new_key]
+            self.config_service.set_config_value("whisper_model_key", new_key)
+        else:  # sensevoice
+            self.current_model = SENSEVOICE_MODELS[new_key]
+            self.config_service.set_config_value("sensevoice_model_key", new_key)
         
         # 更新模型信息
         self.model_info_text.value = f"{self.current_model.quality} | {self.current_model.performance}"
@@ -688,16 +884,28 @@ class AudioToTextView(ft.Container):
                 except:
                     pass
             
-            # 下载模型（encoder + decoder + config）
-            encoder_path, decoder_path, config_path = self.speech_service.download_model(
-                self.current_model_key,
-                self.current_model,
-                progress_callback
-            )
-            
-            logger.info(f"Whisper模型下载完成: {encoder_path.name}, {decoder_path.name}, {config_path.name}")
+            # 根据模型类型下载
+            if isinstance(self.current_model, SenseVoiceModelInfo):
+                # 下载 SenseVoice/Paraformer 单文件模型（model.onnx + tokens.txt）
+                model_path, tokens_path = self.speech_service.download_sensevoice_model(
+                    self.current_model_key,
+                    self.current_model,
+                    progress_callback
+                )
+                
+                logger.info(f"模型下载完成: {model_path.name}, {tokens_path.name}")
+            elif isinstance(self.current_model, WhisperModelInfo):
+                # 下载 Whisper/Paraformer encoder-decoder 模型（encoder + decoder + tokens）
+                encoder_path, decoder_path, config_path = self.speech_service.download_model(
+                    self.current_model_key,
+                    self.current_model,
+                    progress_callback
+                )
+                
+                logger.info(f"模型下载完成: {encoder_path.name}, {decoder_path.name}, {config_path.name}")
             
             # 更新状态
+            engine_name = "SenseVoice" if self.current_engine == "sensevoice" else "Whisper"
             self.model_status_icon.name = ft.Icons.CHECK_CIRCLE
             self.model_status_icon.color = ft.Colors.GREEN
             self.model_status_text.value = f"下载完成 ({self.current_model.size_mb}MB)"
@@ -747,39 +955,58 @@ class AudioToTextView(ft.Container):
             except:
                 pass
             
-            # 获取模型路径
-            model_dir = self.speech_service.get_model_dir(self.current_model_key)
-            encoder_path = model_dir / self.current_model.encoder_filename
-            decoder_path = model_dir / self.current_model.decoder_filename
-            config_path = model_dir / self.current_model.config_filename
-            
             # GPU设置
             gpu_enabled = self.config_service.get_config_value("gpu_acceleration", True)
             gpu_device_id = self.config_service.get_config_value("gpu_device_id", 0)
             gpu_memory_limit = self.config_service.get_config_value("gpu_memory_limit", 2048)
             enable_memory_arena = self.config_service.get_config_value("gpu_enable_memory_arena", True)
             
-            # 获取选择的语言，默认自动检测
+            # 获取选择的语言和任务类型
             language = self.config_service.get_config_value("whisper_language", "auto")
-            # 如果是 auto，传递给 sherpa-onnx 时使用 "en"（sherpa 不支持 auto，默认英文）
-            sherpa_language = "en" if language == "auto" else language
+            sherpa_language = "" if language == "auto" else language
+            task = self.config_service.get_config_value("whisper_task", "transcribe")
             
-            # 加载模型
-            self.speech_service.load_model(
-                encoder_path,
-                decoder_path,
-                config_path,
-                use_gpu=gpu_enabled,
-                gpu_device_id=gpu_device_id,
-                gpu_memory_limit=gpu_memory_limit,
-                enable_memory_arena=enable_memory_arena,
-                language=sherpa_language,  # 使用用户选择的语言
-            )
+            # 根据模型类型加载模型
+            model_dir = self.speech_service.get_model_dir(self.current_model_key)
+            
+            if isinstance(self.current_model, SenseVoiceModelInfo):
+                # 加载 SenseVoice/Paraformer 单文件模型
+                model_path = model_dir / self.current_model.model_filename
+                tokens_path = model_dir / self.current_model.tokens_filename
+                
+                self.speech_service.load_sensevoice_model(
+                    model_path=model_path,
+                    tokens_path=tokens_path,
+                    use_gpu=gpu_enabled,
+                    gpu_device_id=gpu_device_id,
+                    language=sherpa_language,
+                    model_type=self.current_model.model_type,  # 传递模型类型
+                )
+            elif isinstance(self.current_model, WhisperModelInfo):
+                # 加载 Whisper/Paraformer encoder-decoder 模型
+                encoder_path = model_dir / self.current_model.encoder_filename
+                decoder_path = model_dir / self.current_model.decoder_filename
+                config_path = model_dir / self.current_model.config_filename
+                
+                # 注意：Paraformer encoder-decoder 模型暂时使用 Whisper 加载方式
+                # TODO: 实现专门的 Paraformer 流式模型加载方法
+                self.speech_service.load_model(
+                    encoder_path,
+                    decoder_path,
+                    config_path,
+                    use_gpu=gpu_enabled,
+                    gpu_device_id=gpu_device_id,
+                    gpu_memory_limit=gpu_memory_limit,
+                    enable_memory_arena=enable_memory_arena,
+                    language=sherpa_language,
+                    task=task,  # 传递任务类型
+                )
             
             self.model_loaded = True
             
             # 获取设备信息
             device_info = self.speech_service.get_device_info()
+            engine_name = "SenseVoice" if self.current_engine == "sensevoice" else "Whisper"
             
             # 更新状态
             self.model_status_icon.name = ft.Icons.CHECK_CIRCLE
@@ -789,7 +1016,7 @@ class AudioToTextView(ft.Container):
             self.unload_model_button.visible = True
             self.reload_model_button.visible = True
             
-            logger.info(f"Whisper模型加载完成, 设备: {device_info}")
+            logger.info(f"{engine_name}模型加载完成, 设备: {device_info}")
             
             # 如果使用了 CUDA，显示警告提示
             if "CUDA" in device_info.upper() or self.speech_service.current_provider == "cuda":
@@ -984,7 +1211,16 @@ class AudioToTextView(ft.Container):
         
         # 如果当前有模型加载，提示需要重新加载
         if self.model_loaded:
-            self._show_info("提示", "识别语言已更改，需要重新加载模型才能生效。")
+            self._show_info("提示", "音频语言已更改，需要重新加载模型才能生效。")
+    
+    def _on_task_change(self, e: ft.ControlEvent) -> None:
+        """任务类型变更事件。"""
+        task = e.control.value
+        self.config_service.set_config_value("whisper_task", task)
+        
+        # 如果当前有模型加载，提示需要重新加载
+        if self.model_loaded:
+            self._show_info("提示", "任务类型已更改，需要重新加载模型才能生效。")
     
     def _on_output_mode_change(self, e: ft.ControlEvent) -> None:
         """输出模式变化事件。"""
@@ -1165,11 +1401,17 @@ class AudioToTextView(ft.Container):
                     # 获取输出格式
                     output_format = self.output_format_dropdown.value
                     
+                    # 获取识别参数
+                    language = self.config_service.get_config_value("whisper_language", "zh")
+                    task = self.config_service.get_config_value("whisper_task", "transcribe")
+                    
                     # 根据输出格式选择识别方法
                     if output_format in ['srt', 'vtt']:
                         # 使用带时间戳的识别方法
                         segments = self.speech_service.recognize_with_timestamps(
-                            file_path, 
+                            file_path,
+                            language=language,
+                            task=task,
                             progress_callback=progress_callback
                         )
                         
@@ -1180,7 +1422,12 @@ class AudioToTextView(ft.Container):
                             content = segments_to_vtt(segments)
                     else:
                         # txt 格式，使用普通识别方法
-                        text = self.speech_service.recognize(file_path, progress_callback=progress_callback)
+                        text = self.speech_service.recognize(
+                            file_path,
+                            language=language,
+                            task=task,
+                            progress_callback=progress_callback
+                        )
                         content = text
                     
                     # 确定输出路径

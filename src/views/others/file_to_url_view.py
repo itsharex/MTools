@@ -20,7 +20,7 @@ from constants import (
     PADDING_MEDIUM,
     PADDING_SMALL,
 )
-from utils import format_file_size
+from utils import format_file_size, logger
 
 
 # 禁止上传的文件扩展名
@@ -639,7 +639,14 @@ class FileToUrlView(ft.Container):
                     'time': self.temp_duration,
                 }
             
+            # 检查文件大小
+            file_size = file_path.stat().st_size
+            file_size_mb = file_size / (1024 * 1024)
+            if file_size_mb > 200:  # 超过 200MB 给出警告
+                logger.warning(f"上传大文件: {file_path.name} ({file_size_mb:.1f}MB)")
+            
             # 准备文件
+            # 注意：httpx 的 files 参数会自动进行流式上传，不会一次性加载到内存
             with open(file_path, 'rb') as f:
                 files = {
                     'fileToUpload': (file_path.name, f, 'application/octet-stream'),
@@ -649,7 +656,7 @@ class FileToUrlView(ft.Container):
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36',
                 }
                 
-                # 发送请求
+                # 发送请求（httpx 会自动流式上传）
                 response = httpx.post(
                     url,
                     files=files,

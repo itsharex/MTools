@@ -526,6 +526,38 @@ DEFAULT_INTERPOLATION_MODEL_KEY: Final[str] = "rife49_fast"
 
 
 @dataclass
+class SenseVoiceModelInfo:
+    """SenseVoice/Paraformer 模型信息数据类。
+    
+    Attributes:
+        name: 模型名称
+        display_name: 显示名称
+        model_url: 模型文件下载链接
+        tokens_url: tokens.txt 下载链接
+        size_mb: 文件大小(MB)
+        quality: 质量描述
+        performance: 性能描述
+        model_filename: 模型文件名
+        tokens_filename: tokens 文件名
+        language_support: 支持的语言
+        version: 版本号
+        model_type: 模型类型（sensevoice/paraformer）
+    """
+    name: str
+    display_name: str
+    model_url: str
+    tokens_url: str
+    size_mb: int
+    quality: str
+    performance: str
+    model_filename: str = "model.onnx"
+    tokens_filename: str = "tokens.txt"
+    language_support: str = "中文、英文"
+    version: str = "2024-07-17"
+    model_type: str = "sensevoice"
+
+
+@dataclass
 class WhisperModelInfo:
     """Whisper 模型信息数据类。
     
@@ -677,6 +709,59 @@ WHISPER_MODELS: Final[dict[str, WhisperModelInfo]] = {
 
 # 默认 Whisper 模型（推荐使用 Tiny，轻量且支持多语言）
 DEFAULT_WHISPER_MODEL_KEY: Final[str] = "whisper_tiny"
+
+
+# SenseVoice/Paraformer 语音识别模型
+# 使用 sherpa-onnx 推理引擎，无音频长度限制，速度更快
+# 官方模型下载: https://github.com/k2-fsa/sherpa-onnx/releases/tag/asr-models
+# 注意：仅支持离线（Offline）模型，流式（Streaming）模型暂不支持
+SENSEVOICE_MODELS: Final[dict[str, SenseVoiceModelInfo]] = {
+    "sensevoice_zh_en_ja_ko_yue": SenseVoiceModelInfo(
+        name="sensevoice_zh_en_ja_ko_yue",
+        display_name="SenseVoice 多语言 FP32（高精度）",
+        model_url="https://www.modelscope.cn/models/yiminger/MyTools_Models/resolve/master/models/whisper/sensevoice_zh_en_ja_ko_yue/model.onnx",
+        tokens_url="https://www.modelscope.cn/models/yiminger/MyTools_Models/resolve/master/models/whisper/sensevoice_zh_en_ja_ko_yue/tokens.txt",
+        size_mb=940,
+        quality="极高质量",
+        performance="极速 | 内存占用 ~1GB | 无长度限制 | 需要 opset 17",
+        model_filename="model.onnx",  # FP32 完整版（需要新版 onnxruntime 支持 opset 17）
+        tokens_filename="tokens.txt",
+        language_support="中文、英文、日文、韩文、粤语",
+        version="2024-07-17",
+        model_type="sensevoice"
+    ),
+    "sensevoice_zh_en_ja_ko_yue_int8": SenseVoiceModelInfo(
+        name="sensevoice_zh_en_ja_ko_yue_int8",
+        display_name="SenseVoice 多语言 INT8（推荐，兼容）",
+        model_url="https://www.modelscope.cn/models/yiminger/MyTools_Models/resolve/master/models/whisper/sensevoice_zh_en_ja_ko_yue/model.int8.onnx",
+        tokens_url="https://www.modelscope.cn/models/yiminger/MyTools_Models/resolve/master/models/whisper/sensevoice_zh_en_ja_ko_yue/tokens.txt",
+        size_mb=240,
+        quality="极高质量",
+        performance="极速 | 内存占用 ~500MB | 无长度限制 | 兼容性好",
+        model_filename="model.int8.onnx",  # INT8 量化版（兼容 opset 10，适合标准 onnxruntime）
+        tokens_filename="tokens.txt",
+        language_support="中文、英文、日文、韩文、粤语",
+        version="2024-07-17",
+        model_type="sensevoice"
+    ),
+    "paraformer_zh_small": SenseVoiceModelInfo(
+        name="paraformer_zh_small",
+        display_name="Paraformer 中文 INT8（轻量）",
+        model_url="https://www.modelscope.cn/models/yiminger/MyTools_Models/resolve/master/models/whisper/paraformer_zh_small/model.int8.onnx",
+        tokens_url="https://www.modelscope.cn/models/yiminger/MyTools_Models/resolve/master/models/whisper/paraformer_zh_small/tokens.txt",
+        size_mb=200,
+        quality="优秀质量",
+        performance="极速 | 内存占用 ~300MB | 无长度限制",
+        model_filename="model.int8.onnx",
+        tokens_filename="tokens.txt",
+        language_support="中文",
+        version="2024-03-09",
+        model_type="paraformer"
+    ),
+}
+
+# 默认 SenseVoice 模型（推荐使用 INT8 版本，兼容性好）
+DEFAULT_SENSEVOICE_MODEL_KEY: Final[str] = "sensevoice_zh_en_ja_ko_yue_int8"
 
 
 # OCR 模型配置（PaddleOCR v5）

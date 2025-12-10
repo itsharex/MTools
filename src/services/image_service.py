@@ -34,11 +34,23 @@ class ImageService:
     - 批量处理
     """
     
-    # 图片压缩工具下载链接
-    MOZJPEG_DOWNLOAD_URL = "https://ghproxy.cn/https://github.com/mozilla/mozjpeg/releases/download/v4.0.3/mozjpeg-v4.0.3-win-x64.zip"
-    PNGQUANT_WINDOWS_URL = "https://pngquant.org/pngquant-windows.zip"
-    PNGQUANT_MACOS_URL = "https://pngquant.org/pngquant.tar.bz2"
-    PNGQUANT_LINUX_URL = "https://pngquant.org/pngquant-linux.tar.bz2"
+    # 图片压缩工具下载链接（支持多个备用地址）
+    MOZJPEG_DOWNLOAD_URLS = [
+        "https://ghproxy.cn/https://github.com/mozilla/mozjpeg/releases/download/v4.0.3/mozjpeg-v4.0.3-win-x64.zip",
+        "https://openlist.wer.plus/d/share/MTools/Tools/mozjpeg-v4.0.3-win-x64.zip",
+    ]
+    PNGQUANT_WINDOWS_URLS = [
+        "https://pngquant.org/pngquant-windows.zip",
+        "https://openlist.wer.plus/d/share/MTools/Tools/pngquant-windows.zip",
+    ]
+    PNGQUANT_MACOS_URLS = [
+        "https://pngquant.org/pngquant.tar.bz2",
+        "https://openlist.wer.plus/d/share/MTools/Tools/pngquant.tar.bz2",
+    ]
+    PNGQUANT_LINUX_URLS = [
+        "https://pngquant.org/pngquant-linux.tar.bz2",
+        "https://openlist.wer.plus/d/share/MTools/Tools/pngquant-linux.tar.bz2",
+    ]
     
     def __init__(self, config_service=None) -> None:
         """初始化图片处理服务。
@@ -228,27 +240,49 @@ class ImageService:
             temp_dir = self._get_temp_dir()
             zip_path = temp_dir / "mozjpeg.zip"
             
-            # 下载
-            with httpx.stream("GET", self.MOZJPEG_DOWNLOAD_URL, follow_redirects=True, timeout=60.0) as response:
-                response.raise_for_status()
+            # 尝试多个下载地址
+            last_error = None
+            for url_index, download_url in enumerate(self.MOZJPEG_DOWNLOAD_URLS):
+                try:
+                    if progress_callback:
+                        url_name = "主下载地址" if url_index == 0 else f"备用地址 {url_index}"
+                        progress_callback(0.0, f"正在尝试从 {url_name} 下载 mozjpeg...")
+                    
+                    # 下载
+                    with httpx.stream("GET", download_url, follow_redirects=True, timeout=60.0) as response:
+                        response.raise_for_status()
+                        
+                        total_size = int(response.headers.get('content-length', 0))
+                        downloaded = 0
+                        
+                        with open(zip_path, 'wb') as f:
+                            for chunk in response.iter_bytes(chunk_size=8192):
+                                if chunk:
+                                    f.write(chunk)
+                                    downloaded += len(chunk)
+                                    
+                                    if progress_callback and total_size > 0:
+                                        progress = downloaded / total_size * 0.2  # mozjpeg下载占20%进度
+                                        size_mb = downloaded / (1024 * 1024)
+                                        total_mb = total_size / (1024 * 1024)
+                                        progress_callback(
+                                            progress,
+                                            f"下载 mozjpeg: {size_mb:.1f}/{total_mb:.1f} MB"
+                                        )
+                    
+                    # 下载成功，跳出循环
+                    break
                 
-                total_size = int(response.headers.get('content-length', 0))
-                downloaded = 0
-                
-                with open(zip_path, 'wb') as f:
-                    for chunk in response.iter_bytes(chunk_size=8192):
-                        if chunk:
-                            f.write(chunk)
-                            downloaded += len(chunk)
-                            
-                            if progress_callback and total_size > 0:
-                                progress = downloaded / total_size * 0.2  # mozjpeg下载占20%进度
-                                size_mb = downloaded / (1024 * 1024)
-                                total_mb = total_size / (1024 * 1024)
-                                progress_callback(
-                                    progress,
-                                    f"下载 mozjpeg: {size_mb:.1f}/{total_mb:.1f} MB"
-                                )
+                except Exception as e:
+                    last_error = str(e)
+                    logger.warning(f"从地址 {url_index + 1} 下载 mozjpeg 失败: {e}")
+                    
+                    # 如果不是最后一个地址，继续尝试下一个
+                    if url_index < len(self.MOZJPEG_DOWNLOAD_URLS) - 1:
+                        continue
+                    else:
+                        # 所有地址都失败了
+                        return False, f"所有下载地址均失败，最后错误: {last_error}"
             
             if progress_callback:
                 progress_callback(0.2, "mozjpeg 下载完成，开始解压...")
@@ -327,38 +361,60 @@ class ImageService:
             
             # 根据平台选择下载链接和文件格式
             if system == "Darwin":
-                download_url = self.PNGQUANT_MACOS_URL
+                download_urls = self.PNGQUANT_MACOS_URLS
                 archive_path = temp_dir / "pngquant.tar.bz2"
             elif system == "Linux":
-                download_url = self.PNGQUANT_LINUX_URL
+                download_urls = self.PNGQUANT_LINUX_URLS
                 archive_path = temp_dir / "pngquant.tar.bz2"
             else:  # Windows
-                download_url = self.PNGQUANT_WINDOWS_URL
+                download_urls = self.PNGQUANT_WINDOWS_URLS
                 archive_path = temp_dir / "pngquant.zip"
             
-            # 下载
-            with httpx.stream("GET", download_url, follow_redirects=True, timeout=60.0) as response:
-                response.raise_for_status()
+            # 尝试多个下载地址
+            last_error = None
+            for url_index, download_url in enumerate(download_urls):
+                try:
+                    if progress_callback:
+                        url_name = "主下载地址" if url_index == 0 else f"备用地址 {url_index}"
+                        progress_callback(0.0 if system != "Windows" else 0.5, f"正在尝试从 {url_name} 下载 pngquant...")
+                    
+                    # 下载
+                    with httpx.stream("GET", download_url, follow_redirects=True, timeout=60.0) as response:
+                        response.raise_for_status()
+                        
+                        total_size = int(response.headers.get('content-length', 0))
+                        downloaded = 0
+                        
+                        with open(archive_path, 'wb') as f:
+                            for chunk in response.iter_bytes(chunk_size=8192):
+                                if chunk:
+                                    f.write(chunk)
+                                    downloaded += len(chunk)
+                                    
+                                    if progress_callback and total_size > 0:
+                                        # Windows 下从 50% 开始，macOS/Linux 下从 0% 开始
+                                        progress_start = 0.5 if system == "Windows" else 0.0
+                                        progress = progress_start + (downloaded / total_size * 0.2)
+                                        size_mb = downloaded / (1024 * 1024)
+                                        total_mb = total_size / (1024 * 1024)
+                                        progress_callback(
+                                            progress,
+                                            f"下载 pngquant: {size_mb:.1f}/{total_mb:.1f} MB"
+                                        )
+                    
+                    # 下载成功，跳出循环
+                    break
                 
-                total_size = int(response.headers.get('content-length', 0))
-                downloaded = 0
-                
-                with open(archive_path, 'wb') as f:
-                    for chunk in response.iter_bytes(chunk_size=8192):
-                        if chunk:
-                            f.write(chunk)
-                            downloaded += len(chunk)
-                            
-                            if progress_callback and total_size > 0:
-                                # Windows 下从 50% 开始，macOS/Linux 下从 0% 开始
-                                progress_start = 0.5 if system == "Windows" else 0.0
-                                progress = progress_start + (downloaded / total_size * 0.2)
-                                size_mb = downloaded / (1024 * 1024)
-                                total_mb = total_size / (1024 * 1024)
-                                progress_callback(
-                                    progress,
-                                    f"下载 pngquant: {size_mb:.1f}/{total_mb:.1f} MB"
-                                )
+                except Exception as e:
+                    last_error = str(e)
+                    logger.warning(f"从地址 {url_index + 1} 下载 pngquant 失败: {e}")
+                    
+                    # 如果不是最后一个地址，继续尝试下一个
+                    if url_index < len(download_urls) - 1:
+                        continue
+                    else:
+                        # 所有地址都失败了
+                        return False, f"所有下载地址均失败，最后错误: {last_error}"
             
             if progress_callback:
                 progress_val = 0.7 if system == "Windows" else 0.2

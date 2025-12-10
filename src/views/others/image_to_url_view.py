@@ -16,7 +16,7 @@ from constants import (
     PADDING_MEDIUM,
     PADDING_SMALL,
 )
-from utils import format_file_size
+from utils import format_file_size, logger
 
 
 class ImageToUrlView(ft.Container):
@@ -570,7 +570,14 @@ class ImageToUrlView(ft.Container):
         try:
             url = "https://imagetourl.net/api/upload/direct"
             
+            # 检查文件大小（可选：对超大文件给出警告）
+            file_size = file_path.stat().st_size
+            file_size_mb = file_size / (1024 * 1024)
+            if file_size_mb > 100:  # 超过 100MB 给出提示
+                logger.warning(f"上传大文件: {file_path.name} ({file_size_mb:.1f}MB)")
+            
             # 准备文件
+            # 注意：httpx 的 files 参数会自动进行流式上传，不会一次性加载到内存
             with open(file_path, 'rb') as f:
                 files = {
                     'file': (file_path.name, f, self._get_mime_type(file_path)),
@@ -587,7 +594,7 @@ class ImageToUrlView(ft.Container):
                     'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36'
                 }
                 
-                # 发送请求
+                # 发送请求（httpx 会自动流式上传）
                 response = httpx.post(
                     url,
                     files=files,
