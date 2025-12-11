@@ -2,15 +2,41 @@
 """ONNX Runtime 辅助工具函数。
 
 提供统一的SessionOptions配置和Provider配置功能，避免重复代码。
+
+使用指南（从简单到复杂）:
+---------
+1. 最简单（推荐）：使用 create_onnx_session() - 一行代码搞定
+   >>> session = create_onnx_session(
+   ...     model_path=Path("model.onnx"),
+   ...     config_service=config_service
+   ... )
+   >>> result = session.run(None, {'input': data})
+
+2. 需要配置对象：使用 create_onnx_session_config()
+   >>> sess_options, providers = create_onnx_session_config(
+   ...     config_service=config_service,
+   ...     model_path=model_path
+   ... )
+   >>> session = ort.InferenceSession(model_path, sess_options, providers)
+
+3. 单独配置某一部分：分别使用 create_session_options() 和 create_provider_options()
+   >>> sess_options = create_session_options(cpu_threads=4, execution_mode="parallel")
+   >>> providers = create_provider_options(config_service=config_service)
+   >>> session = ort.InferenceSession(model_path, sess_options, providers)
+
+4. 完全自定义：直接手动配置 SessionOptions 和 Providers
 """
 
 from pathlib import Path
-from typing import Optional, Tuple, List, Union
+from typing import Optional, Tuple, List, Union, TYPE_CHECKING, Any
 
 try:
     import onnxruntime as ort
 except ImportError:
     ort = None
+
+if TYPE_CHECKING:
+    from services import ConfigService
 
 
 def create_session_options(
@@ -19,7 +45,7 @@ def create_session_options(
     execution_mode: str = "sequential",
     enable_model_cache: bool = False,
     model_path: Optional[Path] = None
-) -> 'ort.SessionOptions':
+) -> Any:  # ort.SessionOptions
     """创建统一配置的SessionOptions。
     
     Args:
@@ -70,20 +96,26 @@ def create_session_options(
 def create_provider_options(
     use_gpu: bool = True,
     gpu_device_id: int = 0,
-    gpu_memory_limit: int = 2048
+    gpu_memory_limit: int = 2048,
+    config_service: Optional['ConfigService'] = None
 ) -> List[Union[str, Tuple[str, dict]]]:
     """创建统一的Execution Provider配置。
     
     Args:
-        use_gpu: 是否使用GPU加速
+        use_gpu: 是否使用GPU加速（如果提供config_service，会优先读取gpu_acceleration配置）
         gpu_device_id: GPU设备ID
         gpu_memory_limit: GPU内存限制（MB）
+        config_service: 配置服务实例（可选，用于读取gpu_acceleration配置）
         
     Returns:
         Provider列表
     """
     if ort is None:
         raise ImportError("需要安装 onnxruntime 库")
+    
+    # 如果提供了config_service，优先读取gpu_acceleration配置
+    if config_service is not None:
+        use_gpu = config_service.get_config_value("gpu_acceleration", use_gpu)
     
     providers = []
     
@@ -113,4 +145,169 @@ def create_provider_options(
     providers.append('CPUExecutionProvider')
     
     return providers
+
+
+def create_onnx_session_config(
+    config_service: Optional['ConfigService'] = None,
+    gpu_device_id: Optional[int] = None,
+    gpu_memory_limit: Optional[int] = None,
+    enable_memory_arena: Optional[bool] = None,
+    cpu_threads: Optional[int] = None,
+    execution_mode: Optional[str] = None,
+    enable_model_cache: Optional[bool] = None,
+    model_path: Optional[Path] = None
+) -> Tuple[Any, List[Union[str, Tuple[str, dict]]]]:
+    """创建完整的ONNX Runtime会话配置（SessionOptions + Providers）。
+    
+    这是一个便捷函数，组合了 create_session_options 和 create_provider_options。
+    如果提供 config_service，会自动从配置中读取相关参数。
+    
+    Args:
+        config_service: 配置服务实例（可选，用于自动读取配置）
+        gpu_device_id: GPU设备ID（None则从配置读取，默认0）
+        gpu_memory_limit: GPU内存限制MB（None则从配置读取，默认2048）
+        enable_memory_arena: 是否启用CPU内存池（None则从配置读取，默认True）
+        cpu_threads: CPU推理线程数（None则从配置读取，默认0=自动）
+        execution_mode: 执行模式sequential/parallel（None则从配置读取，默认sequential）
+        enable_model_cache: 是否启用模型缓存（None则从配置读取，默认False）
+        model_path: 模型路径（用于缓存）
+        
+    Returns:
+        (sess_options, providers) 元组
+        
+    Example:
+        >>> sess_options, providers = create_onnx_session_config(
+        ...     config_service=config_service,
+        ...     model_path=model_path
+        ... )
+        >>> session = ort.InferenceSession(
+        ...     str(model_path),
+        ...     sess_options=sess_options,
+        ...     providers=providers
+        ... )
+    """
+    if ort is None:
+        raise ImportError("需要安装 onnxruntime 库")
+    
+    # 从配置服务读取参数（如果提供且参数为None）
+    if config_service is not None:
+        if gpu_device_id is None:
+            gpu_device_id = config_service.get_config_value("gpu_device_id", 0)
+        if gpu_memory_limit is None:
+            gpu_memory_limit = config_service.get_config_value("gpu_memory_limit", 2048)
+        if enable_memory_arena is None:
+            enable_memory_arena = config_service.get_config_value("gpu_enable_memory_arena", True)
+        if cpu_threads is None:
+            cpu_threads = config_service.get_config_value("onnx_cpu_threads", 0)
+        if execution_mode is None:
+            execution_mode = config_service.get_config_value("onnx_execution_mode", "sequential")
+        if enable_model_cache is None:
+            enable_model_cache = config_service.get_config_value("onnx_enable_model_cache", False)
+    
+    # 设置默认值（如果仍为None）
+    if gpu_device_id is None:
+        gpu_device_id = 0
+    if gpu_memory_limit is None:
+        gpu_memory_limit = 2048
+    if enable_memory_arena is None:
+        enable_memory_arena = True
+    if cpu_threads is None:
+        cpu_threads = 0
+    if execution_mode is None:
+        execution_mode = "sequential"
+    if enable_model_cache is None:
+        enable_model_cache = False
+    
+    # 创建 SessionOptions
+    sess_options = create_session_options(
+        enable_memory_arena=enable_memory_arena,
+        cpu_threads=cpu_threads,
+        execution_mode=execution_mode,
+        enable_model_cache=enable_model_cache,
+        model_path=model_path
+    )
+    
+    # 创建 Providers
+    providers = create_provider_options(
+        gpu_device_id=gpu_device_id,
+        gpu_memory_limit=gpu_memory_limit,
+        config_service=config_service
+    )
+    
+    return sess_options, providers
+
+
+def create_onnx_session(
+    model_path: Path,
+    config_service: Optional['ConfigService'] = None,
+    gpu_device_id: Optional[int] = None,
+    gpu_memory_limit: Optional[int] = None,
+    enable_memory_arena: Optional[bool] = None,
+    cpu_threads: Optional[int] = None,
+    execution_mode: Optional[str] = None,
+    enable_model_cache: Optional[bool] = None,
+) -> Any:  # ort.InferenceSession
+    """创建配置好的ONNX Runtime推理会话（一步到位）。
+    
+    这是最便捷的函数，直接返回配置好的InferenceSession对象。
+    如果提供 config_service，会自动从配置中读取所有参数。
+    
+    Args:
+        model_path: 模型文件路径
+        config_service: 配置服务实例（可选，用于自动读取配置）
+        gpu_device_id: GPU设备ID（None则从配置读取，默认0）
+        gpu_memory_limit: GPU内存限制MB（None则从配置读取，默认2048）
+        enable_memory_arena: 是否启用CPU内存池（None则从配置读取，默认True）
+        cpu_threads: CPU推理线程数（None则从配置读取，默认0=自动）
+        execution_mode: 执行模式sequential/parallel（None则从配置读取，默认sequential）
+        enable_model_cache: 是否启用模型缓存（None则从配置读取，默认False）
+        
+    Returns:
+        配置好的 InferenceSession 对象
+        
+    Raises:
+        FileNotFoundError: 模型文件不存在
+        ImportError: onnxruntime 未安装
+        
+    Example:
+        >>> # 最简单的用法 - 一行代码搞定
+        >>> session = create_onnx_session(
+        ...     model_path=Path("model.onnx"),
+        ...     config_service=config_service
+        ... )
+        >>> 
+        >>> # 自定义部分参数
+        >>> session = create_onnx_session(
+        ...     model_path=Path("model.onnx"),
+        ...     config_service=config_service,
+        ...     cpu_threads=4,
+        ...     execution_mode="parallel"
+        ... )
+    """
+    if ort is None:
+        raise ImportError("需要安装 onnxruntime 库")
+    
+    if not model_path.exists():
+        raise FileNotFoundError(f"模型文件不存在: {model_path}")
+    
+    # 获取配置
+    sess_options, providers = create_onnx_session_config(
+        config_service=config_service,
+        gpu_device_id=gpu_device_id,
+        gpu_memory_limit=gpu_memory_limit,
+        enable_memory_arena=enable_memory_arena,
+        cpu_threads=cpu_threads,
+        execution_mode=execution_mode,
+        enable_model_cache=enable_model_cache,
+        model_path=model_path
+    )
+    
+    # 创建会话
+    session = ort.InferenceSession(
+        str(model_path),
+        sess_options=sess_options,
+        providers=providers
+    )
+    
+    return session
 

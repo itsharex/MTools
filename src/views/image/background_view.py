@@ -530,26 +530,9 @@ class ImageBackgroundView(ft.Container):
     def _load_model_async(self) -> None:
         """异步加载模型。"""
         try:
-            # 从配置中获取GPU相关设置
-            use_gpu = self.config_service.get_config_value("gpu_acceleration", True)
-            gpu_device_id = self.config_service.get_config_value("gpu_device_id", 0)
-            gpu_memory_limit = self.config_service.get_config_value("gpu_memory_limit", 2048)
-            enable_memory_arena = self.config_service.get_config_value("gpu_enable_memory_arena", True)
-            
-            # 获取ONNX性能优化参数
-            cpu_threads = self.config_service.get_config_value("onnx_cpu_threads", 0)
-            execution_mode = self.config_service.get_config_value("onnx_execution_mode", "sequential")
-            enable_model_cache = self.config_service.get_config_value("onnx_enable_model_cache", False)
-            
             self.bg_remover = BackgroundRemover(
                 self.model_path, 
-                use_gpu=use_gpu,
-                gpu_device_id=gpu_device_id,
-                gpu_memory_limit=gpu_memory_limit,
-                enable_memory_arena=enable_memory_arena,
-                cpu_threads=cpu_threads,
-                execution_mode=execution_mode,
-                enable_model_cache=enable_model_cache
+                config_service=self.config_service
             )
             self._on_model_loaded(True, None)
         except Exception as e:
@@ -627,26 +610,10 @@ class ImageBackgroundView(ft.Container):
                 except:
                     pass
                 
-                # 加载模型（使用GPU配置）
-                use_gpu = self.config_service.get_config_value("gpu_acceleration", True)
-                gpu_device_id = self.config_service.get_config_value("gpu_device_id", 0)
-                gpu_memory_limit = self.config_service.get_config_value("gpu_memory_limit", 2048)
-                enable_memory_arena = self.config_service.get_config_value("gpu_enable_memory_arena", True)
-                
-                # 获取ONNX性能优化参数
-                cpu_threads = self.config_service.get_config_value("onnx_cpu_threads", 0)
-                execution_mode = self.config_service.get_config_value("onnx_execution_mode", "sequential")
-                enable_model_cache = self.config_service.get_config_value("onnx_enable_model_cache", False)
-                
+                # 加载模型
                 self.bg_remover = BackgroundRemover(
                     self.model_path,
-                    use_gpu=use_gpu,
-                    gpu_device_id=gpu_device_id,
-                    gpu_memory_limit=gpu_memory_limit,
-                    enable_memory_arena=enable_memory_arena,
-                    cpu_threads=cpu_threads,
-                    execution_mode=execution_mode,
-                    enable_model_cache=enable_model_cache
+                    config_service=self.config_service
                 )
                 self._on_model_loaded(True, None)
             except Exception as e:

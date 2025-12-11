@@ -8,7 +8,7 @@ import gc
 import logging
 import threading
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Optional, Tuple, TYPE_CHECKING
 
 import numpy as np
 import onnxruntime as ort
@@ -19,6 +19,10 @@ from constants.model_config import (
     FRAME_INTERPOLATION_MODELS,
     FrameInterpolationModelInfo,
 )
+from utils import create_onnx_session
+
+if TYPE_CHECKING:
+    from services import ConfigService
 
 logger = logging.getLogger(__name__)
 
@@ -32,31 +36,16 @@ class FrameInterpolationService:
     def __init__(
         self,
         model_name: str = DEFAULT_INTERPOLATION_MODEL_KEY,
-        execution_provider: str = "CUDAExecutionProvider",
-        gpu_device_id: int = 0,
-        gpu_memory_limit: int = 2048,
-        cpu_threads: int = 0,
-        execution_mode: str = "sequential",
-        enable_model_cache: bool = False
+        config_service: Optional['ConfigService'] = None
     ) -> None:
         """初始化插帧服务。
         
         Args:
             model_name: 模型名称
-            execution_provider: 执行提供者（CUDA/DirectML/CPU）
-            gpu_device_id: GPU设备ID，默认0（第一个GPU）
-            gpu_memory_limit: GPU内存限制（MB），默认2048MB
-            cpu_threads: CPU推理线程数，0=自动检测
-            execution_mode: 执行模式（sequential/parallel）
-            enable_model_cache: 是否启用模型缓存优化
+            config_service: 配置服务实例（用于自动读取ONNX配置）
         """
         self.model_name: str = model_name
-        self.execution_provider: str = execution_provider
-        self.gpu_device_id: int = gpu_device_id
-        self.gpu_memory_limit: int = gpu_memory_limit
-        self.cpu_threads: int = cpu_threads
-        self.execution_mode: str = execution_mode
-        self.enable_model_cache: bool = enable_model_cache
+        self.config_service: Optional['ConfigService'] = config_service
         self.sess: Optional[ort.InferenceSession] = None
         self.model_info: Optional[FrameInterpolationModelInfo] = None
         self.inference_lock = threading.Lock()  # 线程安全锁
@@ -91,69 +80,11 @@ class FrameInterpolationService:
                 logger.info(f"  集成模式: {'是' if self.model_info.ensemble else '否'}")
                 logger.info(f"  优化场景: {self.model_info.optimized_for}")
             
-            # 配置 ONNX Runtime
-            sess_options = ort.SessionOptions()
-            sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-            
-            # 应用性能优化参数
-            if self.cpu_threads > 0:
-                sess_options.intra_op_num_threads = self.cpu_threads
-                sess_options.inter_op_num_threads = self.cpu_threads
-                logger.info(f"设置CPU线程数: {self.cpu_threads}")
-            
-            # 执行模式
-            if self.execution_mode == "parallel":
-                sess_options.execution_mode = ort.ExecutionMode.ORT_PARALLEL
-                logger.info("使用并行执行模式 (适合多核CPU)")
-            else:
-                sess_options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
-                logger.info("使用顺序执行模式 (节省内存)")
-            
-            # 模型缓存优化
-            if self.enable_model_cache:
-                cache_path = model_path.with_suffix('.optimized.onnx')
-                sess_options.optimized_model_filepath = str(cache_path)
-                logger.info(f"启用模型缓存: {cache_path.name}")
-            
-            # 检查请求的执行提供者是否可用
-            available_providers = ort.get_available_providers()
-            
-            # 根据执行提供者配置选项
-            providers = []
-            if self.execution_provider == "CUDAExecutionProvider":
-                if "CUDAExecutionProvider" in available_providers:
-                    providers = [
-                        ("CUDAExecutionProvider", {
-                            "device_id": self.gpu_device_id,
-                            "arena_extend_strategy": "kNextPowerOfTwo",
-                            "gpu_mem_limit": self.gpu_memory_limit * 1024 * 1024,  # 转换为字节
-                            "cudnn_conv_algo_search": "EXHAUSTIVE",
-                            "do_copy_in_default_stream": True,
-                        }),
-                        "CPUExecutionProvider"
-                    ]
-                    logger.info(f"RIFE 使用 CUDA GPU (设备 {self.gpu_device_id}，内存限制 {self.gpu_memory_limit}MB)")
-                else:
-                    logger.warning("CUDA不可用，自动切换到可用的执行提供者")
-                    # 自动回退到DirectML或CPU
-                    if "DmlExecutionProvider" in available_providers:
-                        providers = ["DmlExecutionProvider", "CPUExecutionProvider"]
-                    else:
-                        providers = ["CPUExecutionProvider"]
-            elif self.execution_provider == "DmlExecutionProvider":
-                if "DmlExecutionProvider" in available_providers:
-                    providers = ["DmlExecutionProvider", "CPUExecutionProvider"]
-                else:
-                    logger.warning("DirectML不可用，使用CPU")
-                    providers = ["CPUExecutionProvider"]
-            else:
-                providers = ["CPUExecutionProvider"]
-            
-            # 加载模型
-            self.sess = ort.InferenceSession(
-                str(model_path),
-                sess_options=sess_options,
-                providers=providers
+            # 使用统一的工具函数创建会话
+            # 会自动从config_service读取所有ONNX配置（GPU加速、内存限制、线程数等）
+            self.sess = create_onnx_session(
+                model_path=model_path,
+                config_service=self.config_service
             )
             
             # 获取实际使用的执行提供者

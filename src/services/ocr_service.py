@@ -14,7 +14,7 @@ import numpy as np
 from PIL import Image
 
 from constants import DEFAULT_OCR_MODEL_KEY, OCR_MODELS, OCRModelInfo
-from utils import logger
+from utils import logger, create_onnx_session
 
 
 class OCRService:
@@ -160,7 +160,7 @@ class OCRService:
         
         Args:
             model_key: 模型键
-            use_gpu: 是否使用GPU
+            use_gpu: 是否使用GPU（已弃用，会自动从config_service读取gpu_acceleration配置）
             progress_callback: 进度回调
         
         Returns:
@@ -199,59 +199,13 @@ class OCRService:
             # 保存配置
             self.use_angle_cls = model_info.use_angle_cls
             
-            # 配置ONNX Runtime - 按照规范检查可用的执行提供者
-            providers = []
-            if use_gpu:
-                # 检查可用的执行提供者
-                available_providers = ort.get_available_providers()
-                
-                # GPU配置选项
-                gpu_options = {}
-                if self.config_service:
-                    gpu_memory_limit = self.config_service.get_config_value("gpu_memory_limit", 2048)
-                    gpu_device_id = self.config_service.get_config_value("gpu_device_id", 0)
-                    gpu_enable_memory_arena = self.config_service.get_config_value("gpu_enable_memory_arena", True)
-                    
-                    gpu_options = {
-                        'device_id': gpu_device_id,
-                        'gpu_mem_limit': gpu_memory_limit * 1024 * 1024,
-                        'arena_extend_strategy': 'kSameAsRequested' if gpu_enable_memory_arena else 'kNextPowerOfTwo',
-                    }
-                
-                # 按优先级尝试 GPU 提供者
-                # 1. CUDA (NVIDIA GPU) - 性能最好
-                if 'CUDAExecutionProvider' in available_providers:
-                    providers.append(('CUDAExecutionProvider', gpu_options))
-                    logger.info("OCR使用 CUDA GPU 加速")
-                # 2. DirectML (Windows 通用 GPU)
-                elif 'DmlExecutionProvider' in available_providers:
-                    providers.append('DmlExecutionProvider')
-                    logger.info("OCR使用 DirectML GPU 加速")
-                # 3. CoreML (macOS Apple Silicon)
-                elif 'CoreMLExecutionProvider' in available_providers:
-                    providers.append('CoreMLExecutionProvider')
-                    logger.info("OCR使用 CoreML 加速")
-                else:
-                    logger.warning("未检测到GPU加速支持，将使用CPU")
-                
-                # 总是添加CPU作为后备
-                providers.append('CPUExecutionProvider')
-            else:
-                providers = ['CPUExecutionProvider']
-                logger.info("OCR使用 CPU")
-            
-            # 会话选项
-            sess_options = ort.SessionOptions()
-            sess_options.log_severity_level = 3
-            
             if progress_callback:
                 progress_callback(0.2, "正在加载检测模型...")
             
-            # 加载检测模型
-            self.det_session = ort.InferenceSession(
-                str(det_path),
-                sess_options=sess_options,
-                providers=providers
+            # 使用统一的工具函数加载检测模型
+            self.det_session = create_onnx_session(
+                model_path=det_path,
+                config_service=self.config_service
             )
             
             # 加载方向分类模型（如果启用）
@@ -259,10 +213,9 @@ class OCRService:
                 if progress_callback:
                     progress_callback(0.4, "正在加载方向分类模型...")
                 
-                self.cls_session = ort.InferenceSession(
-                    str(cls_path),
-                    sess_options=sess_options,
-                    providers=providers
+                self.cls_session = create_onnx_session(
+                    model_path=cls_path,
+                    config_service=self.config_service
                 )
                 logger.info("  方向分类模型已加载 ✓")
             
@@ -270,10 +223,9 @@ class OCRService:
                 progress_callback(0.6, "正在加载识别模型...")
             
             # 加载识别模型
-            self.rec_session = ort.InferenceSession(
-                str(rec_path),
-                sess_options=sess_options,
-                providers=providers
+            self.rec_session = create_onnx_session(
+                model_path=rec_path,
+                config_service=self.config_service
             )
             
             if progress_callback:

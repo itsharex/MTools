@@ -12,9 +12,10 @@ from typing import Optional, Tuple, Callable, Union, TYPE_CHECKING
 import numpy as np
 import onnxruntime as ort
 import ffmpeg
+from utils import create_onnx_session
 
 if TYPE_CHECKING:
-    from services import FFmpegService
+    from services import FFmpegService, ConfigService
     from constants import ModelInfo
 
 
@@ -27,15 +28,18 @@ class VocalSeparationService:
     def __init__(
         self,
         model_dir: Optional[Path] = None,
-        ffmpeg_service: Optional['FFmpegService'] = None
+        ffmpeg_service: Optional['FFmpegService'] = None,
+        config_service: Optional['ConfigService'] = None
     ):
         """初始化人声分离服务。
         
         Args:
             model_dir: 模型存储目录，默认为用户数据目录下的 models/vocal_separation
             ffmpeg_service: FFmpeg 服务实例
+            config_service: 配置服务实例（用于自动读取ONNX配置）
         """
         self.ffmpeg_service = ffmpeg_service
+        self.config_service = config_service
         self.model_dir = model_dir
         # 确保目录存在
         if self.model_dir:
@@ -161,27 +165,13 @@ class VocalSeparationService:
     def load_model(
         self, 
         model_path: Path, 
-        invert_output: bool = False,
-        use_gpu: bool = True,
-        gpu_device_id: int = 0,
-        gpu_memory_limit: int = 2048,
-        enable_memory_arena: bool = True,
-        cpu_threads: int = 0,
-        execution_mode: str = "sequential",
-        enable_model_cache: bool = False
+        invert_output: bool = False
     ) -> None:
         """加载 ONNX 模型。
         
         Args:
             model_path: 模型文件路径
             invert_output: 是否反转输出 (True=模型输出伴奏, False=模型输出人声)
-            use_gpu: 是否使用GPU加速
-            gpu_device_id: GPU设备ID
-            gpu_memory_limit: GPU内存限制（MB）
-            enable_memory_arena: 是否启用内存池优化
-            cpu_threads: CPU推理线程数，0=自动检测
-            execution_mode: 执行模式（sequential/parallel）
-            enable_model_cache: 是否启用模型缓存优化
         """
         if not model_path.exists():
             raise FileNotFoundError(f"模型文件不存在: {model_path}")
@@ -189,91 +179,18 @@ class VocalSeparationService:
         # 设置是否反转输出
         self.invert_output = invert_output
         
-        # 配置 ONNX Runtime 会话选项，启用内存优化
-        sess_options = ort.SessionOptions()
-        sess_options.enable_mem_pattern = True
-        sess_options.enable_mem_reuse = True
-        sess_options.enable_cpu_mem_arena = enable_memory_arena
-        sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-        sess_options.log_severity_level = 3  # ERROR级别，减少日志输出
-        
-        # 应用性能优化参数
-        if cpu_threads > 0:
-            sess_options.intra_op_num_threads = cpu_threads
-            sess_options.inter_op_num_threads = cpu_threads
-            from utils import logger
-            logger.info(f"人声分离设置CPU线程数: {cpu_threads}")
-        
-        # 执行模式
-        if execution_mode == "parallel":
-            sess_options.execution_mode = ort.ExecutionMode.ORT_PARALLEL
-            from utils import logger
-            logger.info("人声分离使用并行执行模式")
-        else:
-            sess_options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
-        
-        # 模型缓存优化
-        if enable_model_cache:
-            cache_path = model_path.with_suffix('.optimized.onnx')
-            sess_options.optimized_model_filepath = str(cache_path)
-            from utils import logger
-            logger.info(f"人声分离启用模型缓存: {cache_path.name}")
-        
-        # 配置执行提供者（GPU或CPU）
-        providers = []
-        self.using_gpu = False
-        
-        if use_gpu:
-            available_providers = ort.get_available_providers()
-            
-            # 按优先级尝试 GPU 提供者
-            # 1. CUDA (NVIDIA GPU) - 性能最好
-            if 'CUDAExecutionProvider' in available_providers:
-                providers.append(('CUDAExecutionProvider', {
-                    'device_id': gpu_device_id,
-                    'arena_extend_strategy': 'kNextPowerOfTwo',
-                    'gpu_mem_limit': gpu_memory_limit * 1024 * 1024,
-                    'cudnn_conv_algo_search': 'EXHAUSTIVE',
-                    'do_copy_in_default_stream': True,
-                }))
-                self.using_gpu = True
-                from utils import logger
-                logger.info(f"人声分离使用 CUDA GPU (设备 {gpu_device_id}，内存限制 {gpu_memory_limit}MB)")
-            # 2. DirectML (Windows 通用 GPU)
-            elif 'DmlExecutionProvider' in available_providers:
-                providers.append('DmlExecutionProvider')
-                self.using_gpu = True
-                from utils import logger
-                logger.info("人声分离使用 DirectML GPU 加速")
-            # 3. CoreML (macOS Apple Silicon)
-            elif 'CoreMLExecutionProvider' in available_providers:
-                providers.append('CoreMLExecutionProvider')
-                self.using_gpu = True
-                from utils import logger
-                logger.info("人声分离使用 CoreML GPU 加速")
-            # 4. ROCm (AMD GPU)
-            elif 'ROCMExecutionProvider' in available_providers:
-                providers.append('ROCMExecutionProvider')
-                self.using_gpu = True
-                from utils import logger
-                logger.info("人声分离使用 ROCm GPU 加速")
-        
-        # CPU作为后备
-        providers.append('CPUExecutionProvider')
-        if not self.using_gpu:
-            from utils import logger
-            logger.info("人声分离使用 CPU 处理")
-        
-        # 创建推理会话
-        self.session = ort.InferenceSession(
-            str(model_path),
-            sess_options=sess_options,
-            providers=providers
+        # 使用统一的工具函数创建会话
+        # 会自动从config_service读取所有ONNX配置（GPU加速、内存限制、线程数等）
+        self.session = create_onnx_session(
+            model_path=model_path,
+            config_service=self.config_service
         )
         self.current_model = model_path.name
         
         # 获取实际使用的执行提供者
         actual_providers = self.session.get_providers()
+        self.using_gpu = actual_providers[0] != 'CPUExecutionProvider'
+        
         from utils import logger
         logger.info(f"人声分离模型已加载: {model_path.name}, 执行提供者: {actual_providers[0]}")
         

@@ -46,6 +46,8 @@ from .subtitle_utils import (
 from .onnx_helper import (
     create_session_options,
     create_provider_options,
+    create_onnx_session_config,
+    create_onnx_session,
 )
 
 __all__ = [
@@ -83,5 +85,7 @@ __all__ = [
     "segments_to_txt",
     "create_session_options",
     "create_provider_options",
+    "create_onnx_session_config",
+    "create_onnx_session",
 ]
 

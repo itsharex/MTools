@@ -713,7 +713,7 @@ class VideoInterpolationView(ft.Container):
             # 更新模型路径和UI
             self.model_path = self._get_model_path()
             self.model_info_text.value = self._get_model_info_text()
-            self._update_model_status_from_file()
+            self._check_model_status()
             self._update_process_button()
     
     def _on_download_model(self, e: ft.ControlEvent) -> None:
@@ -777,51 +777,10 @@ class VideoInterpolationView(ft.Container):
     def _load_model_async(self) -> None:
         """异步加载模型。"""
         try:
-            import onnxruntime as ort
-            
-            # 智能检测可用的执行提供者
-            available_providers = ort.get_available_providers()
-            logger.info(f"可用的执行提供者: {available_providers}")
-            
-            # 优先级: CUDA > DirectML > CPU
-            device = self.config_service.get_config_value("device", "auto")
-            
-            if device == "auto" or device == "cuda":
-                # 自动检测或用户选择CUDA
-                if "CUDAExecutionProvider" in available_providers:
-                    execution_provider = "CUDAExecutionProvider"
-                    logger.info("✓ 使用 CUDA (NVIDIA GPU 专用加速)")
-                elif "DmlExecutionProvider" in available_providers:
-                    execution_provider = "DmlExecutionProvider"
-                    logger.info("✓ 使用 DirectML (通用GPU加速，支持NVIDIA/AMD/Intel)")
-                else:
-                    execution_provider = "CPUExecutionProvider"
-                    logger.info("✓ 使用 CPU")
-            elif device == "dml":
-                execution_provider = "DmlExecutionProvider"
-                logger.info("✓ 使用 DirectML (通用GPU加速)")
-            else:
-                execution_provider = "CPUExecutionProvider"
-                logger.info("✓ 使用 CPU")
-            
-            # 获取GPU配置参数
-            gpu_device_id = self.config_service.get_config_value("gpu_device_id", 0)
-            gpu_memory_limit = self.config_service.get_config_value("gpu_memory_limit", 2048)
-            
-            # 获取ONNX性能优化参数
-            cpu_threads = self.config_service.get_config_value("onnx_cpu_threads", 0)
-            execution_mode = self.config_service.get_config_value("onnx_execution_mode", "sequential")
-            enable_model_cache = self.config_service.get_config_value("onnx_enable_model_cache", False)
-            
-            # 创建插帧服务
+            # 创建插帧服务（会自动使用config_service读取所有ONNX配置）
             self.interpolator = FrameInterpolationService(
                 model_name=self.current_model_key,
-                execution_provider=execution_provider,
-                gpu_device_id=gpu_device_id,
-                gpu_memory_limit=gpu_memory_limit,
-                cpu_threads=cpu_threads,
-                execution_mode=execution_mode,
-                enable_model_cache=enable_model_cache
+                config_service=self.config_service
             )
             
             # 加载模型
@@ -1707,25 +1666,32 @@ class VideoInterpolationView(ft.Container):
                 # 在两帧之间插帧
                 if n_interpolate > 0:
                     try:
-                        # GPU密集操作：插帧
-                        interpolated_frames = self.interpolator.interpolate_n_times(
+                        # ✓✓✓ 关键优化：使用超高性能版本以最大化GPU利用率
+                        interpolated_frames = self.interpolator.interpolate_n_times_highperf(
                             prev_frame,
                             curr_frame,
-                            n_interpolate
+                            n_interpolate,
+                            aggressive=True  # 启用激进模式
                         )
                         
-                        # 将插值帧放入队列
+                        # 将插值帧放入队列（非阻塞放置）
                         for interp_frame in interpolated_frames:
                             if write_error.is_set() or self.should_cancel:
                                 break
-                            # put 会在队列满时阻塞，但不会阻塞太久（maxsize=30）
-                            frame_queue.put(interp_frame.tobytes(), timeout=5.0)
-                            processed_frames += 1
-                    except queue.Full:
-                        logger.warning("帧队列满，等待写入...")
-                        # 继续尝试
+                            try:
+                                # ✓ 使用put_nowait避免阻塞GPU处理
+                                frame_queue.put_nowait(interp_frame.tobytes())
+                                processed_frames += 1
+                            except queue.Full:
+                                # 队列满时短暂等待而不是长时间阻塞
+                                try:
+                                    frame_queue.put(interp_frame.tobytes(), timeout=0.5)
+                                    processed_frames += 1
+                                except queue.Full:
+                                    logger.debug("帧缓冲满，跳过以保持GPU流畅")
                     except Exception as e:
-                        logger.error(f"插帧失败: {e}", exc_info=True)
+                        logger.error(f"插帧失败: {e}")
+
                 
                 if write_error.is_set() or self.should_cancel:
                     break

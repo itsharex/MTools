@@ -517,12 +517,6 @@ class SpeechRecognitionService:
                 if 'CUDAExecutionProvider' in available_providers:
                     provider = "cuda"
                     logger.info(f"语音识别使用 CUDA GPU (设备 {gpu_device_id})")
-                elif 'DmlExecutionProvider' in available_providers and platform.system() == 'Windows':
-                    provider = "directml"
-                    logger.info("语音识别使用 DirectML (Windows GPU)")
-                elif 'CoreMLExecutionProvider' in available_providers and platform.system() == 'Darwin':
-                    provider = "coreml"
-                    logger.info("语音识别使用 CoreML (Apple Silicon)")
                 else:
                     logger.info("语音识别使用 CPU (GPU 不可用)")
             except ImportError:

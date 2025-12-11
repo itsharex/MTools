@@ -70,7 +70,8 @@ class VideoVocalSeparationView(ft.Container):
         model_dir = self.config_service.get_data_dir() / "models" / "vocal_separation"
         self.vocal_service: VocalSeparationService = VocalSeparationService(
             model_dir,
-            ffmpeg_service
+            ffmpeg_service,
+            config_service
         )
         
         # 构建界面
@@ -646,27 +647,9 @@ class VideoVocalSeparationView(ft.Container):
             self._update_progress("正在加载模型...", 0.0)
             
             try:
-                # 从配置中获取GPU相关设置
-                use_gpu = self.config_service.get_config_value("gpu_acceleration", True)
-                gpu_device_id = self.config_service.get_config_value("gpu_device_id", 0)
-                gpu_memory_limit = self.config_service.get_config_value("gpu_memory_limit", 2048)
-                enable_memory_arena = self.config_service.get_config_value("gpu_enable_memory_arena", True)
-                
-                # 获取ONNX性能优化参数
-                cpu_threads = self.config_service.get_config_value("onnx_cpu_threads", 0)
-                execution_mode = self.config_service.get_config_value("onnx_execution_mode", "sequential")
-                enable_model_cache = self.config_service.get_config_value("onnx_enable_model_cache", False)
-                
                 self.vocal_service.load_model(
                     model_path, 
-                    invert_output=model_info.invert_output,
-                    use_gpu=use_gpu,
-                    gpu_device_id=gpu_device_id,
-                    gpu_memory_limit=gpu_memory_limit,
-                    enable_memory_arena=enable_memory_arena,
-                    cpu_threads=cpu_threads,
-                    execution_mode=execution_mode,
-                    enable_model_cache=enable_model_cache
+                    invert_output=model_info.invert_output
                 )
                 device_info = self.vocal_service.get_device_info()
                 logger.info(f"视频人声分离模型已加载，使用: {device_info}")

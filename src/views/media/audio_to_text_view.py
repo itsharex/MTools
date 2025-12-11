@@ -388,7 +388,7 @@ class AudioToTextView(ft.Container):
                 ft.dropdown.Option(key="ar", text="阿拉伯语 (Arabic)"),
                 ft.dropdown.Option(key="pt", text="葡萄牙语 (Portuguese)"),
             ],
-            width=200,
+            width=260,
             dense=True,
             on_change=self._on_language_change,
         )
@@ -991,7 +991,6 @@ class AudioToTextView(ft.Container):
                 config_path = model_dir / self.current_model.config_filename
                 
                 # 注意：Paraformer encoder-decoder 模型暂时使用 Whisper 加载方式
-                # TODO: 实现专门的 Paraformer 流式模型加载方法
                 self.speech_service.load_model(
                     encoder_path,
                     decoder_path,

@@ -12,7 +12,7 @@ import sys
 import zipfile
 import shutil
 from pathlib import Path
-from typing import List, Optional, Tuple, Callable
+from typing import List, Optional, Tuple, Callable, TYPE_CHECKING
 
 import cv2
 import httpx
@@ -20,8 +20,11 @@ import numpy as np
 from PIL import Image
 
 from models import GifAdjustmentOptions
-from utils import GifUtils, logger
+from utils import GifUtils, logger, create_onnx_session
 from utils.file_utils import get_app_root
+
+if TYPE_CHECKING:
+    from services import ConfigService
 
 
 class ImageService:
@@ -2068,25 +2071,13 @@ class BackgroundRemover:
     def __init__(
         self, 
         model_path: Path, 
-        use_gpu: bool = False,
-        gpu_device_id: int = 0,
-        gpu_memory_limit: int = 2048,
-        enable_memory_arena: bool = True,
-        cpu_threads: int = 0,
-        execution_mode: str = "sequential",
-        enable_model_cache: bool = False
+        config_service: Optional['ConfigService'] = None
     ) -> None:
         """初始化背景移除器。
         
         Args:
             model_path: ONNX模型路径
-            use_gpu: 是否启用GPU加速
-            gpu_device_id: GPU设备ID，默认0（第一个GPU）
-            gpu_memory_limit: GPU内存限制（MB），默认2048MB
-            enable_memory_arena: 是否启用内存池优化，默认True
-            cpu_threads: CPU推理线程数，0=自动检测
-            execution_mode: 执行模式（sequential/parallel）
-            enable_model_cache: 是否启用模型缓存优化
+            config_service: 配置服务实例（用于自动读取ONNX配置）
         """
         try:
             import onnxruntime as ort
@@ -2096,81 +2087,15 @@ class BackgroundRemover:
         if not model_path.exists():
             raise FileNotFoundError(f"模型文件不存在: {model_path}")
         
-        # 配置会话选项，启用内存优化
-        sess_options = ort.SessionOptions()
-        sess_options.enable_mem_pattern = True   # 启用内存模式优化
-        sess_options.enable_mem_reuse = True     # 启用内存重用
-        sess_options.enable_cpu_mem_arena = enable_memory_arena # 启用CPU内存池
-        sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-        sess_options.log_severity_level = 3      # 设置日志级别为 ERROR，抑制警告信息 (0=Verbose, 1=Info, 2=Warning, 3=Error, 4=Fatal)
+        # 使用统一的工具函数创建会话
+        self.sess = create_onnx_session(
+            model_path=model_path,
+            config_service=config_service
+        )
         
-        # 应用性能优化参数
-        if cpu_threads > 0:
-            sess_options.intra_op_num_threads = cpu_threads
-            sess_options.inter_op_num_threads = cpu_threads
-        
-        # 执行模式
-        if execution_mode == "parallel":
-            sess_options.execution_mode = ort.ExecutionMode.ORT_PARALLEL
-        else:
-            sess_options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
-        
-        # 模型缓存优化
-        if enable_model_cache:
-            cache_path = model_path.with_suffix('.optimized.onnx')
-            sess_options.optimized_model_filepath = str(cache_path)
-        
-        # 选择执行提供者（GPU或CPU）
-        providers = []
-        self.using_gpu = False
-        
-        if use_gpu:
-            # 尝试使用GPU加速
-            available_providers = ort.get_available_providers()
-            
-            # 按优先级尝试GPU提供者
-            # 1. CUDA (NVIDIA GPU)
-            if 'CUDAExecutionProvider' in available_providers:
-                providers.append(('CUDAExecutionProvider', {
-                    'device_id': gpu_device_id,
-                    'arena_extend_strategy': 'kNextPowerOfTwo',
-                    'gpu_mem_limit': gpu_memory_limit * 1024 * 1024,  # 转换为字节
-                    'cudnn_conv_algo_search': 'EXHAUSTIVE',
-                    'do_copy_in_default_stream': True,
-                }))
-                self.using_gpu = True
-            # 2. DirectML (Windows 通用 GPU)
-            elif 'DmlExecutionProvider' in available_providers:
-                providers.append('DmlExecutionProvider')
-                self.using_gpu = True
-            # 3. CoreML (macOS Apple Silicon，onnxruntime 内置)
-            elif 'CoreMLExecutionProvider' in available_providers:
-                providers.append('CoreMLExecutionProvider')
-                self.using_gpu = True
-            # 4. ROCm (AMD)
-            elif 'ROCMExecutionProvider' in available_providers:
-                providers.append('ROCMExecutionProvider')
-                self.using_gpu = True
-        
-        # CPU作为后备
-        providers.append('CPUExecutionProvider')
-        
-        try:
-            self.sess = ort.InferenceSession(
-                str(model_path),
-                sess_options=sess_options,
-                providers=providers
-            )
-            
-            # 记录实际使用的提供者
-            actual_provider = self.sess.get_providers()[0]
-            if actual_provider != 'CPUExecutionProvider':
-                self.using_gpu = True
-            else:
-                self.using_gpu = False
-                
-        except Exception as e:
-            raise RuntimeError(f"加载ONNX模型失败: {e}")
+        # 记录实际使用的提供者
+        actual_provider = self.sess.get_providers()[0]
+        self.using_gpu = actual_provider != 'CPUExecutionProvider'
         
         self.input_name: str = self.sess.get_inputs()[0].name
         self.output_name: str = self.sess.get_outputs()[0].name
