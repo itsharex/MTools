@@ -546,3 +546,12 @@ def register_all_tools():
         tool_id="others.file_to_url",
         gradient_colors=("#F093FB", "#F5576C"),
     )
+    register_tool_manual(
+        name="ICP备案查询",
+        description="查询域名、APP、小程序的ICP备案信息",
+        category="其他工具",
+        keywords=["ICP", "备案", "查询", "域名", "企业", "APP", "小程序", "快应用", "beian", "domain", "query", "search"],
+        icon="SEARCH",
+        tool_id="others.icp_query",
+        gradient_colors=("#43E97B", "#38F9D7"),
+    )

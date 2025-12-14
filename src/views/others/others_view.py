@@ -98,6 +98,13 @@ class OthersView(ft.Container):
                     gradient_colors=("#F093FB", "#F5576C"),
                     on_click=lambda _: self._open_file_to_url_view(),
                 ),
+                FeatureCard(
+                    icon=ft.Icons.SEARCH,
+                    title="ICP备案查询",
+                    description="查询域名、APP、小程序的备案信息",
+                    gradient_colors=("#43E97B", "#38F9D7"),
+                    on_click=lambda _: self._open_icp_query_view(),
+                ),
             ],
             wrap=True,
             spacing=PADDING_LARGE,
@@ -212,17 +219,50 @@ class OthersView(ft.Container):
         self.parent_container.content = file_to_url_view
         self._safe_page_update()
     
+    def _open_icp_query_view(self) -> None:
+        """打开ICP备案查询视图。"""
+        # 记录工具使用次数
+        from utils import get_tool
+        tool_meta = get_tool("others.icp_query")
+        if tool_meta:
+            self.config_service.record_tool_usage(tool_meta.name)
+        
+        # 隐藏搜索按钮
+        self._hide_search_button()
+        
+        from views.others import ICPQueryView
+        
+        if not self.parent_container:
+            self._show_message("无法打开视图")
+            return
+        
+        # 创建ICP查询视图
+        icp_query_view = ICPQueryView(
+            page=self._saved_page,
+            config_service=self.config_service,
+            on_back=lambda: self._restore_main_view(),
+        )
+        
+        # 保存当前子视图
+        self.current_sub_view = icp_query_view
+        self.current_sub_view_type = "icp_query"
+        
+        # 切换到子视图
+        self.parent_container.content = icp_query_view
+        self._safe_page_update()
+    
     def open_tool(self, tool_name: str) -> None:
         """根据工具名称打开对应的工具。
         
         Args:
-            tool_name: 工具名称，如 "windows_update", "image_to_url", "file_to_url" 等
+            tool_name: 工具名称，如 "windows_update", "image_to_url", "file_to_url", "icp_query" 等
         """
         # 工具名称到方法的映射
         tool_map = {
             "windows_update": self._open_windows_update_view,
             "image_to_url": self._open_image_to_url_view,
             "file_to_url": self._open_file_to_url_view,
+            "icp_query": self._open_icp_query_view,
         }
         
         # 查找并调用对应的方法

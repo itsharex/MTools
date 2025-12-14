@@ -5,5 +5,6 @@ from .others_view import OthersView
 from .windows_update_view import WindowsUpdateView
 from .image_to_url_view import ImageToUrlView
 from .file_to_url_view import FileToUrlView
+from .icp_query_view import ICPQueryView
 
-__all__ = ["OthersView", "WindowsUpdateView", "ImageToUrlView", "FileToUrlView"]
+__all__ = ["OthersView", "WindowsUpdateView", "ImageToUrlView", "FileToUrlView", "ICPQueryView"]
