@@ -2,13 +2,15 @@
 """设置视图模块。
 
 提供应用设置界面，包括数据目录设置、主题设置等。
+等待后续优化...
 """
 
 from pathlib import Path
-from typing import Callable, Optional, List, Dict
+from typing import Optional, List, Dict
 import threading
 import time
-import shutil
+import sys
+import platform
 from utils import logger
 from utils.file_utils import get_system_fonts
 
@@ -17,6 +19,7 @@ import httpx
 
 from constants import (
     APP_VERSION,
+    BUILD_CUDA_VARIANT,
     BORDER_RADIUS_MEDIUM,
     PADDING_LARGE,
     PADDING_MEDIUM,
@@ -25,6 +28,25 @@ from constants import (
 from services import ConfigService, UpdateService, UpdateInfo, UpdateStatus
 from services.auto_updater import AutoUpdater
 from constants import APP_DESCRIPTION
+
+
+def get_full_version_string() -> str:
+    """获取完整的版本字符串（包含 CUDA 变体信息）。
+    
+    Returns:
+        完整版本字符串，例如：
+        - "0.0.2-beta" (标准版)
+        - "0.0.2-beta (CUDA)" (CUDA版)
+        - "0.0.2-beta (CUDA Full)" (CUDA Full版)
+    """
+    version = APP_VERSION
+    
+    if BUILD_CUDA_VARIANT == 'cuda':
+        return f"{version} (CUDA)"
+    elif BUILD_CUDA_VARIANT == 'cuda_full':
+        return f"{version} (CUDA Full)"
+    else:
+        return version
 
 
 class SettingsView(ft.Container):
@@ -2674,7 +2696,7 @@ class SettingsView(ft.Container):
                 ft.Text("MTools - 多功能工具箱", size=16, weight=ft.FontWeight.W_500),
                 ft.Row(
                     controls=[
-                        ft.Text(f"版本: {APP_VERSION}", size=14, color=ft.Colors.ON_SURFACE_VARIANT),
+                        ft.Text(f"版本: {get_full_version_string()}", size=14, color=ft.Colors.ON_SURFACE_VARIANT),
                         self.update_progress,
                     ],
                     spacing=PADDING_SMALL,
@@ -2714,6 +2736,15 @@ class SettingsView(ft.Container):
             tooltip="将窗口位置和大小重置为默认值",
         )
         
+        # 创建桌面快捷方式按钮（仅 Windows 打包环境可用）
+        create_shortcut_button: ft.OutlinedButton = ft.OutlinedButton(
+            text="创建桌面快捷方式",
+            icon=ft.Icons.SHORTCUT,
+            on_click=self._on_create_desktop_shortcut,
+            tooltip="在桌面创建应用快捷方式",
+            visible=platform.system() == "Windows" and sys.argv[0].endswith('.exe'),
+        )
+        
         return ft.Container(
             content=ft.Column(
                 controls=[
@@ -2727,6 +2758,7 @@ class SettingsView(ft.Container):
                         controls=[
                             self.check_update_button,
                             reset_window_button,
+                            create_shortcut_button,
                         ],
                         spacing=PADDING_MEDIUM,
                     ),
@@ -4008,6 +4040,21 @@ class SettingsView(ft.Container):
         self.page.update()
         
         self._show_snackbar("窗口位置和大小已重置为默认值", ft.Colors.GREEN)
+    
+    def _on_create_desktop_shortcut(self, e: ft.ControlEvent) -> None:
+        """创建桌面快捷方式。
+        
+        Args:
+            e: 控件事件对象
+        """
+        from utils.file_utils import create_desktop_shortcut
+        
+        # 调用工具函数创建快捷方式
+        success, message = create_desktop_shortcut()
+        
+        # 显示结果
+        color = ft.Colors.GREEN if success else (ft.Colors.BLUE if "已存在" in message else ft.Colors.ORANGE)
+        self._show_snackbar(message, color)
     
     def _show_snackbar(self, message: str, color: str) -> None:
         """显示提示消息。

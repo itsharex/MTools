@@ -139,26 +139,30 @@ class UpdateService:
             CUDA 变体标识：'none', 'cuda', 或 'cuda_full'
         """
         # 检查是否是编译后的程序
+        # 注意：Nuitka 不设置 sys.frozen，需要检查 sys.argv[0] 是否为 .exe
         import sys
-        is_frozen = getattr(sys, 'frozen', False)
+        from pathlib import Path as PathLib
+        is_frozen = sys.argv[0].endswith('.exe') if sys.argv else False
         
         # 优先使用构建时写入的信息
         try:
             from constants import BUILD_CUDA_VARIANT
             
-            # 如果是编译后的程序，BUILD_CUDA_VARIANT 必定是准确的
+            # 如果是编译后的程序，直接信任 BUILD_CUDA_VARIANT
+            # 因为它是在编译时写入的，必定准确
             if is_frozen:
                 if BUILD_CUDA_VARIANT in ('none', 'cuda', 'cuda_full'):
                     return BUILD_CUDA_VARIANT
                 else:
                     # 编译后的程序应该有明确的值，如果没有则说明编译配置有问题
-                    print(f"⚠️ 警告：编译后的程序 BUILD_CUDA_VARIANT 值异常: {BUILD_CUDA_VARIANT}")
+                    from utils import logger
+                    logger.warning(f"编译后的程序 BUILD_CUDA_VARIANT 值异常: {BUILD_CUDA_VARIANT}")
                     # 继续尝试运行时检测
             else:
                 # 开发环境：如果有明确的非默认值，使用它
                 if BUILD_CUDA_VARIANT in ('cuda', 'cuda_full'):
                     return BUILD_CUDA_VARIANT
-                # 如果是 'none' 或其他值，继续运行时检测
+                # 如果是 'none' 或其他值，继续运行时检测（开发环境可能在测试不同配置）
         except ImportError:
             pass  # 如果导入失败，继续使用运行时检测
         
@@ -180,27 +184,35 @@ class UpdateService:
             
             # 有 CUDA 支持，检测是否内置了 CUDA 库
             try:
-                # 尝试导入 onnxruntime-gpu 的 CUDA 相关模块
-                # 如果是 cuda_full 版本，会包含 cuda 和 cudnn 子包
+                # cuda_full 版本会内置 NVIDIA CUDA 库（如 nvidia-cudnn-cu12）
+                # cuda 版本需要系统安装 CUDA
+                # 检查方法：查找 nvidia 子包
                 import importlib.util
+                from pathlib import Path as PathLib
                 
-                # 检查是否存在 onnxruntime.capi.onnxruntime_providers_cuda
-                cuda_spec = importlib.util.find_spec('onnxruntime.capi.onnxruntime_providers_cuda')
+                # 检查是否有 nvidia 子包（cuda_full 特征）
+                has_nvidia_packages = False
+                try:
+                    # 尝试查找 nvidia 相关的包
+                    # cuda_full 版本会包含 nvidia-cudnn-cu12, nvidia-cublas-cu12 等
+                    import site
+                    site_packages = site.getsitepackages()
+                    
+                    for site_pkg in site_packages:
+                        nvidia_dir = PathLib(site_pkg) / "nvidia"
+                        if nvidia_dir.exists() and nvidia_dir.is_dir():
+                            # 检查是否有实际的库文件（至少有一个子包）
+                            nvidia_subdirs = [d for d in nvidia_dir.iterdir() if d.is_dir() and not d.name.startswith('_')]
+                            if len(nvidia_subdirs) > 0:
+                                has_nvidia_packages = True
+                                break
+                except Exception:
+                    pass
                 
-                if cuda_spec and cuda_spec.origin:
-                    # 检查是否在 onnxruntime 目录内部（cuda_full）还是系统路径（cuda）
-                    ort_path = ort.__file__
-                    if ort_path:
-                        from pathlib import Path as PathLib
-                        ort_dir = str(PathLib(ort_path).parent)
-                        cuda_provider_path = str(cuda_spec.origin)
-                        
-                        # 如果 CUDA provider 在 onnxruntime 目录内，说明是 cuda_full
-                        if cuda_provider_path.startswith(ort_dir):
-                            return 'cuda_full'
-                
-                # 否则是需要外部 CUDA 的版本
-                return 'cuda'
+                if has_nvidia_packages:
+                    return 'cuda_full'
+                else:
+                    return 'cuda'
                 
             except Exception:
                 # 无法确定具体版本，默认为 cuda
@@ -346,12 +358,13 @@ class UpdateService:
             
             # 调试信息：输出检测到的平台名称
             import sys
+            from utils import logger
             is_frozen = getattr(sys, 'frozen', False)
             if not is_frozen:  # 只在开发环境显示
-                print(f"[调试] 当前平台名称: {platform_name}")
-                print(f"[调试] 可用的资源文件:")
+                logger.debug(f"当前平台名称: {platform_name}")
+                logger.debug(f"可用的资源文件:")
                 for asset in assets:
-                    print(f"  - {asset.get('name', '')}")
+                    logger.debug(f"  - {asset.get('name', '')}")
             
             # 首先尝试精确匹配（包含 CUDA 变体）
             for asset in assets:
@@ -361,7 +374,7 @@ class UpdateService:
                 if platform_name in asset_name and (asset_name.endswith('.zip') or asset_name.endswith('.tar.gz')):
                     download_url = asset.get("browser_download_url")
                     if not is_frozen:
-                        print(f"[调试] 精确匹配成功: {asset_name}")
+                        logger.debug(f"精确匹配成功: {asset_name}")
                     break
             
             # 备选：如果没找到精确匹配，尝试降级匹配
@@ -382,7 +395,7 @@ class UpdateService:
                     fallback_variants = [base]
                 
                 if not is_frozen and fallback_variants:
-                    print(f"[调试] 精确匹配失败，尝试降级匹配: {fallback_variants}")
+                    logger.debug(f"精确匹配失败，尝试降级匹配: {fallback_variants}")
                 
                 # 尝试降级版本
                 for variant in fallback_variants:
@@ -391,7 +404,7 @@ class UpdateService:
                         if variant in asset_name and (asset_name.endswith('.zip') or asset_name.endswith('.tar.gz')):
                             download_url = asset.get("browser_download_url")
                             if not is_frozen:
-                                print(f"[调试] 降级匹配成功: {asset_name} (匹配变体: {variant})")
+                                logger.debug(f"降级匹配成功: {asset_name} (匹配变体: {variant})")
                             break
                     if download_url:
                         break

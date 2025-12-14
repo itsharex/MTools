@@ -303,9 +303,7 @@ class HttpService:
         except httpx.HTTPError as e:
             return False, {"error": f"HTTP 错误: {str(e)}"}
         except Exception as e:
-            logger.error(f"HTTP 请求错误: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.exception(f"HTTP 请求错误: {e}")
             return False, {"error": f"请求失败: {str(e)}"}
         finally:
             # 关闭所有打开的文件

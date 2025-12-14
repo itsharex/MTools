@@ -11,10 +11,29 @@ from typing import Optional
 import flet as ft
 
 from components import CustomTitleBar, ToolInfo, ToolSearchDialog
-from constants import APP_VERSION, DOWNLOAD_URL_GITHUB, DOWNLOAD_URL_CHINA
+from constants import APP_VERSION, BUILD_CUDA_VARIANT, DOWNLOAD_URL_GITHUB, DOWNLOAD_URL_CHINA
 from services import ConfigService, EncodingService, ImageService, FFmpegService, UpdateService, UpdateStatus
 from utils.tool_registry import register_all_tools
 from utils import get_all_tools
+
+
+def get_full_version_string() -> str:
+    """获取完整的版本字符串（包含 CUDA 变体信息）。
+    
+    Returns:
+        完整版本字符串，例如：
+        - "0.0.2-beta" (标准版)
+        - "0.0.2-beta (CUDA)" (CUDA版)
+        - "0.0.2-beta (CUDA Full)" (CUDA Full版)
+    """
+    version = APP_VERSION
+    
+    if BUILD_CUDA_VARIANT == 'cuda':
+        return f"{version} (CUDA)"
+    elif BUILD_CUDA_VARIANT == 'cuda_full':
+        return f"{version} (CUDA Full)"
+    else:
+        return version
 from views.media import MediaView
 from views.dev_tools import DevToolsView
 from views.others import OthersView
@@ -677,7 +696,7 @@ class MainView(ft.Column):
                 content=ft.Column(
                     controls=[
                         ft.Text(
-                            f"当前版本: {APP_VERSION}  →  最新版本: {update_info.latest_version}",
+                            f"当前版本: {get_full_version_string()}  →  最新版本: {update_info.latest_version}",
                             size=14,
                             weight=ft.FontWeight.W_500,
                         ),
@@ -738,7 +757,7 @@ class MainView(ft.Column):
                             progress_bar.value = progress
                             downloaded_mb = downloaded / 1024 / 1024
                             total_mb = total / 1024 / 1024
-                            progress_text.value = f"下载中: {downloaded_mb:.1f}MB / {total_mb:.1f}MB ({progress*100:.0f}%)"
+                            progress_text.value = f"下载中: {downloaded_mb:.1f}MB / {total_mb:.1f}MB ({progress*100:.0f}%)  如果更新失败请尝试管理员权限运行程序"
                             self.page.update()
                     
                     loop = asyncio.new_event_loop()

@@ -333,6 +333,7 @@ REM 切换到目标目录
 cd /d "{target_dir}"
 if errorlevel 1 (
     echo 切换目录失败！
+    echo 目标目录: {target_dir}
     pause
     exit /b 1
 )
@@ -340,17 +341,36 @@ if errorlevel 1 (
 REM 检查程序是否存在
 if not exist "{exe_name}" (
     echo 错误：找不到程序文件 {exe_name}
+    echo 当前目录: %CD%
+    dir /b
     pause
     exit /b 1
 )
 
-echo 正在启动: %CD%\\{exe_name}
+echo 当前目录: %CD%
+echo 程序路径: %CD%\\{exe_name}
 
-REM 启动新版本
-start "" "{exe_name}"
+REM 确认文件可执行
+if not exist "%CD%\\{exe_name}" (
+    echo 错误：程序文件不存在！
+    pause
+    exit /b 1
+)
+
+REM 启动新版本（使用绝对路径）
+echo 启动命令: start "" "%CD%\\{exe_name}"
+start "" "%CD%\\{exe_name}"
 
 REM 等待程序启动
 timeout /t 2 /nobreak >nul
+
+REM 验证程序是否启动成功
+tasklist | find /i "{exe_name}" >nul 2>&1
+if errorlevel 1 (
+    echo 警告：程序可能未启动成功
+    echo 请手动运行: {target_dir}\\{exe_name}
+    pause
+)
 
 REM 自删除脚本
 (goto) 2>nul & del /f /q "%~f0" 2>nul
@@ -371,14 +391,20 @@ exit /b 0
         # 执行更新脚本 - 使用后台方式启动，延迟3秒后执行
         # 这样主程序可以立即退出，不会被脚本阻塞
         try:
+            logger.info(f"准备启动更新脚本: {script_path}")
+            logger.info(f"目标目录: {target_dir}")
+            logger.info(f"程序名称: {exe_name}")
+            
             if not _is_packaged_app():
                 # 开发环境：显示窗口便于调试
+                logger.info("开发环境：使用可见窗口运行更新脚本")
                 subprocess.Popen(
                     ['cmd', '/c', 'start', 'cmd', '/c', str(script_path)],
                     cwd=str(script_path.parent)
                 )
             else:
                 # 生产环境：完全后台运行
+                logger.info("生产环境：后台运行更新脚本")
                 subprocess.Popen(
                     ['cmd', '/c', str(script_path)],
                     creationflags=subprocess.CREATE_NO_WINDOW,
@@ -522,13 +548,21 @@ echo "启动程序: {target_exe.name}"
 # 确保程序有执行权限
 chmod +x "{target_exe.name}"
 
-# 使用 nohup 后台启动程序
-nohup "./{target_exe.name}" > /dev/null 2>&1 &
+# 使用 nohup 后台启动程序（确保使用完整路径）
+nohup "{target_exe}" > /dev/null 2>&1 &
 LAUNCH_PID=$!
 echo "程序 PID: $LAUNCH_PID"
 
 # 等待应用启动
 sleep 3
+
+# 验证程序是否启动成功
+if ps -p $LAUNCH_PID > /dev/null 2>&1; then
+    echo "程序启动成功！"
+else
+    echo "警告：程序可能未启动成功"
+    echo "请手动运行: {target_exe}"
+fi
 
 # 删除更新脚本自身
 rm -f "$0" 2>/dev/null || true

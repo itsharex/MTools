@@ -391,7 +391,8 @@ class CustomTitleBar(ft.Container):
             tray_thread.start()
             
         except Exception as e:
-            print(f"设置系统托盘失败: {e}")
+            from utils import logger
+            logger.error(f"设置系统托盘失败: {e}")
             self.tray_icon = None
     
     def _show_window_from_tray(self, icon=None, item=None) -> None:

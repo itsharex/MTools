@@ -3,9 +3,11 @@
 
 多功能桌面应用程序，集成了图片处理、音视频处理、编码转换、代码格式化等功能。
 遵循Material Design设计原则，使用Flet框架开发。
+
+还未优化...
 """
 
-# 补丁
+# 补丁，请勿删除
 from utils import patch  # noqa: F401
 # Nuitka 打包初始化（必须在导入 flet 之前执行）
 from utils import nuitka_setup  # noqa: F401
@@ -15,9 +17,11 @@ import flet as ft
 from constants import (
     APP_TITLE,
     BACKGROUND_COLOR,
+    BORDER_RADIUS_MEDIUM,
     CARD_BACKGROUND,
     DARK_BACKGROUND_COLOR,
     DARK_CARD_BACKGROUND,
+    PADDING_SMALL,
     PRIMARY_COLOR,
     WINDOW_HEIGHT,
     WINDOW_WIDTH,
@@ -168,10 +172,14 @@ def main(page: ft.Page) -> None:
     if hasattr(main_view, '_pending_bg_image') and main_view._pending_bg_image:
         main_view.apply_background(main_view._pending_bg_image, main_view._pending_bg_fit)
     
-    # 启动时检查更新（如果启用）
-    auto_check = config_service.get_config_value("auto_check_update", True)
-    if auto_check:
-        _check_update_on_startup(page, config_service)
+    # 启动时检查更新，方法留存
+    # 底部 snackbar
+    # auto_check = config_service.get_config_value("auto_check_update", True)
+    # if auto_check:
+    #     _check_update_on_startup(page, config_service)
+    
+    # 检查桌面快捷方式（延迟执行，避免阻塞启动）
+    _check_desktop_shortcut(page, config_service)
     
     # 监听窗口事件（移动和调整大小时自动保存）
     def on_window_event(e):
@@ -204,8 +212,14 @@ def _check_update_on_startup(page: ft.Page, config_service: ConfigService) -> No
     """
     import threading
     from services import UpdateService, UpdateStatus
+    from utils.file_utils import is_packaged_app
     
-    def check_task():
+    # 开发环境跳过自动更新检查
+    if not is_packaged_app():
+        logger.debug("开发环境，跳过自动更新检查")
+        return
+    
+    def check_update_task():
         try:
             # 等待界面完全加载
             import time
@@ -235,7 +249,7 @@ def _check_update_on_startup(page: ft.Page, config_service: ConfigService) -> No
                         action="查看",
                         action_color=ft.Colors.ORANGE,
                         on_action=lambda _: _show_startup_update_dialog(page, config_service, update_info),
-                        duration=10000,  # 10秒
+                        duration=3000,  # 3秒
                     )
                     page.overlay.append(snackbar)
                     snackbar.open = True
@@ -246,7 +260,7 @@ def _check_update_on_startup(page: ft.Page, config_service: ConfigService) -> No
         except Exception as e:
             logger.error(f"启动时检查更新失败: {e}")
     
-    thread = threading.Thread(target=check_task, daemon=True)
+    thread = threading.Thread(target=check_update_task, daemon=True)
     thread.start()
 
 def _show_startup_update_dialog(page: ft.Page, config_service: ConfigService, update_info) -> None:
@@ -258,7 +272,6 @@ def _show_startup_update_dialog(page: ft.Page, config_service: ConfigService, up
         update_info: 更新信息
     """
     from services.auto_updater import AutoUpdater
-    from constants import BORDER_RADIUS_MEDIUM, PADDING_SMALL
     import threading
     import time
     
@@ -323,7 +336,7 @@ def _show_startup_update_dialog(page: ft.Page, config_service: ConfigService, up
         progress_text.value = "正在下载更新..."
         page.update()
         
-        def update_task():
+        def download_and_apply_update():
             try:
                 import asyncio
                 updater = AutoUpdater()
@@ -379,7 +392,7 @@ def _show_startup_update_dialog(page: ft.Page, config_service: ConfigService, up
                 progress_text.visible = True
                 page.update()
         
-        threading.Thread(target=update_task, daemon=True).start()
+        threading.Thread(target=download_and_apply_update, daemon=True).start()
     
     def on_skip(_):
         config_service.set_config_value("skipped_version", update_info.latest_version)
@@ -397,6 +410,154 @@ def _show_startup_update_dialog(page: ft.Page, config_service: ConfigService, up
     page.overlay.append(dialog)
     dialog.open = True
     page.update()
+
+
+def _check_desktop_shortcut(page: ft.Page, config_service: ConfigService) -> None:
+    """检查桌面快捷方式并提示用户。
+    
+    Args:
+        page: Flet页面对象
+        config_service: 配置服务实例
+    """
+    import threading
+    import time
+    from utils.file_utils import check_desktop_shortcut, create_desktop_shortcut
+    
+    def check_shortcut_task():
+        try:
+            # 等待界面完全加载
+            time.sleep(2)
+            
+            # 检查桌面是否有快捷方式
+            # 注意: check_desktop_shortcut() 在非 Windows 或开发环境下也会返回 True
+            has_shortcut = check_desktop_shortcut()
+            
+            # 如果返回 True（有快捷方式或不需要检查），则不提示
+            if has_shortcut:
+                # 日志已在 check_desktop_shortcut 函数中输出，这里不再重复
+                return
+            
+            # 检查用户是否选择了"不再提示"
+            never_show = config_service.get_config_value("never_show_shortcut_prompt", False)
+            if never_show:
+                logger.debug("用户已选择不再提示快捷方式创建")
+                return
+            
+            # 检查是否已经提示过（24小时内不重复提示）
+            last_prompt_time = config_service.get_config_value("last_shortcut_prompt_time", 0)
+            current_time = time.time()
+            hours_24 = 24 * 60 * 60
+            
+            # 如果距离上次提示不到24小时，不再提示
+            if current_time - last_prompt_time < hours_24:
+                logger.debug("24小时内已提示过，跳过本次提示")
+                return
+            
+            # 没有快捷方式，显示提示
+            def show_shortcut_dialog():
+                # 创建按钮
+                create_btn = ft.ElevatedButton(
+                    text="立即创建",
+                    icon=ft.Icons.ADD_TO_HOME_SCREEN,
+                )
+                
+                later_btn = ft.TextButton(
+                    text="稍后创建",
+                )
+                
+                never_btn = ft.TextButton(
+                    text="不再提示",
+                )
+                
+                # 创建对话框
+                dialog = ft.AlertDialog(
+                    title=ft.Row(
+                        controls=[
+                            ft.Icon(ft.Icons.INFO_OUTLINE, color=ft.Colors.BLUE, size=24),
+                            ft.Text("创建桌面快捷方式"),
+                        ],
+                        spacing=10,
+                    ),
+                    content=ft.Column(
+                        controls=[
+                            ft.Text(
+                                "检测到桌面上还没有 MTools 的快捷方式。\n"
+                                "创建快捷方式可以让您更方便地启动应用。",
+                                size=14,
+                            ),
+                        ],
+                        tight=True,
+                        spacing=10,
+                    ),
+                    actions=[
+                        create_btn,
+                        later_btn,
+                        never_btn,
+                    ],
+                    actions_alignment=ft.MainAxisAlignment.END,
+                )
+                
+                # 按钮事件处理
+                def on_create(_):
+                    success, message = create_desktop_shortcut()
+                    
+                    # 如果创建成功，不再记录提示时间（因为已经有快捷方式了）
+                    # 如果创建失败，记录提示时间，24小时后再提示
+                    if not success:
+                        config_service.set_config_value("last_shortcut_prompt_time", time.time())
+                    
+                    dialog.open = False
+                    page.update()
+                    
+                    # 显示结果提示
+                    snackbar = ft.SnackBar(
+                        content=ft.Row(
+                            controls=[
+                                ft.Icon(
+                                    ft.Icons.CHECK_CIRCLE if success else ft.Icons.ERROR,
+                                    color=ft.Colors.GREEN if success else ft.Colors.RED
+                                ),
+                                ft.Text(message),
+                            ],
+                            spacing=10,
+                        ),
+                        duration=3000,
+                    )
+                    page.overlay.append(snackbar)
+                    snackbar.open = True
+                    page.update()
+                
+                def on_later(_):
+                    # 更新提示时间，24小时后再提示
+                    config_service.set_config_value("last_shortcut_prompt_time", time.time())
+                    dialog.open = False
+                    page.update()
+                
+                def on_never(_):
+                    # 设置为永不提示（使用一个很大的时间戳）
+                    config_service.set_config_value("never_show_shortcut_prompt", True)
+                    dialog.open = False
+                    page.update()
+                
+                create_btn.on_click = on_create
+                later_btn.on_click = on_later
+                never_btn.on_click = on_never
+                
+                page.overlay.append(dialog)
+                dialog.open = True
+                page.update()
+            
+            # 直接调用显示对话框（已经在后台线程中）
+            show_shortcut_dialog()
+
+        except Exception as e:
+            import traceback
+            logger.error(f"检查桌面快捷方式失败: {e}")
+            logger.error(f"错误详情: {traceback.format_exc()}")
+    
+    # 在后台线程中执行检查
+    thread = threading.Thread(target=check_shortcut_task, daemon=True)
+    thread.start()
 
 
 # 启动应用

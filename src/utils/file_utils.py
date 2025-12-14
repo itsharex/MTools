@@ -502,3 +502,142 @@ def _get_font_display_name(font_name: str) -> str:
     # 否则返回原名
     return font_name
 
+
+def get_desktop_path() -> Optional[Path]:
+    """获取用户桌面路径。
+    
+    Returns:
+        桌面路径，如果无法获取则返回 None
+    """
+    try:
+        if platform.system() == "Windows":
+            import winreg
+            key = winreg.OpenKey(
+                winreg.HKEY_CURRENT_USER,
+                r"Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Folders"
+            )
+            desktop_path = winreg.QueryValueEx(key, "Desktop")[0]
+            winreg.CloseKey(key)
+            return Path(desktop_path)
+        elif platform.system() == "Darwin":  # macOS
+            return Path.home() / "Desktop"
+        else:  # Linux
+            return Path.home() / "Desktop"
+    except Exception as e:
+        logger.error(f"获取桌面路径失败: {e}")
+        return None
+
+
+def check_desktop_shortcut() -> bool:
+    """检查桌面是否存在应用快捷方式。
+    
+    Returns:
+        如果存在快捷方式或不需要检查返回 True，否则返回 False
+    """
+    try:
+        # 只在 Windows 打包环境下检测
+        system = platform.system()
+        is_packaged = is_packaged_app()
+        
+        logger.debug(f"检查快捷方式 - 系统: {system}, 是否打包: {is_packaged}")
+        
+        if system != "Windows":
+            logger.debug("非 Windows 系统，跳过快捷方式检查")
+            return True  # 非 Windows 系统，返回 True 表示不需要提示
+        
+        if not is_packaged:
+            logger.debug("开发环境，跳过快捷方式检查")
+            return True  # 开发环境，返回 True 表示不需要提示
+        
+        desktop_path = get_desktop_path()
+        logger.debug(f"桌面路径: {desktop_path}")
+        
+        if not desktop_path:
+            logger.warning("无法获取桌面路径")
+            return True  # 无法获取桌面路径，不提示
+        
+        # 检查快捷方式文件（所有版本都使用 MTools.lnk）
+        shortcut_path = desktop_path / "MTools.lnk"
+        
+        logger.debug(f"检查快捷方式文件: {shortcut_path}")
+        
+        if shortcut_path.exists():
+            logger.info(f"找到快捷方式: {shortcut_path}")
+            return True
+        
+        logger.info("未找到桌面快捷方式")
+        return False
+    except Exception as e:
+        import traceback
+        logger.error(f"检查桌面快捷方式失败: {e}")
+        logger.error(f"错误堆栈: {traceback.format_exc()}")
+        return True  # 发生错误时不提示
+
+
+def create_desktop_shortcut() -> Tuple[bool, str]:
+    """创建桌面快捷方式。
+    
+    Returns:
+        (成功/失败, 消息)
+    """
+    # 只在 Windows 打包环境下支持
+    if platform.system() != "Windows":
+        return False, "当前系统不支持此功能"
+    
+    if not is_packaged_app():
+        return False, "开发环境不支持创建快捷方式"
+    
+    try:
+        desktop_path = get_desktop_path()
+        if not desktop_path:
+            return False, "无法获取桌面路径"
+        
+        shortcut_path = desktop_path / "MTools.lnk"
+        
+        # 检查快捷方式是否已存在
+        if shortcut_path.exists():
+            return False, "桌面快捷方式已存在"
+        
+        # 获取程序路径和图标
+        exe_path = Path(sys.argv[0]).resolve()
+        app_dir = exe_path.parent
+        
+        # 查找图标
+        icon_path = None
+        for icon_name in ["icon.ico", "assets/icon.ico", "src/assets/icon.ico"]:
+            test_path = app_dir / icon_name
+            if test_path.exists():
+                icon_path = test_path
+                break
+        
+        # 使用 PowerShell 创建快捷方式
+        ps_script = f"""
+$WshShell = New-Object -ComObject WScript.Shell
+$Shortcut = $WshShell.CreateShortcut("{shortcut_path}")
+$Shortcut.TargetPath = "{exe_path}"
+$Shortcut.WorkingDirectory = "{app_dir}"
+$Shortcut.Description = "MTools"
+"""
+        if icon_path:
+            ps_script += f'$Shortcut.IconLocation = "{icon_path}"\n'
+        ps_script += "$Shortcut.Save()"
+        
+        # 执行 PowerShell 命令
+        result = subprocess.run(
+            ["powershell", "-Command", ps_script],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        
+        if result.returncode == 0:
+            logger.info(f"已创建桌面快捷方式: {shortcut_path}")
+            return True, "桌面快捷方式创建成功！"
+        else:
+            logger.error(f"创建快捷方式失败: {result.stderr}")
+            return False, f"创建失败: {result.stderr}"
+    
+    except Exception as ex:
+        logger.error(f"创建桌面快捷方式失败: {ex}")
+        return False, f"创建失败: {str(ex)}"
+

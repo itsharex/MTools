@@ -54,6 +54,7 @@ from .app_config import (
     WINDOW_MIN_HEIGHT,
     WINDOW_MIN_WIDTH,
     WINDOW_WIDTH,
+    BUILD_CUDA_VARIANT
 )
 from .model_config import (
     BACKGROUND_REMOVAL_MODELS,
@@ -151,5 +152,6 @@ __all__ = [
     "VOCAL_SEPARATION_MODELS",
     "WHISPER_MODELS",
     "WhisperModelInfo",
+    "BUILD_CUDA_VARIANT"
 ]
 
