@@ -11,6 +11,7 @@ import threading
 import time
 import sys
 import platform
+import webbrowser
 from utils import logger
 from utils.file_utils import get_system_fonts
 
@@ -2917,11 +2918,23 @@ class SettingsView(ft.Container):
                 controls=[
                     ft.Text("更新说明:", weight=ft.FontWeight.BOLD, size=14),
                     ft.Container(
-                        content=ft.Text(release_notes, size=12),
+                        content=ft.Column(
+                            controls=[
+                                ft.Markdown(
+                                    value=release_notes,
+                                    selectable=True,
+                                    extension_set=ft.MarkdownExtensionSet.GITHUB_WEB,
+                                    on_tap_link=lambda e: webbrowser.open(e.data),
+                                ),
+                            ],
+                            scroll=ft.ScrollMode.AUTO,
+                            expand=True,
+                        ),
                         padding=PADDING_SMALL,
+                        bgcolor=ft.Colors.with_opacity(0.03, ft.Colors.ON_SURFACE),
                         border=ft.border.all(1, ft.Colors.OUTLINE_VARIANT),
                         border_radius=BORDER_RADIUS_MEDIUM,
-                        height=150,
+                        height=300,
                     ),
                     ft.Container(height=PADDING_SMALL),
                     progress_bar,

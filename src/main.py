@@ -304,11 +304,23 @@ def _show_startup_update_dialog(page: ft.Page, config_service: ConfigService, up
             controls=[
                 ft.Text("更新说明:", weight=ft.FontWeight.BOLD, size=14),
                 ft.Container(
-                    content=ft.Text(release_notes, size=12),
+                    content=ft.Column(
+                        controls=[
+                            ft.Markdown(
+                                value=release_notes,
+                                selectable=True,
+                                extension_set=ft.MarkdownExtensionSet.GITHUB_WEB,
+                                on_tap_link=lambda e: __import__('webbrowser').open(e.data),
+                            ),
+                        ],
+                        scroll=ft.ScrollMode.AUTO,
+                        expand=True,
+                    ),
                     padding=PADDING_SMALL,
+                    bgcolor=ft.Colors.with_opacity(0.03, ft.Colors.ON_SURFACE),
                     border=ft.border.all(1, ft.Colors.OUTLINE_VARIANT),
                     border_radius=BORDER_RADIUS_MEDIUM,
-                    height=150,
+                    height=300,
                 ),
                 ft.Container(height=PADDING_SMALL),
                 progress_bar,

@@ -703,15 +703,23 @@ class MainView(ft.Column):
                         ft.Container(height=8),
                         ft.Text("更新内容:", size=13, weight=ft.FontWeight.W_500),
                         ft.Container(
-                            content=ft.Text(
-                                release_notes,
-                                size=12,
-                                color=ft.Colors.ON_SURFACE_VARIANT,
+                            content=ft.Column(
+                                controls=[
+                                    ft.Markdown(
+                                        value=release_notes,
+                                        selectable=True,
+                                        extension_set=ft.MarkdownExtensionSet.GITHUB_WEB,
+                                        on_tap_link=lambda e: webbrowser.open(e.data),
+                                    ),
+                                ],
+                                scroll=ft.ScrollMode.AUTO,
+                                expand=True,
                             ),
-                            bgcolor=ft.Colors.SECONDARY_CONTAINER,
+                            bgcolor=ft.Colors.with_opacity(0.03, ft.Colors.ON_SURFACE),
                             border_radius=8,
                             padding=12,
                             width=400,
+                            height=300,
                         ),
                         ft.Container(height=8),
                         progress_bar,
