@@ -247,6 +247,30 @@ class VideoEnhanceView(ft.Container):
                                 ],
                                 spacing=8,
                             ),
+                            ft.Row(
+                                controls=[
+                                    ft.Icon(ft.Icons.INFO_OUTLINED, size=16, color=ft.Colors.BLUE),
+                                    ft.Text(
+                                        "提示：如需更快的处理速度，建议使用 ",
+                                        size=11,
+                                        color=ft.Colors.BLUE,
+                                    ),
+                                    ft.TextButton(
+                                        "Video2X",
+                                        url="https://github.com/k4yt3x/video2x/releases",
+                                        style=ft.ButtonStyle(
+                                            padding=0,
+                                            color=ft.Colors.BLUE,
+                                        ),
+                                    ),
+                                    ft.Text(
+                                        "（目前我们的代码还未优化）",
+                                        size=11,
+                                        color=ft.Colors.BLUE,
+                                    ),
+                                ],
+                                spacing=4,
+                            ),
                         ],
                         spacing=4,
                     ),
