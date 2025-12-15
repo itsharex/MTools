@@ -617,7 +617,34 @@ class ICPService:
         """关闭HTTP会话。"""
         if self.session and not self.session.is_closed:
             await self.session.aclose()
-    
+
+    def unload_model(self) -> None:
+        """卸载当前加载的模型并释放推理会话。
+
+        此方法会释放detector和siamese模型实例，清理GPU/CPU内存。
+        下次使用时需要重新调用load_models方法加载模型。
+        """
+        try:
+            # 释放YOLO检测模型
+            if self.detector:
+                # ONNX Runtime会话通常通过垃圾回收自动清理
+                # 但我们可以显式设置为None以释放引用
+                self.detector = None
+                logger.info("ICP检测模型(ibig)已卸载")
+
+            # 释放相似度模型
+            if self.siamese:
+                self.siamese = None
+                logger.info("ICP相似度模型(isma)已卸载")
+
+            # 清理token缓存（可选）
+            self.token = ""
+            self.token_expire = 0
+
+            logger.info("ICP模型卸载完成")
+        except Exception as e:
+            logger.error(f"卸载ICP模型时出错: {e}")
+
     async def get_auth_token(self) -> Optional[str]:
         """获取认证token。"""
         try:
