@@ -555,3 +555,13 @@ def register_all_tools():
         tool_id="others.icp_query",
         gradient_colors=("#43E97B", "#38F9D7"),
     )
+    
+    register_tool_manual(
+        name="AI证件照",
+        description="智能抠图换底，一键生成证件照",
+        category="其他工具",
+        keywords=["证件照", "抠图", "换底", "一寸", "二寸", "签证照", "护照照片", "身份证照", "AI", "id photo", "portrait", "background"],
+        icon="BADGE",
+        tool_id="others.id_photo",
+        gradient_colors=("#667EEA", "#764BA2"),
+    )

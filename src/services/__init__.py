@@ -15,6 +15,8 @@ from .weather_service import WeatherService
 from .websocket_service import WebSocketService
 from .update_service import UpdateService, UpdateInfo, UpdateStatus
 from .auto_updater import AutoUpdater
+from .face_detection_service import FaceDetector, FaceDetectionResult
+from .id_photo_service import IDPhotoService, IDPhotoParams, IDPhotoResult
 
 __all__ = [
     "AudioService",
@@ -33,5 +35,10 @@ __all__ = [
     "UpdateInfo",
     "UpdateStatus",
     "AutoUpdater",
+    "FaceDetector",
+    "FaceDetectionResult",
+    "IDPhotoService",
+    "IDPhotoParams",
+    "IDPhotoResult",
 ]
 

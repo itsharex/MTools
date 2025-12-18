@@ -874,3 +874,51 @@ ICP_MODELS: Final[dict[str, ICPModelInfo]] = {
 
 # 默认 ICP 模型
 DEFAULT_ICP_MODEL_KEY: Final[str] = "icp_v1"
+
+
+# 人脸检测模型配置（用于证件照等场景）
+@dataclass
+class FaceDetectionModelInfo:
+    """人脸检测模型信息数据类。
+    
+    Attributes:
+        name: 模型名称
+        display_name: 显示名称
+        url: 模型下载链接
+        size_mb: 文件大小(MB)
+        quality: 质量描述
+        performance: 性能描述
+        filename: 模型文件名
+        version: 版本号
+        input_size: 输入尺寸 (height, width)
+        num_landmarks: 关键点数量
+    """
+    name: str
+    display_name: str
+    url: str
+    size_mb: int
+    quality: str
+    performance: str
+    filename: str
+    version: str = "1.0"
+    input_size: tuple = (640, 640)
+    num_landmarks: int = 5  # 5个关键点：左眼、右眼、鼻子、左嘴角、右嘴角
+
+
+FACE_DETECTION_MODELS: Final[dict[str, FaceDetectionModelInfo]] = {
+    "retinaface_resnet50": FaceDetectionModelInfo(
+        name="retinaface_resnet50",
+        display_name="RetinaFace ResNet50（推荐）",
+        url="https://www.modelscope.cn/models/yiminger/MyTools_Models/resolve/master/models/retinaface/retinaface-resnet50.onnx",
+        size_mb=105,
+        quality="极高精度 | WiderFace Hard 91.4%",
+        performance="速度适中 | 适合证件照场景",
+        filename="retinaface-resnet50.onnx",
+        version="1.0",
+        input_size=(640, 640),
+        num_landmarks=5
+    ),
+}
+
+# 默认人脸检测模型
+DEFAULT_FACE_DETECTION_MODEL_KEY: Final[str] = "retinaface_resnet50"

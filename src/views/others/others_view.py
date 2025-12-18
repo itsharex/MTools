@@ -105,6 +105,13 @@ class OthersView(ft.Container):
                     gradient_colors=("#43E97B", "#38F9D7"),
                     on_click=lambda _: self._open_icp_query_view(),
                 ),
+                FeatureCard(
+                    icon=ft.Icons.BADGE,
+                    title="AI证件照",
+                    description="智能抠图换底，一键生成证件照",
+                    gradient_colors=("#667EEA", "#764BA2"),
+                    on_click=lambda _: self._open_id_photo_view(),
+                ),
             ],
             wrap=True,
             spacing=PADDING_LARGE,
@@ -251,11 +258,43 @@ class OthersView(ft.Container):
         self.parent_container.content = icp_query_view
         self._safe_page_update()
     
+    def _open_id_photo_view(self) -> None:
+        """打开AI证件照视图。"""
+        # 记录工具使用次数
+        from utils import get_tool
+        tool_meta = get_tool("others.id_photo")
+        if tool_meta:
+            self.config_service.record_tool_usage(tool_meta.name)
+        
+        # 隐藏搜索按钮
+        self._hide_search_button()
+        
+        from views.others import IDPhotoView
+        
+        if not self.parent_container:
+            self._show_message("无法打开视图")
+            return
+        
+        # 创建AI证件照视图
+        id_photo_view = IDPhotoView(
+            page=self._saved_page,
+            config_service=self.config_service,
+            on_back=lambda: self._restore_main_view(),
+        )
+        
+        # 保存当前子视图
+        self.current_sub_view = id_photo_view
+        self.current_sub_view_type = "id_photo"
+        
+        # 切换到子视图
+        self.parent_container.content = id_photo_view
+        self._safe_page_update()
+    
     def open_tool(self, tool_name: str) -> None:
         """根据工具名称打开对应的工具。
         
         Args:
-            tool_name: 工具名称，如 "windows_update", "image_to_url", "file_to_url", "icp_query" 等
+            tool_name: 工具名称，如 "windows_update", "image_to_url", "file_to_url", "icp_query", "id_photo" 等
         """
         # 工具名称到方法的映射
         tool_map = {
@@ -263,6 +302,7 @@ class OthersView(ft.Container):
             "image_to_url": self._open_image_to_url_view,
             "file_to_url": self._open_file_to_url_view,
             "icp_query": self._open_icp_query_view,
+            "id_photo": self._open_id_photo_view,
         }
         
         # 查找并调用对应的方法
