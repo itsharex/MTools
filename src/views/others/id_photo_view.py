@@ -369,21 +369,76 @@ class IDPhotoView(ft.Container):
             spacing=PADDING_SMALL,
         )
         
-        # 美颜和其他选项
+        # 美颜调整
         self.whitening_slider = ft.Slider(min=0, max=15, value=2, divisions=15, label="{value}", width=180)
         self.brightness_slider = ft.Slider(min=-5, max=25, value=0, divisions=30, label="{value}", width=180)
+        
+        beauty_subsection = ft.Container(
+            content=ft.Column(
+                controls=[
+                    ft.Text("美颜调整", size=13, weight=ft.FontWeight.W_500, color=ft.Colors.ON_SURFACE),
+                    ft.Row([ft.Text("美白强度", size=12, width=60), self.whitening_slider], spacing=PADDING_SMALL),
+                    ft.Row([ft.Text("亮度调整", size=12, width=60), self.brightness_slider], spacing=PADDING_SMALL),
+                ],
+                spacing=PADDING_SMALL // 2,
+            ),
+            padding=PADDING_SMALL,
+            border=ft.border.all(1, ft.Colors.OUTLINE_VARIANT),
+            border_radius=BORDER_RADIUS_MEDIUM,
+        )
+        
+        # 人脸矫正
         self.face_alignment_checkbox = ft.Checkbox(label="自动矫正人脸", value=False)
-        self.layout_checkbox = ft.Checkbox(label="生成排版照（六寸）", value=True)
+        
+        # 输出选项
+        self.layout_checkbox = ft.Checkbox(label="生成排版照", value=True, on_change=self._on_layout_checkbox_change)
+        
+        # 排版尺寸选择
+        self.layout_size_dropdown = ft.Dropdown(
+            options=[
+                ft.dropdown.Option(text="六寸相纸 (1205×1795)", key="6inch"),
+                ft.dropdown.Option(text="五寸相纸 (1051×1500)", key="5inch"),
+                ft.dropdown.Option(text="A4纸 (2479×3508)", key="a4"),
+            ],
+            value="6inch",
+            dense=True,
+            width=180,
+            text_size=12,
+        )
+        
+        # KB限制选项
+        self.kb_limit_checkbox = ft.Checkbox(label="限制文件大小", value=True, on_change=self._on_kb_limit_change)
+        self.kb_value_field = ft.TextField(
+            label="",
+            value="48",
+            width=70,
+            dense=True,
+            text_size=12,
+            suffix_text="KB",
+        )
+        
+        output_subsection = ft.Container(
+            content=ft.Column(
+                controls=[
+                    ft.Text("输出设置", size=13, weight=ft.FontWeight.W_500, color=ft.Colors.ON_SURFACE),
+                    self.face_alignment_checkbox,
+                    self.layout_checkbox,
+                    ft.Row([ft.Text("　排版尺寸", size=12, width=68), self.layout_size_dropdown], spacing=PADDING_SMALL),
+                    ft.Row([self.kb_limit_checkbox, self.kb_value_field], spacing=PADDING_SMALL),
+                ],
+                spacing=PADDING_SMALL // 2,
+            ),
+            padding=PADDING_SMALL,
+            border=ft.border.all(1, ft.Colors.OUTLINE_VARIANT),
+            border_radius=BORDER_RADIUS_MEDIUM,
+        )
         
         beauty_section = ft.Column(
             controls=[
-                ft.Text("美颜和选项:", size=14, weight=ft.FontWeight.W_500),
-                ft.Row([ft.Text("美白强度", size=12, width=60), self.whitening_slider], spacing=PADDING_SMALL),
-                ft.Row([ft.Text("亮度调整", size=12, width=60), self.brightness_slider], spacing=PADDING_SMALL),
-                self.face_alignment_checkbox,
-                self.layout_checkbox,
+                beauty_subsection,
+                output_subsection,
             ],
-            spacing=PADDING_SMALL,
+            spacing=PADDING_MEDIUM,
         )
         
         # 参数设置区域布局
@@ -996,6 +1051,16 @@ class IDPhotoView(ft.Container):
         self.browse_output_button.disabled = not is_custom
         self._safe_update()
     
+    def _on_layout_checkbox_change(self, e: ft.ControlEvent) -> None:
+        """排版照复选框变化，控制排版尺寸选择器的可见性。"""
+        # 目前排版尺寸选择器始终可见，这里可以根据需要调整
+        pass
+    
+    def _on_kb_limit_change(self, e: ft.ControlEvent) -> None:
+        """KB限制复选框变化，控制KB输入框的启用状态。"""
+        self.kb_value_field.disabled = not self.kb_limit_checkbox.value
+        self._safe_update()
+    
     def _on_browse_output(self, e: ft.ControlEvent) -> None:
         """浏览输出目录。"""
         def on_result(result: ft.FilePickerResultEvent) -> None:
@@ -1093,6 +1158,14 @@ class IDPhotoView(ft.Container):
         params, bg_color, render_mode = self._get_params()
         generate_layout = self.layout_checkbox.value
         
+        # 获取排版尺寸
+        layout_size_map = {
+            "6inch": (1205, 1795),  # 六寸相纸
+            "5inch": (1051, 1500),  # 五寸相纸
+            "a4": (2479, 3508),     # A4纸
+        }
+        layout_size = layout_size_map.get(self.layout_size_dropdown.value, (1205, 1795))
+        
         def process_all_task():
             total_files = len(self.selected_files)
             success_count = 0
@@ -1133,6 +1206,7 @@ class IDPhotoView(ft.Container):
                         bg_color=bg_color,
                         render_mode=render_mode,
                         generate_layout=generate_layout,
+                        layout_size=layout_size,
                         progress_callback=None,
                     )
                     
@@ -1140,11 +1214,27 @@ class IDPhotoView(ft.Container):
                     standard_path = self._get_output_path(file_path, "_standard")
                     hd_path = self._get_output_path(file_path, "_hd")
                     
-                    is_success, buffer = cv2.imencode('.png', result.standard)
-                    if is_success:
-                        with open(standard_path, 'wb') as f:
-                            f.write(buffer)
+                    # 标准照：根据KB限制选项决定格式和压缩
+                    if self.kb_limit_checkbox.value:
+                        # 启用KB限制，压缩为JPEG
+                        try:
+                            target_kb = int(self.kb_value_field.value)
+                            if target_kb <= 0:
+                                target_kb = 48
+                        except ValueError:
+                            target_kb = 48
+                        
+                        standard_compressed = self.id_photo_service.compress_image_to_kb(result.standard, target_kb=target_kb)
+                        with open(standard_path.with_suffix('.jpg'), 'wb') as f:
+                            f.write(standard_compressed)
+                    else:
+                        # 不限制KB，保存为PNG
+                        is_success, buffer = cv2.imencode('.png', result.standard)
+                        if is_success:
+                            with open(standard_path, 'wb') as f:
+                                f.write(buffer)
                     
+                    # 高清照保存为PNG格式（无损）
                     is_success, buffer = cv2.imencode('.png', result.hd)
                     if is_success:
                         with open(hd_path, 'wb') as f:

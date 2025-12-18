@@ -6,6 +6,7 @@
 """
 
 import gc
+import io
 import math
 from dataclasses import dataclass
 from pathlib import Path
@@ -616,12 +617,68 @@ class IDPhotoService:
         return result_image_hd, result_image_standard
     
     @staticmethod
+    def compress_image_to_kb(
+        image: np.ndarray,
+        target_kb: int = 50,
+        dpi: int = 300
+    ) -> bytes:
+        """将图像压缩到指定KB大小。
+        
+        Args:
+            image: 输入图像 (BGR 格式)
+            target_kb: 目标文件大小（KB）
+            dpi: 图像分辨率
+        
+        Returns:
+            压缩后的图像字节数据（JPEG格式）
+        """
+        # 转换为RGB PIL图像
+        if image.shape[2] == 4:
+            # RGBA -> RGB（白色背景）
+            b, g, r, a = cv2.split(image)
+            alpha = a.astype(float) / 255
+            white = np.ones_like(b) * 255
+            r = (r * alpha + white * (1 - alpha)).astype(np.uint8)
+            g = (g * alpha + white * (1 - alpha)).astype(np.uint8)
+            b = (b * alpha + white * (1 - alpha)).astype(np.uint8)
+            rgb_image = cv2.merge([r, g, b])
+        else:
+            rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        
+        pil_image = Image.fromarray(rgb_image)
+        
+        # 二分查找最佳质量值
+        quality = 95
+        
+        while True:
+            img_byte_arr = io.BytesIO()
+            pil_image.save(img_byte_arr, format="JPEG", quality=quality, dpi=(dpi, dpi))
+            img_size_kb = len(img_byte_arr.getvalue()) / 1024
+            
+            if img_size_kb <= target_kb or quality <= 1:
+                # 如果图像小于目标大小，添加padding以精确匹配
+                if img_size_kb < target_kb:
+                    padding_size = int((target_kb * 1024) - len(img_byte_arr.getvalue()))
+                    padding = b"\x00" * padding_size
+                    img_byte_arr.write(padding)
+                
+                return img_byte_arr.getvalue()
+            
+            # 降低质量
+            quality -= 5
+            if quality < 1:
+                quality = 1
+    
+    @staticmethod
     def generate_layout(
         image: np.ndarray,
         size: Tuple[int, int],
         layout_size: Tuple[int, int] = (1205, 1795)
     ) -> np.ndarray:
         """生成排版照。
+        
+        根据照片尺寸自动计算最优排列方式（横向或纵向），
+        在六寸相纸上尽可能多地排列照片。
         
         Args:
             image: 标准证件照 (RGB 或 RGBA)
@@ -648,31 +705,79 @@ class IDPhotoService:
         if image.shape[0] != photo_height:
             image = cv2.resize(image, (photo_width, photo_height))
         
-        # 计算排列
-        photo_interval_h = 30
-        photo_interval_w = 30
-        sides_interval_h = 50
-        sides_interval_w = 70
+        # 计算排列参数
+        photo_interval_h = 30  # 照片间垂直距离
+        photo_interval_w = 30  # 照片间水平距离
+        sides_interval_h = 50  # 照片与边缘垂直距离
+        sides_interval_w = 70  # 照片与边缘水平距离
         
         limit_block_w = layout_width - 2 * sides_interval_w
         limit_block_h = layout_height - 2 * sides_interval_h
         
-        # 计算行列数
-        cols = 1
-        rows = 1
+        # 方案1：不转置排列（正常方向）
+        cols_no_transpose = 1
+        rows_no_transpose = 1
+        
         for i in range(1, 9):
             total_w = photo_width * i + photo_interval_w * (i - 1)
             if total_w <= limit_block_w:
-                cols = i
+                cols_no_transpose = i
             else:
                 break
         
         for i in range(1, 4):
             total_h = photo_height * i + photo_interval_h * (i - 1)
             if total_h <= limit_block_h:
-                rows = i
+                rows_no_transpose = i
             else:
                 break
+        
+        count_no_transpose = rows_no_transpose * cols_no_transpose
+        
+        # 方案2：转置排列（旋转90度）
+        cols_transpose = 1
+        rows_transpose = 1
+        
+        for i in range(1, 9):
+            total_w = photo_height * i + photo_interval_w * (i - 1)  # 注意：宽度使用原高度
+            if total_w <= limit_block_w:
+                cols_transpose = i
+            else:
+                break
+        
+        for i in range(1, 4):
+            total_h = photo_width * i + photo_interval_h * (i - 1)  # 注意：高度使用原宽度
+            if total_h <= limit_block_h:
+                rows_transpose = i
+            else:
+                break
+        
+        count_transpose = rows_transpose * cols_transpose
+        
+        # 选择能排列更多照片的方案
+        # 如果数量相同，优先选择行列比更接近1的方案（更接近正方形布局）
+        use_transpose = False
+        if count_transpose > count_no_transpose:
+            use_transpose = True
+        elif count_transpose == count_no_transpose and count_transpose > 0:
+            # 计算行列比的差异（越接近1越好）
+            ratio_no_transpose = max(rows_no_transpose / cols_no_transpose, cols_no_transpose / rows_no_transpose)
+            ratio_transpose = max(rows_transpose / cols_transpose, cols_transpose / rows_transpose)
+            if ratio_transpose < ratio_no_transpose:
+                use_transpose = True
+        
+        if use_transpose:
+            # 使用转置排列
+            cols, rows = cols_transpose, rows_transpose
+            # 旋转图像90度（顺时针）
+            image = cv2.transpose(image)
+            image = cv2.flip(image, 1)  # 水平翻转以获得正确的旋转效果
+            photo_height, photo_width = photo_width, photo_height  # 交换宽高
+            logger.info(f"排版照使用转置排列: {cols}列 × {rows}行 = {cols * rows}张")
+        else:
+            # 使用正常排列
+            cols, rows = cols_no_transpose, rows_no_transpose
+            logger.info(f"排版照使用正常排列: {cols}列 × {rows}行 = {cols * rows}张")
         
         # 计算居中位置
         center_block_w = photo_width * cols + photo_interval_w * (cols - 1)
@@ -761,6 +866,7 @@ class IDPhotoService:
         bg_color: Tuple[int, int, int] = (67, 142, 219),
         render_mode: str = "solid",
         generate_layout: bool = True,
+        layout_size: Tuple[int, int] = (1205, 1795),
         progress_callback: Optional[Callable[[float, str], None]] = None
     ) -> IDPhotoResult:
         """处理证件照。
@@ -771,6 +877,7 @@ class IDPhotoService:
             bg_color: 背景颜色 (R, G, B)
             render_mode: 渲染模式
             generate_layout: 是否生成排版照
+            layout_size: 排版尺寸 (height, width)
             progress_callback: 进度回调函数
         
         Returns:
@@ -834,7 +941,7 @@ class IDPhotoService:
             layout = None
             if generate_layout:
                 update_progress(0.95, "正在生成排版照...")
-                layout = self.generate_layout(result_with_bg, params.size)
+                layout = self.generate_layout(result_with_bg, params.size, layout_size)
             
             update_progress(1.0, "处理完成")
             return IDPhotoResult(
@@ -882,7 +989,7 @@ class IDPhotoService:
         layout = None
         if generate_layout:
             update_progress(0.95, "正在生成排版照...")
-            layout = self.generate_layout(result_standard_with_bg, params.size)
+            layout = self.generate_layout(result_standard_with_bg, params.size, layout_size)
         
         update_progress(1.0, "处理完成")
         
