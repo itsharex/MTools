@@ -18,6 +18,7 @@ from .auto_updater import AutoUpdater
 from .face_detection_service import FaceDetector, FaceDetectionResult
 from .id_photo_service import IDPhotoService, IDPhotoParams, IDPhotoResult
 from .subtitle_remove_service import SubtitleRemoveService
+from .translate_service import TranslateService, SUPPORTED_LANGUAGES
 
 __all__ = [
     "AudioService",
@@ -42,5 +43,7 @@ __all__ = [
     "IDPhotoParams",
     "IDPhotoResult",
     "SubtitleRemoveService",
+    "TranslateService",
+    "SUPPORTED_LANGUAGES",
 ]
 

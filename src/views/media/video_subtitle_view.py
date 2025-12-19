@@ -24,7 +24,7 @@ from constants import (
     SenseVoiceModelInfo,
     WhisperModelInfo,
 )
-from services import ConfigService, FFmpegService, SpeechRecognitionService
+from services import ConfigService, FFmpegService, SpeechRecognitionService, TranslateService, SUPPORTED_LANGUAGES
 from utils import format_file_size, logger, get_system_fonts
 from utils.subtitle_utils import segments_to_srt
 from views.media.ffmpeg_install_view import FFmpegInstallView
@@ -99,6 +99,11 @@ class VideoSubtitleView(ft.Container):
         
         # 获取系统字体列表
         self.system_fonts = get_system_fonts()
+        
+        # 翻译服务
+        self.translate_service = TranslateService()
+        self.enable_translation: bool = False
+        self.target_language: str = "en"  # 默认翻译目标语言
         
         # 构建界面
         self._build_ui()
@@ -531,6 +536,63 @@ class VideoSubtitleView(ft.Container):
             padding=PADDING_MEDIUM,
         )
         
+        # 多语言翻译设置
+        self.translate_checkbox = ft.Checkbox(
+            label="启用字幕翻译",
+            value=self.enable_translation,
+            on_change=self._on_translate_toggle,
+        )
+        
+        # 语言选项
+        language_options = [
+            ft.dropdown.Option(key=code, text=name) 
+            for code, name in SUPPORTED_LANGUAGES.items()
+        ]
+        
+        self.target_lang_dropdown = ft.Dropdown(
+            label="目标语言",
+            width=150,
+            options=language_options,
+            value=self.target_language,
+            disabled=True,  # 默认禁用，勾选启用翻译后才可用
+            on_change=self._on_target_lang_change,
+        )
+        
+        # 翻译模式选项
+        self.translate_mode_dropdown = ft.Dropdown(
+            label="字幕模式",
+            width=180,
+            options=[
+                ft.dropdown.Option(key="replace", text="替换原文"),
+                ft.dropdown.Option(key="bilingual", text="双语字幕"),
+                ft.dropdown.Option(key="bilingual_top", text="双语(译文在上)"),
+            ],
+            value="bilingual",
+            disabled=True,
+            tooltip="替换原文仅显示翻译，双语同时显示原文和翻译",
+        )
+        
+        translate_settings_area = ft.Container(
+            content=ft.Column(
+                controls=[
+                    ft.Row([
+                        ft.Text("多语言字幕", size=14, weight=ft.FontWeight.W_500),
+                        ft.Container(expand=True),
+                        ft.Text("使用 Bing 翻译 API", size=12, color=ft.Colors.ON_SURFACE_VARIANT),
+                    ]),
+                    ft.Row([
+                        self.translate_checkbox,
+                        self.target_lang_dropdown,
+                        self.translate_mode_dropdown,
+                    ], spacing=PADDING_MEDIUM),
+                ],
+                spacing=PADDING_SMALL,
+            ),
+            border=ft.border.all(1, ft.Colors.OUTLINE),
+            border_radius=BORDER_RADIUS_MEDIUM,
+            padding=PADDING_MEDIUM,
+        )
+        
         # 输出设置
         self.output_mode = ft.RadioGroup(
             content=ft.Column([
@@ -623,6 +685,7 @@ class VideoSubtitleView(ft.Container):
                 file_select_area,
                 recognition_area,
                 subtitle_style_area,
+                translate_settings_area,
                 output_settings_area,
                 self.progress_text,
                 self.progress_bar,
@@ -848,8 +911,19 @@ class VideoSubtitleView(ft.Container):
             font_color_bgr = parse_ass_color(font_color)
             outline_color_bgr = parse_ass_color(outline_color)
             
-            # 示例字幕文本
-            sample_text = "这是字幕预览效果 Subtitle Preview"
+            # 示例字幕文本（根据翻译设置显示不同内容）
+            if self.enable_translation:
+                translate_mode = self.translate_mode_dropdown.value
+                if translate_mode == "replace":
+                    sample_text = "This is a subtitle preview"  # 只显示译文
+                elif translate_mode == "bilingual":
+                    sample_text = "这是字幕预览效果\nThis is a subtitle preview"
+                elif translate_mode == "bilingual_top":
+                    sample_text = "This is a subtitle preview\n这是字幕预览效果"
+                else:
+                    sample_text = "这是字幕预览效果 Subtitle Preview"
+            else:
+                sample_text = "这是字幕预览效果 Subtitle Preview"
             
             # 计算最大字符数（用于换行演示）
             estimated_char_width = font_size * 0.6
@@ -1194,8 +1268,19 @@ class VideoSubtitleView(ft.Container):
                 font_rgb = (font_color[2], font_color[1], font_color[0])
                 outline_rgb = (outline_color[2], outline_color[1], outline_color[0])
                 
-                # 示例文本
-                sample_text = "这是一段较长的字幕预览效果文本 This is a subtitle preview text"
+                # 示例文本（根据翻译设置显示不同内容）
+                if self.enable_translation:
+                    translate_mode = self.translate_mode_dropdown.value
+                    if translate_mode == "replace":
+                        sample_text = "This is a subtitle preview text"
+                    elif translate_mode == "bilingual":
+                        sample_text = "这是字幕预览效果\nThis is a subtitle preview"
+                    elif translate_mode == "bilingual_top":
+                        sample_text = "This is a subtitle preview\n这是字幕预览效果"
+                    else:
+                        sample_text = "这是一段较长的字幕预览效果文本 This is a subtitle preview text"
+                else:
+                    sample_text = "这是一段较长的字幕预览效果文本 This is a subtitle preview text"
                 
                 # 获取最大宽度百分比
                 max_width_pct = int(max_width_field.value or "80")
@@ -2507,6 +2592,70 @@ class VideoSubtitleView(ft.Container):
         except:
             pass
     
+    def _on_translate_toggle(self, e) -> None:
+        """翻译开关变化事件。"""
+        self.enable_translation = e.control.value
+        self.target_lang_dropdown.disabled = not self.enable_translation
+        self.translate_mode_dropdown.disabled = not self.enable_translation
+        self.page.update()
+    
+    def _on_target_lang_change(self, e) -> None:
+        """目标语言变化事件。"""
+        self.target_language = e.control.value
+    
+    async def _translate_segments(
+        self, 
+        segments: list, 
+        target_lang: str,
+        progress_callback=None
+    ) -> list:
+        """翻译识别结果分段（异步）。
+        
+        Args:
+            segments: 识别结果分段列表，每个分段包含 text, start, end
+            target_lang: 目标语言代码
+            progress_callback: 进度回调函数 (current, total, message)
+        
+        Returns:
+            翻译后的分段列表，每个分段额外包含 translated_text 字段
+        """
+        import asyncio
+        
+        total = len(segments)
+        translated_segments = []
+        
+        for i, segment in enumerate(segments):
+            text = segment.get("text", "").strip()
+            if not text:
+                segment["translated_text"] = ""
+                translated_segments.append(segment)
+                continue
+            
+            # 调用翻译 API（异步）
+            result = await self.translate_service.translate(
+                text=text,
+                target_lang=target_lang,
+                source_lang=""  # 自动检测源语言
+            )
+            
+            if result["code"] == 200:
+                segment["translated_text"] = result["data"]["text"]
+            else:
+                # 翻译失败，保留原文
+                logger.warning(f"翻译失败: {result['message']}, 保留原文")
+                segment["translated_text"] = text
+            
+            translated_segments.append(segment)
+            
+            if progress_callback:
+                progress_callback(i + 1, total, f"翻译中... ({i + 1}/{total})")
+            
+            # 添加小延迟避免请求过于频繁
+            if i < total - 1:
+                await asyncio.sleep(0.05)
+        
+        return translated_segments
+    
     def _on_output_mode_change(self) -> None:
         """输出模式变化事件。"""
         is_custom = self.output_mode.value == "custom"
@@ -2609,6 +2758,9 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         """
         events = []
         
+        # 获取翻译模式
+        translate_mode = self.translate_mode_dropdown.value if self.enable_translation else "replace"
+        
         for segment in segments:
             text = segment['text'].strip()
             if not text:
@@ -2621,10 +2773,31 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             start_str = self._format_ass_time(start)
             end_str = self._format_ass_time(end)
             
-            # 自动换行
-            wrapped_text = self._wrap_text(text, max_chars_per_line)
+            # 获取翻译文本
+            translated_text = segment.get('translated_text', '').strip()
             
-            events.append(f"Dialogue: 0,{start_str},{end_str},Default,,0,0,0,,{wrapped_text}")
+            # 根据翻译模式生成字幕文本
+            if self.enable_translation and translated_text:
+                if translate_mode == "replace":
+                    # 替换原文：只显示翻译
+                    display_text = translated_text
+                elif translate_mode == "bilingual":
+                    # 双语字幕（原文在上，译文在下）
+                    wrapped_original = self._wrap_text(text, max_chars_per_line)
+                    wrapped_translated = self._wrap_text(translated_text, max_chars_per_line)
+                    display_text = f"{wrapped_original}\\N{wrapped_translated}"
+                elif translate_mode == "bilingual_top":
+                    # 双语字幕（译文在上，原文在下）
+                    wrapped_original = self._wrap_text(text, max_chars_per_line)
+                    wrapped_translated = self._wrap_text(translated_text, max_chars_per_line)
+                    display_text = f"{wrapped_translated}\\N{wrapped_original}"
+                else:
+                    display_text = self._wrap_text(text, max_chars_per_line)
+            else:
+                # 无翻译，使用原文
+                display_text = self._wrap_text(text, max_chars_per_line)
+            
+            events.append(f"Dialogue: 0,{start_str},{end_str},Default,,0,0,0,,{display_text}")
         
         return "\n".join(events)
     
@@ -2742,6 +2915,31 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                         
                         video_width = video_stream.get('width', 1920)
                         video_height = video_stream.get('height', 1080)
+                        
+                        # 步骤3.5：如果启用翻译，进行翻译
+                        if self.enable_translation:
+                            self.progress_text.value = f"[{idx + 1}/{total}] 翻译字幕..."
+                            self.page.update()
+                            
+                            import asyncio
+                            
+                            def translate_progress(current, total_items, msg):
+                                self.progress_text.value = f"[{idx + 1}/{total}] {msg}"
+                                self.page.update()
+                            
+                            # 异步翻译
+                            loop = asyncio.new_event_loop()
+                            asyncio.set_event_loop(loop)
+                            try:
+                                segments = loop.run_until_complete(
+                                    self._translate_segments(
+                                        segments, 
+                                        self.target_language,
+                                        translate_progress
+                                    )
+                                )
+                            finally:
+                                loop.close()
                         
                         # 获取该视频的设置
                         video_settings = self._get_video_settings(file_path)
