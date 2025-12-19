@@ -241,9 +241,10 @@ class IDPhotoView(ft.Container):
         self.download_bg_btn = ft.ElevatedButton("下载模型", icon=ft.Icons.DOWNLOAD, on_click=lambda _: self._start_download_model("background"), visible=False)
         self.load_bg_btn = ft.ElevatedButton("加载模型", icon=ft.Icons.PLAY_ARROW, on_click=lambda _: self._on_load_model("background"), visible=False)
         self.unload_bg_btn = ft.IconButton(icon=ft.Icons.POWER_SETTINGS_NEW, icon_color=ft.Colors.ORANGE, tooltip="卸载模型", on_click=lambda _: self._on_unload_model("background"), visible=False)
+        self.delete_bg_btn = ft.IconButton(icon=ft.Icons.DELETE_OUTLINE, icon_color=ft.Colors.RED, tooltip="删除模型", on_click=lambda _: self._on_delete_model("background"), visible=False)
         
         bg_status_row = ft.Row(
-            controls=[self.bg_status_icon, self.bg_status_text, self.download_bg_btn, self.load_bg_btn, self.unload_bg_btn],
+            controls=[self.bg_status_icon, self.bg_status_text, self.download_bg_btn, self.load_bg_btn, self.unload_bg_btn, self.delete_bg_btn],
             spacing=PADDING_SMALL,
         )
         
@@ -255,9 +256,10 @@ class IDPhotoView(ft.Container):
         self.download_face_btn = ft.ElevatedButton(f"下载模型 ({face_info.size_mb}MB)", icon=ft.Icons.DOWNLOAD, on_click=lambda _: self._start_download_model("face"), visible=False)
         self.load_face_btn = ft.ElevatedButton("加载模型", icon=ft.Icons.PLAY_ARROW, on_click=lambda _: self._on_load_model("face"), visible=False)
         self.unload_face_btn = ft.IconButton(icon=ft.Icons.POWER_SETTINGS_NEW, icon_color=ft.Colors.ORANGE, tooltip="卸载模型", on_click=lambda _: self._on_unload_model("face"), visible=False)
+        self.delete_face_btn = ft.IconButton(icon=ft.Icons.DELETE_OUTLINE, icon_color=ft.Colors.RED, tooltip="删除模型", on_click=lambda _: self._on_delete_model("face"), visible=False)
         
         face_status_row = ft.Row(
-            controls=[self.face_status_icon, self.face_status_text, self.download_face_btn, self.load_face_btn, self.unload_face_btn],
+            controls=[self.face_status_icon, self.face_status_text, self.download_face_btn, self.load_face_btn, self.unload_face_btn, self.delete_face_btn],
             spacing=PADDING_SMALL,
         )
         
@@ -271,24 +273,27 @@ class IDPhotoView(ft.Container):
             on_change=self._on_auto_load_change,
         )
         
+        # 模型下载进度条（放在模型区域）
+        self.model_download_progress = ft.ProgressBar(value=0, visible=False)
+        self.model_download_text = ft.Text("", size=12, color=ft.Colors.ON_SURFACE_VARIANT, visible=False)
+        
         model_area = ft.Container(
             content=ft.Column(
                 controls=[
                     ft.Text("模型管理:", size=14, weight=ft.FontWeight.W_500),
                     self.bg_model_selector,
                     self.bg_model_info,
-                    ft.Container(height=PADDING_SMALL // 2),
                     bg_status_row,
-                    ft.Container(height=PADDING_MEDIUM),
+                    ft.Container(height=4),
                     self.face_model_text,
-                    ft.Container(height=PADDING_SMALL // 2),
                     face_status_row,
-                    ft.Container(height=PADDING_SMALL),
                     self.auto_load_checkbox,
+                    self.model_download_progress,
+                    self.model_download_text,
                 ],
-                spacing=PADDING_SMALL,
+                spacing=4,
             ),
-            padding=PADDING_MEDIUM,
+            padding=PADDING_SMALL,
             border=ft.border.all(1, ft.Colors.OUTLINE_VARIANT),
             border_radius=BORDER_RADIUS_MEDIUM,
         )
@@ -504,8 +509,8 @@ class IDPhotoView(ft.Container):
         # ==================== 左右布局 ====================
         main_content = ft.Row(
             controls=[
-                ft.Container(content=file_select_area, expand=3, height=380),
-                ft.Container(content=model_area, expand=2, height=380),
+                ft.Container(content=file_select_area, expand=3, height=340),
+                ft.Container(content=model_area, expand=2, height=340),
             ],
             spacing=PADDING_LARGE,
             vertical_alignment=ft.CrossAxisAlignment.START,
@@ -855,6 +860,7 @@ class IDPhotoView(ft.Container):
             self.download_bg_btn.visible = False
             self.load_bg_btn.visible = False
             self.unload_bg_btn.visible = True
+            self.delete_bg_btn.visible = False  # 加载时不显示删除按钮
         elif bg_exists:
             self.bg_status_icon.name = ft.Icons.DOWNLOAD_DONE
             self.bg_status_icon.color = ft.Colors.BLUE
@@ -863,6 +869,7 @@ class IDPhotoView(ft.Container):
             self.download_bg_btn.visible = False
             self.load_bg_btn.visible = True
             self.unload_bg_btn.visible = False
+            self.delete_bg_btn.visible = True  # 已下载但未加载时可删除
         else:
             self.bg_status_icon.name = ft.Icons.CLOUD_DOWNLOAD
             self.bg_status_icon.color = ft.Colors.ORANGE
@@ -871,6 +878,7 @@ class IDPhotoView(ft.Container):
             self.download_bg_btn.visible = True
             self.load_bg_btn.visible = False
             self.unload_bg_btn.visible = False
+            self.delete_bg_btn.visible = False  # 未下载时不显示删除按钮
         
         # 人脸模型状态
         face_loaded = self.id_photo_service.is_face_model_loaded()
@@ -882,6 +890,7 @@ class IDPhotoView(ft.Container):
             self.download_face_btn.visible = False
             self.load_face_btn.visible = False
             self.unload_face_btn.visible = True
+            self.delete_face_btn.visible = False  # 加载时不显示删除按钮
         elif face_exists:
             self.face_status_icon.name = ft.Icons.DOWNLOAD_DONE
             self.face_status_icon.color = ft.Colors.BLUE
@@ -890,6 +899,7 @@ class IDPhotoView(ft.Container):
             self.download_face_btn.visible = False
             self.load_face_btn.visible = True
             self.unload_face_btn.visible = False
+            self.delete_face_btn.visible = True  # 已下载但未加载时可删除
         else:
             self.face_status_icon.name = ft.Icons.CLOUD_DOWNLOAD
             self.face_status_icon.color = ft.Colors.ORANGE
@@ -898,11 +908,19 @@ class IDPhotoView(ft.Container):
             self.download_face_btn.visible = True
             self.load_face_btn.visible = False
             self.unload_face_btn.visible = False
+            self.delete_face_btn.visible = False  # 未下载时不显示删除按钮
         
-        # 自动加载
-        if bg_exists and face_exists and not bg_loaded and not face_loaded:
-            if self.auto_load_checkbox.value:
+        # 自动加载（分别检查每个模型，但要确保不在加载中）
+        if self.auto_load_checkbox.value and not self.is_model_loading:
+            need_load_bg = bg_exists and not bg_loaded
+            need_load_face = face_exists and not face_loaded
+            
+            if need_load_bg and need_load_face:
                 self._on_load_model("both")
+            elif need_load_bg:
+                self._on_load_model("background")
+            elif need_load_face:
+                self._on_load_model("face")
         
         self._update_generate_button()
         self._safe_update()
@@ -940,10 +958,10 @@ class IDPhotoView(ft.Container):
             model_info = FACE_DETECTION_MODELS[DEFAULT_FACE_DETECTION_MODEL_KEY]
             model_path = self._get_model_path("face")
         
-        self.progress_text.value = f"正在下载 {model_info.display_name}..."
-        self.progress_text.visible = True
-        self.progress_bar.visible = True
-        self.progress_bar.value = 0
+        self.model_download_text.value = f"正在下载 {model_info.display_name}..."
+        self.model_download_text.visible = True
+        self.model_download_progress.visible = True
+        self.model_download_progress.value = 0
         self._safe_update()
         
         def download_task():
@@ -962,24 +980,54 @@ class IDPhotoView(ft.Container):
                                 f.write(chunk)
                                 downloaded += len(chunk)
                                 if total_size > 0:
-                                    self.progress_bar.value = downloaded / total_size
-                                    self.progress_text.value = f"下载中: {downloaded / 1024 / 1024:.1f} / {total_size / 1024 / 1024:.1f} MB"
+                                    self.model_download_progress.value = downloaded / total_size
+                                    self.model_download_text.value = f"下载中: {downloaded / 1024 / 1024:.1f} / {total_size / 1024 / 1024:.1f} MB"
                                     self._safe_update()
                 
-                self.progress_bar.visible = False
-                self.progress_text.visible = False
+                self.model_download_progress.visible = False
+                self.model_download_text.visible = False
                 self.is_model_loading = False
                 self._show_snackbar(f"{model_info.display_name} 下载完成", ft.Colors.GREEN)
-                self._check_model_status()
+                
+                # 如果启用自动加载，直接加载模型
+                if self.auto_load_checkbox.value:
+                    self._load_model_after_download(model_type)
+                else:
+                    self._check_model_status()
                 
             except Exception as e:
-                self.progress_bar.visible = False
-                self.progress_text.visible = False
+                self.model_download_progress.visible = False
+                self.model_download_text.visible = False
                 self.is_model_loading = False
                 self._show_snackbar(f"下载失败: {e}", ft.Colors.RED)
                 self._check_model_status()
         
         threading.Thread(target=download_task, daemon=True).start()
+    
+    def _load_model_after_download(self, model_type: str) -> None:
+        """下载完成后直接加载模型（在下载线程中调用）。"""
+        self.model_download_text.value = "正在加载模型..."
+        self.model_download_text.visible = True
+        self._safe_update()
+        
+        try:
+            if model_type == "background":
+                bg_path = self._get_model_path("background")
+                if bg_path.exists():
+                    self.id_photo_service.load_background_model(self.current_bg_model_key)
+            elif model_type == "face":
+                face_path = self._get_model_path("face")
+                if face_path.exists():
+                    self.id_photo_service.load_face_model()
+            
+            self.model_download_text.visible = False
+            self._show_snackbar("模型加载成功", ft.Colors.GREEN)
+            self._check_model_status()
+            
+        except Exception as ex:
+            self.model_download_text.visible = False
+            self._show_snackbar(f"模型加载失败: {ex}", ft.Colors.RED)
+            self._check_model_status()
     
     def _on_load_model(self, model_type: str, e: ft.ControlEvent = None) -> None:
         """加载模型。"""
@@ -987,8 +1035,8 @@ class IDPhotoView(ft.Container):
             return
         
         self.is_model_loading = True
-        self.progress_text.value = "正在加载模型..."
-        self.progress_text.visible = True
+        self.model_download_text.value = "正在加载模型..."
+        self.model_download_text.visible = True
         self._safe_update()
         
         def load_task():
@@ -1004,13 +1052,13 @@ class IDPhotoView(ft.Container):
                         self.id_photo_service.load_face_model()
                 
                 self.is_model_loading = False
-                self.progress_text.visible = False
+                self.model_download_text.visible = False
                 self._show_snackbar("模型加载成功", ft.Colors.GREEN)
                 self._check_model_status()
                 
             except Exception as ex:
                 self.is_model_loading = False
-                self.progress_text.visible = False
+                self.model_download_text.visible = False
                 self._show_snackbar(f"模型加载失败: {ex}", ft.Colors.RED)
                 self._check_model_status()
         
@@ -1025,6 +1073,64 @@ class IDPhotoView(ft.Container):
         
         self._show_snackbar("模型已卸载", ft.Colors.GREEN)
         self._check_model_status()
+    
+    def _on_delete_model(self, model_type: str) -> None:
+        """删除模型（带确认弹窗）。"""
+        if model_type == "background":
+            model_info = BACKGROUND_REMOVAL_MODELS[self.current_bg_model_key]
+            model_name = model_info.display_name
+        else:
+            model_info = FACE_DETECTION_MODELS[DEFAULT_FACE_DETECTION_MODEL_KEY]
+            model_name = model_info.display_name
+        
+        def close_dialog(e):
+            dialog.open = False
+            self.page.update()
+        
+        def confirm_delete(e):
+            dialog.open = False
+            self.page.update()
+            self._do_delete_model(model_type)
+        
+        dialog = ft.AlertDialog(
+            modal=True,
+            title=ft.Text("确认删除"),
+            content=ft.Text(f"确定要删除模型 {model_name} 吗？\n删除后需要重新下载才能使用。"),
+            actions=[
+                ft.TextButton("取消", on_click=close_dialog),
+                ft.TextButton("删除", on_click=confirm_delete, style=ft.ButtonStyle(color=ft.Colors.RED)),
+            ],
+            actions_alignment=ft.MainAxisAlignment.END,
+        )
+        
+        self.page.overlay.append(dialog)
+        dialog.open = True
+        self.page.update()
+    
+    def _do_delete_model(self, model_type: str) -> None:
+        """执行删除模型。"""
+        try:
+            # 先卸载模型
+            if model_type == "background":
+                if self.id_photo_service.is_background_model_loaded():
+                    self.id_photo_service.unload_background_model()
+                model_path = self._get_model_path("background")
+            else:
+                if self.id_photo_service.is_face_model_loaded():
+                    self.id_photo_service.unload_face_model()
+                model_path = self._get_model_path("face")
+            
+            # 删除文件
+            if model_path.exists():
+                model_path.unlink()
+                self._show_snackbar("模型已删除", ft.Colors.GREEN)
+            else:
+                self._show_snackbar("模型文件不存在", ft.Colors.ORANGE)
+            
+            self._check_model_status()
+        except Exception as ex:
+            logger.error(f"删除模型失败: {ex}")
+            self._show_snackbar(f"删除失败: {ex}", ft.Colors.RED)
     
     def _on_auto_load_change(self, e: ft.ControlEvent) -> None:
         """自动加载选项变化。"""
