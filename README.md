@@ -41,127 +41,9 @@
   </tr>
 </table>
 
-### 功能模块展示
-
-<details>
-<summary><b>图片处理工具</b> - 点击展开</summary>
-
-<br/>
-
-<table>
-  <tr>
-    <td align="center">浅色模式</td>
-    <td align="center">深色模式</td>
-  </tr>
-  <tr>
-    <td><img src="./assets/Light_Image_View.png" alt="图片工具-浅色" width="400"/></td>
-    <td><img src="./assets/Dark_Image_View.png" alt="图片工具-深色" width="400"/></td>
-  </tr>
-</table>
-
-**功能包括：**
-- AI 智能抠图（背景移除）
-- 专业压缩（mozjpeg + pngquant）
-- 格式转换（12+ 种格式）
-- 图片拼接（九宫格、横向、纵向）
-- 尺寸调整、裁剪、旋转、水印
-- 二维码生成、GIF 调整
-
-</details>
-
-<details>
-<summary><b>音视频处理</b> - 点击展开</summary>
-
-<br/>
-
-<table>
-  <tr>
-    <td align="center">浅色模式</td>
-    <td align="center">深色模式</td>
-  </tr>
-  <tr>
-    <td><img src="./assets/Light_Media_View.png" alt="音视频工具-浅色" width="400"/></td>
-    <td><img src="./assets/Dark_Media_View.png" alt="音视频工具-深色" width="400"/></td>
-  </tr>
-</table>
-
-**功能包括：**
-- AI 人声分离（UVR MDX-Net）
-- 视频格式转换（MP4/AVI/MKV/MOV）
-- 视频压缩（H.264/H.265）
-- 音频格式转换（MP3/WAV/FLAC/AAC）
-- 提取音轨、视频修复
-- 速度调整、添加水印
-
-</details>
-
-<details>
-<summary><b>开发工具</b> - 点击展开</summary>
-
-<br/>
-
-<table>
-  <tr>
-    <td align="center">浅色模式</td>
-    <td align="center">深色模式</td>
-  </tr>
-  <tr>
-    <td><img src="./assets/Light_DevTool_View.png" alt="开发工具-浅色" width="400"/></td>
-    <td><img src="./assets/Dark_DevTool_View.png" alt="开发工具-深色" width="400"/></td>
-  </tr>
-</table>
-
-**功能包括：**
-- 编码转换（自动检测，解决乱码）
-- Base64 转换（图片 ↔ Base64）
-- JSON/XML/SQL 格式化
-- 代码美化与验证
-
-</details>
-
-<details>
-<summary><b>其他工具</b> - 点击展开</summary>
-
-<br/>
-
-**功能包括：**
-- AI 证件照制作 - 智能生成各类规格证件照，支持多种尺寸和背景色
-- Windows 更新助手 - 快速访问 Windows 更新设置
-- 图片转 URL - 上传图片获取直链
-- 文件转 URL - 上传文件获取分享链接
-- ICP 备案查询 - 快速查询网站备案信息
-- 更多实用工具持续添加中...
-
-</details>
-
-<details>
-<summary><b>设置中心</b> - 点击展开</summary>
-
-<br/>
-
-<table>
-  <tr>
-    <td align="center">浅色模式</td>
-    <td align="center">深色模式</td>
-  </tr>
-  <tr>
-    <td><img src="./assets/Light_Setting_View.png" alt="设置-浅色" width="400"/></td>
-    <td><img src="./assets/Dark_Setting_View.png" alt="设置-深色" width="400"/></td>
-  </tr>
-</table>
-
-**设置选项：**
-- 主题切换（浅色/深色/自动）
-- 自定义主题色和字体
-- GPU 加速配置
-- 工具下载管理
-- 性能优化选项
-
-</details>
-
 ---
 
-## 核心特性
+## 部分工具展示
 
 ### AI 智能处理
 
@@ -205,10 +87,19 @@
 - **[Releases 下载](https://github.com/HG-ha/MTools/releases)**
 - **[国内用户下载](https://openlist.wer.plus/MTools)**
 
-支持平台：
+支持平台及预编译版本说明：
 - ✅ Windows 10/11 (x64)
+  - MTools_Windows_amd64：体积最小，并且支持nvidia、amd、intel显卡加速，但不支持手动管理显存
+  - MTools_Windows_amd64_CUDA：体积中等，使用CUDA进行加速，但需要手动安装CUDA 12.x + cuDNN 9.x
+  - MTools_Windows_amd64_CUDA_FULL：体积最大，内置完整的CUDA加速环境，无需手动安装CUDA和cuDNN
+
 - ⚠️ macOS (实验性支持)
+  - MTools_Darwin_arm64：只支M系列芯片，支持Core ML加速
+
 - ⚠️ Linux (实验性支持)
+  - MTools_Linux_amd64：体积最小，不支持GPU加速
+  - MTools_Linux_amd64_CUDA：体积中等，使用CUDA进行加速，但需要手动安装CUDA 12.x + cuDNN 9.x
+  - MTools_Linux_amd64_CUDA_FULL：体积最大，内置完整的CUDA加速环境，无需手动安装CUDA和cuDNN
 
 下载后解压即可使用！
 
@@ -271,7 +162,7 @@ uv add onnxruntime-gpu==1.22.0
 | **macOS (Intel)** | `onnxruntime==1.22.0` | ⚠️ CPU | 无 GPU 加速 |
 | **Linux** | `onnxruntime==1.22.0` | ⚠️ CPU | 可选 `onnxruntime-gpu` (CUDA) |
 
-> 💡 **提示**：程序会自动检测并使用可用的 GPU，无需额外配置。
+> 💡 **提示**：DirectML 版本不支持限制显存，只有CUDA可限制显存大小
 
 ---
 
