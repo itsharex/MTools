@@ -1439,3 +1439,40 @@ class OCRView(ft.Container):
             self.page.update()
         except:
             pass
+    
+    def cleanup(self) -> None:
+        """清理视图资源，释放内存。
+        
+        在视图被销毁时调用，确保所有资源被正确释放。
+        """
+        import gc
+        
+        try:
+            # 1. 卸载 OCR 模型
+            if self.ocr_service:
+                self.ocr_service.unload_model()
+            
+            # 2. 清空识别结果（可能包含大量数据）
+            if self.ocr_results:
+                self.ocr_results.clear()
+            
+            # 3. 清空文件列表
+            if self.selected_files:
+                self.selected_files.clear()
+            
+            # 4. 清空预览图片引用
+            if hasattr(self, 'current_preview_images'):
+                self.current_preview_images = []
+            
+            # 5. 清除回调引用，打破循环引用
+            self.on_back = None
+            
+            # 6. 清除 UI 内容
+            self.content = None
+            
+            # 7. 强制垃圾回收
+            gc.collect()
+            
+            logger.info("OCR视图资源已清理")
+        except Exception as e:
+            logger.warning(f"清理OCR视图资源时出错: {e}")

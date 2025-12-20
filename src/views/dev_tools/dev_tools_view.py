@@ -624,6 +624,8 @@ class DevToolsView(ft.Container):
     
     def _back_to_main(self) -> None:
         """返回主界面。"""
+        import gc
+        
         # 销毁当前子视图（而不是保留）
         if self.current_sub_view_type:
             view_map = {
@@ -648,11 +650,21 @@ class DevToolsView(ft.Container):
             }
             view_attr = view_map.get(self.current_sub_view_type)
             if view_attr:
+                # 在销毁前调用 cleanup 方法（如果存在）
+                view_instance = getattr(self, view_attr, None)
+                if view_instance and hasattr(view_instance, 'cleanup'):
+                    try:
+                        view_instance.cleanup()
+                    except Exception:
+                        pass
                 setattr(self, view_attr, None)
         
         # 清除子视图状态
         self.current_sub_view = None
         self.current_sub_view_type = None
+        
+        # 强制垃圾回收释放内存
+        gc.collect()
         
         # 先恢复容器内容
         if self.parent_container:

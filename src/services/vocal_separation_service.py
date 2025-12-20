@@ -847,9 +847,11 @@ class VocalSeparationService:
     
     def cleanup(self) -> None:
         """清理资源。"""
+        import gc
         if self.session:
             del self.session
             self.session = None
+        gc.collect()
 
     def unload_model(self) -> None:
         """卸载当前模型并释放推理会话。"""

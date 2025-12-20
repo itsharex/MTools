@@ -508,6 +508,8 @@ class MediaView(ft.Container):
         Args:
             e: 事件对象（可选）
         """
+        import gc
+        
         if not self.parent_container:
             return
         
@@ -534,19 +536,23 @@ class MediaView(ft.Container):
             }
             view_attr = view_map.get(self.current_sub_view_type)
             if view_attr:
-                # 在销毁前调用cleanup方法（如果存在）
                 view_instance = getattr(self, view_attr, None)
-                if view_instance and hasattr(view_instance, 'cleanup'):
-                    try:
-                        view_instance.cleanup()
-                    except Exception as e:
-                        logger.warning(f"清理视图 {view_attr} 时出错: {e}")
+                if view_instance:
+                    # 统一调用 cleanup 方法（每个视图自己负责清理资源和卸载模型）
+                    if hasattr(view_instance, 'cleanup'):
+                        try:
+                            view_instance.cleanup()
+                        except Exception as ex:
+                            logger.warning(f"清理视图 {view_attr} 时出错: {ex}")
                 
                 setattr(self, view_attr, None)
         
         # 清空当前子视图记录
         self.current_sub_view = None
         self.current_sub_view_type = None
+        
+        # 强制垃圾回收释放内存
+        gc.collect()
         
         # 切换回主视图
         self.parent_container.content = self

@@ -1435,6 +1435,13 @@ class SettingsView(ft.Container):
             on_change=self._on_gpu_memory_change,
         )
 
+        # GPU 内存限制说明（DirectML 不支持内存限制）
+        self.gpu_memory_hint = ft.Text(
+            "⚠️ 注意：此设置仅对 NVIDIA CUDA 有效。Windows DirectML 不支持显存限制，显存由系统自动管理。",
+            size=11,
+            color=ft.Colors.ON_SURFACE_VARIANT,
+        )
+
         # 动态检测GPU设备数量
         gpu_device_options = self._get_gpu_device_options()
 
@@ -1457,6 +1464,7 @@ class SettingsView(ft.Container):
             controls=[
                 memory_label_row,
                 self.gpu_memory_slider,
+                self.gpu_memory_hint,
                 self.gpu_device_dropdown,
                 self.memory_arena_switch,
             ],

@@ -3068,4 +3068,18 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         self.page.snack_bar = ft.SnackBar(content=ft.Text(message))
         self.page.snack_bar.open = True
         self.page.update()
-
+    
+    def cleanup(self) -> None:
+        """清理视图资源，释放内存。"""
+        import gc
+        # 清理文件列表
+        if hasattr(self, 'selected_files'):
+            self.selected_files.clear()
+        # 卸载语音识别模型
+        if hasattr(self, 'speech_service') and self.speech_service:
+            self.speech_service.unload_model()
+        # 清除回调引用，打破循环引用
+        self.on_back = None
+        # 清除 UI 内容
+        self.content = None
+        gc.collect()

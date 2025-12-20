@@ -1417,4 +1417,14 @@ class ImagePuzzleMergeView(ft.Container):
             self.page.update()
         except:
             pass
-
+    
+    def cleanup(self) -> None:
+        """清理视图资源，释放内存。"""
+        import gc
+        if hasattr(self, 'selected_files'):
+            self.selected_files.clear()
+        # 清除回调引用，打破循环引用
+        self.on_back = None
+        # 清除 UI 内容
+        self.content = None
+        gc.collect()

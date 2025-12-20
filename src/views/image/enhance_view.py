@@ -1433,3 +1433,35 @@ class ImageEnhanceView(ft.Container):
             self.page.update()
         except:
             pass
+    
+    def cleanup(self) -> None:
+        """清理视图资源，释放内存。
+        
+        在视图被销毁时调用，确保所有资源被正确释放。
+        """
+        import gc
+        
+        try:
+            # 1. 卸载图像增强模型（使用 unload_model 更彻底地释放内存）
+            if self.enhancer:
+                if hasattr(self.enhancer, 'unload_model'):
+                    self.enhancer.unload_model()
+                del self.enhancer
+                self.enhancer = None
+            
+            # 2. 清空文件列表
+            if self.selected_files:
+                self.selected_files.clear()
+            
+            # 3. 清除回调引用，打破循环引用
+            self.on_back = None
+            
+            # 4. 清除 UI 内容
+            self.content = None
+            
+            # 5. 强制垃圾回收
+            gc.collect()
+            
+            logger.info("图像增强视图资源已清理")
+        except Exception as e:
+            logger.warning(f"清理图像增强视图资源时出错: {e}")

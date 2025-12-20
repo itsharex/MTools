@@ -1967,10 +1967,18 @@ class VideoInterpolationView(ft.Container):
         if self.is_processing:
             self.should_cancel = True
         
+        # 清理文件列表
+        if hasattr(self, 'selected_files'):
+            self.selected_files.clear()
+        
         if self.interpolator:
             self.interpolator.unload_model()
             self.interpolator = None
         
+        # 清除回调引用，打破循环引用
+        self.on_back = None
+        # 清除 UI 内容
+        self.content = None
+        
         gc.collect()
         logger.info("✓ 视频插帧视图已清理")
-

@@ -162,9 +162,17 @@ class SubtitleRemoveService:
     
     def unload_model(self) -> None:
         """卸载模型释放资源。"""
-        self.encoder_session = None
-        self.infer_session = None
-        self.decoder_session = None
+        import gc
+        if self.encoder_session:
+            del self.encoder_session
+            self.encoder_session = None
+        if self.infer_session:
+            del self.infer_session
+            self.infer_session = None
+        if self.decoder_session:
+            del self.decoder_session
+            self.decoder_session = None
+        gc.collect()
         logger.info("STTN模型已卸载")
     
     def is_model_loaded(self) -> bool:

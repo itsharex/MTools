@@ -624,16 +624,17 @@ class ICPService:
         此方法会释放detector和siamese模型实例，清理GPU/CPU内存。
         下次使用时需要重新调用load_models方法加载模型。
         """
+        import gc
         try:
             # 释放YOLO检测模型
             if self.detector:
-                # ONNX Runtime会话通常通过垃圾回收自动清理
-                # 但我们可以显式设置为None以释放引用
+                del self.detector
                 self.detector = None
                 logger.info("ICP检测模型(ibig)已卸载")
 
             # 释放相似度模型
             if self.siamese:
+                del self.siamese
                 self.siamese = None
                 logger.info("ICP相似度模型(isma)已卸载")
 
@@ -641,6 +642,8 @@ class ICPService:
             self.token = ""
             self.token_expire = 0
 
+            # 强制垃圾回收
+            gc.collect()
             logger.info("ICP模型卸载完成")
         except Exception as e:
             logger.error(f"卸载ICP模型时出错: {e}")

@@ -1021,7 +1021,14 @@ class ICPQueryView(ft.Container):
             self.is_querying = False
             self.is_model_loading = False
 
+            # 清除回调引用，打破循环引用
+            self.on_back = None
+            
+            # 清除 UI 内容
+            self.content = None
+
+            import gc
+            gc.collect()
             logger.info("ICP查询视图资源已清理")
         except Exception as e:
             logger.error(f"清理ICP查询视图资源时出错: {e}")
-

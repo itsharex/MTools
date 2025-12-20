@@ -47,11 +47,11 @@ class UpdateService:
     - 智能检测网络环境，自动选择最佳下载源
     """
     
-    # 请求超时时间（秒）
-    REQUEST_TIMEOUT: int = 10
+    # 请求超时时间（秒）- 缩短以避免长时间等待
+    REQUEST_TIMEOUT: int = 5
     
     # 网络检测超时时间（秒）
-    NETWORK_TEST_TIMEOUT: int = 3
+    NETWORK_TEST_TIMEOUT: int = 2
     
     def __init__(self) -> None:
         """初始化更新检测服务。"""

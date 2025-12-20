@@ -2262,5 +2262,20 @@ class VideoEnhanceView(ft.Container):
             import time
             time.sleep(0.5)
         
+        # 清理文件列表
+        if hasattr(self, 'selected_files'):
+            self.selected_files.clear()
+        
+        # 卸载增强模型（使用 unload_model 更彻底地释放内存）
+        if hasattr(self, 'enhancer') and self.enhancer:
+            if hasattr(self.enhancer, 'unload_model'):
+                self.enhancer.unload_model()
+            self.enhancer = None
+        
+        # 清除回调引用，打破循环引用
+        self.on_back = None
+        # 清除 UI 内容
+        self.content = None
+        
+        gc.collect()
         logger.info("✓ 视频增强视图已清理")
-

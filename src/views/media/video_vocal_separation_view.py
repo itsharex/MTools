@@ -74,6 +74,11 @@ class VideoVocalSeparationView(ft.Container):
             config_service
         )
         
+        # 模型管理状态
+        self.model_loading: bool = False
+        self.model_loaded: bool = False
+        self.auto_load_model: bool = self.config_service.get_config_value("video_vocal_auto_load_model", True)
+        
         # 构建界面
         self._build_ui()
     
@@ -219,6 +224,23 @@ class VideoVocalSeparationView(ft.Container):
             visible=False,
         )
         
+        # 加载模型按钮
+        self.load_model_button = ft.ElevatedButton(
+            text="加载模型",
+            icon=ft.Icons.PLAY_ARROW,
+            on_click=self._on_load_model_click,
+            visible=False,
+        )
+        
+        # 卸载模型按钮
+        self.unload_model_button = ft.IconButton(
+            icon=ft.Icons.POWER_SETTINGS_NEW,
+            icon_color=ft.Colors.ORANGE,
+            tooltip="卸载模型（释放内存）",
+            on_click=self._on_unload_model_click,
+            visible=False,
+        )
+        
         # 删除模型按钮
         self.delete_model_button = ft.IconButton(
             icon=ft.Icons.DELETE_OUTLINE,
@@ -233,9 +255,18 @@ class VideoVocalSeparationView(ft.Container):
                 self.model_status_icon,
                 self.model_status_text,
                 self.download_model_button,
+                self.load_model_button,
+                self.unload_model_button,
                 self.delete_model_button,
             ],
             spacing=PADDING_SMALL,
+        )
+        
+        # 自动加载模型复选框
+        self.auto_load_checkbox = ft.Checkbox(
+            label="自动加载模型",
+            value=self.auto_load_model,
+            on_change=self._on_auto_load_change,
         )
         
         model_section = ft.Container(
@@ -246,6 +277,7 @@ class VideoVocalSeparationView(ft.Container):
                     self.model_info_text,
                     ft.Container(height=PADDING_SMALL),
                     model_status_row,
+                    self.auto_load_checkbox,
                 ],
                 spacing=PADDING_SMALL,
             ),
@@ -256,6 +288,10 @@ class VideoVocalSeparationView(ft.Container):
         
         # 初始化模型状态
         self._init_model_status()
+        
+        # 如果启用自动加载，尝试加载模型
+        if self.auto_load_model:
+            self._try_auto_load_model()
         
         # 输出设置区域
         # 音频模式选择
@@ -927,7 +963,122 @@ class VideoVocalSeparationView(ft.Container):
     
     def _on_model_change(self, e: ft.ControlEvent) -> None:
         """模型选择变化事件。"""
+        # 如果之前有模型已加载，先卸载
+        if self.model_loaded:
+            self.vocal_service.unload_model()
+            self.model_loaded = False
+        
         self._update_model_status()
+        
+        # 如果启用自动加载，尝试加载新模型
+        if self.auto_load_model:
+            self._try_auto_load_model()
+    
+    def _try_auto_load_model(self) -> None:
+        """尝试自动加载已下载的模型。"""
+        if not self.auto_load_model or self.model_loading or self.model_loaded:
+            return
+        
+        model_key = self.model_dropdown.value
+        model_info = VOCAL_SEPARATION_MODELS[model_key]
+        model_path = self.vocal_service.model_dir / model_info.filename
+        
+        if not model_path.exists():
+            return
+        
+        self.model_loading = True
+        self._update_model_status_ui("loading", "正在加载模型...")
+        self._safe_update_ui()
+        
+        def load_thread():
+            try:
+                self.vocal_service.load_model(
+                    model_path,
+                    invert_output=model_info.invert_output
+                )
+                self.model_loaded = True
+                device_info = self.vocal_service.get_device_info()
+                self._update_model_status_ui("ready", f"模型就绪 ({device_info})")
+                self._safe_update_ui()
+            except Exception as e:
+                logger.error(f"自动加载模型失败: {e}")
+                self._update_model_status_ui("error", f"加载失败: {str(e)[:30]}")
+                self._safe_update_ui()
+            finally:
+                self.model_loading = False
+        
+        threading.Thread(target=load_thread, daemon=True).start()
+    
+    def _on_auto_load_change(self, e: ft.ControlEvent) -> None:
+        """自动加载复选框变化事件。"""
+        self.auto_load_model = bool(e.control.value)
+        self.config_service.set_config_value("video_vocal_auto_load_model", self.auto_load_model)
+        
+        # 如果启用自动加载且模型文件存在但未加载，则加载模型
+        if self.auto_load_model:
+            self._try_auto_load_model()
+    
+    def _on_load_model_click(self, e: ft.ControlEvent) -> None:
+        """加载模型按钮点击事件。"""
+        if self.model_loading or self.model_loaded:
+            return
+        
+        model_key = self.model_dropdown.value
+        model_info = VOCAL_SEPARATION_MODELS[model_key]
+        model_path = self.vocal_service.model_dir / model_info.filename
+        
+        if not model_path.exists():
+            self._show_snackbar("模型文件不存在，请先下载", ft.Colors.RED)
+            return
+        
+        self.model_loading = True
+        self._update_model_status_ui("loading", "正在加载模型...")
+        self._safe_update_ui()
+        
+        def load_thread():
+            try:
+                self.vocal_service.load_model(
+                    model_path,
+                    invert_output=model_info.invert_output
+                )
+                self.model_loaded = True
+                device_info = self.vocal_service.get_device_info()
+                self._update_model_status_ui("ready", f"模型就绪 ({device_info})")
+                self._safe_update_ui()
+                self._show_snackbar("模型加载成功", ft.Colors.GREEN)
+            except Exception as e:
+                logger.error(f"加载模型失败: {e}")
+                self._update_model_status_ui("error", f"加载失败: {str(e)[:30]}")
+                self._safe_update_ui()
+                self._show_snackbar(f"模型加载失败: {e}", ft.Colors.RED)
+            finally:
+                self.model_loading = False
+        
+        threading.Thread(target=load_thread, daemon=True).start()
+    
+    def _on_unload_model_click(self, e: ft.ControlEvent) -> None:
+        """卸载模型按钮点击事件。"""
+        if not self.model_loaded:
+            return
+        
+        self.vocal_service.unload_model()
+        self.model_loaded = False
+        self._init_model_status()
+        self._safe_update_ui()
+        self._show_snackbar("模型已卸载", ft.Colors.GREEN)
+    
+    def _safe_update_ui(self) -> None:
+        """安全更新 UI 控件。"""
+        try:
+            self.model_info_text.update()
+            self.model_status_icon.update()
+            self.model_status_text.update()
+            self.download_model_button.update()
+            self.load_model_button.update()
+            self.unload_model_button.update()
+            self.delete_model_button.update()
+        except:
+            pass
     
     def _init_model_status(self) -> None:
         """初始化模型状态（不调用 update）。"""
@@ -940,20 +1091,66 @@ class VideoVocalSeparationView(ft.Container):
         
         if model_path.exists():
             # 模型已下载
-            self.model_status_icon.name = ft.Icons.CHECK_CIRCLE
-            self.model_status_icon.color = ft.Colors.GREEN
             file_size = model_path.stat().st_size
             size_mb = file_size / (1024 * 1024)
-            self.model_status_text.value = f"已下载 ({size_mb:.1f}MB)"
-            self.download_model_button.visible = False
-            self.delete_model_button.visible = True
+            
+            if self.model_loaded:
+                # 模型已加载
+                message = f"模型就绪 ({size_mb:.1f}MB)"
+                self._update_model_status_ui("ready", message)
+            else:
+                # 模型已下载但未加载
+                message = f"已下载 ({size_mb:.1f}MB) - 未加载"
+                self._update_model_status_ui("unloaded", message)
         else:
             # 模型未下载
+            message = f"未下载 (需下载 {model_info.size_mb}MB)"
+            self._update_model_status_ui("need_download", message)
+    
+    def _update_model_status_ui(self, status: str, message: str) -> None:
+        """更新模型状态 UI 显示。
+        
+        Args:
+            status: 状态类型 (loading, ready, unloaded, need_download, error)
+            message: 状态消息
+        """
+        if status == "loading":
+            self.model_status_icon.name = ft.Icons.HOURGLASS_EMPTY
+            self.model_status_icon.color = ft.Colors.BLUE
+            self.download_model_button.visible = False
+            self.load_model_button.visible = False
+            self.unload_model_button.visible = False
+            self.delete_model_button.visible = False
+        elif status == "ready":
+            self.model_status_icon.name = ft.Icons.CHECK_CIRCLE
+            self.model_status_icon.color = ft.Colors.GREEN
+            self.download_model_button.visible = False
+            self.load_model_button.visible = False
+            self.unload_model_button.visible = True
+            self.delete_model_button.visible = True
+        elif status == "unloaded":
+            self.model_status_icon.name = ft.Icons.DOWNLOAD_DONE
+            self.model_status_icon.color = ft.Colors.GREY
+            self.download_model_button.visible = False
+            self.load_model_button.visible = True
+            self.unload_model_button.visible = False
+            self.delete_model_button.visible = True
+        elif status == "need_download":
             self.model_status_icon.name = ft.Icons.CLOUD_DOWNLOAD
             self.model_status_icon.color = ft.Colors.ORANGE
-            self.model_status_text.value = f"未下载 (需下载 {model_info.size_mb}MB)"
             self.download_model_button.visible = True
+            self.load_model_button.visible = False
+            self.unload_model_button.visible = False
             self.delete_model_button.visible = False
+        elif status == "error":
+            self.model_status_icon.name = ft.Icons.ERROR
+            self.model_status_icon.color = ft.Colors.RED
+            self.download_model_button.visible = False
+            self.load_model_button.visible = False
+            self.unload_model_button.visible = False
+            self.delete_model_button.visible = False
+        
+        self.model_status_text.value = message
     
     def _update_model_status(self) -> None:
         """更新模型状态显示（已添加到页面后调用）。"""
@@ -965,6 +1162,8 @@ class VideoVocalSeparationView(ft.Container):
             self.model_status_icon.update()
             self.model_status_text.update()
             self.download_model_button.update()
+            self.load_model_button.update()
+            self.unload_model_button.update()
             self.delete_model_button.update()
         except:
             pass
@@ -1017,6 +1216,10 @@ class VideoVocalSeparationView(ft.Container):
                 self.progress_bar.update()
                 self.progress_text.update()
                 
+                # 如果启用自动加载，下载完成后自动加载模型
+                if self.auto_load_model:
+                    self._try_auto_load_model()
+                
             except Exception as ex:
                 self._show_snackbar(f"模型下载失败: {ex}", ft.Colors.ERROR)
                 self.progress_bar.visible = False
@@ -1044,6 +1247,11 @@ class VideoVocalSeparationView(ft.Container):
         def on_confirm(confirmed: bool):
             if confirmed and model_path.exists():
                 try:
+                    # 如果模型已加载，先卸载
+                    if self.model_loaded:
+                        self.vocal_service.unload_model()
+                        self.model_loaded = False
+                    
                     model_path.unlink()
                     self._update_model_status()
                     self._show_snackbar("模型已删除", ft.Colors.GREEN)
@@ -1100,4 +1308,32 @@ class VideoVocalSeparationView(ft.Container):
         """返回按钮点击事件。"""
         if self.on_back:
             self.on_back()
-
+    
+    def cleanup(self) -> None:
+        """清理视图资源，释放内存。
+        
+        在视图被销毁时调用，确保所有资源被正确释放。
+        """
+        import gc
+        
+        try:
+            # 1. 卸载人声分离模型
+            if self.vocal_service:
+                self.vocal_service.unload_model()
+            
+            # 2. 清空文件列表
+            if self.selected_files:
+                self.selected_files.clear()
+            
+            # 3. 清除回调引用，打破循环引用
+            self.on_back = None
+            
+            # 4. 清除 UI 内容
+            self.content = None
+            
+            # 5. 强制垃圾回收
+            gc.collect()
+            
+            logger.info("视频人声分离视图资源已清理")
+        except Exception as e:
+            logger.warning(f"清理视频人声分离视图资源时出错: {e}")

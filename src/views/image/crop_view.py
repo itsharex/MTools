@@ -1611,4 +1611,16 @@ class ImageCropView(ft.Container):
         except Exception:
             # 静默处理，避免影响用户体验
             pass
-
+    
+    def cleanup(self) -> None:
+        """清理视图资源，释放内存。"""
+        import gc
+        if hasattr(self, 'selected_file'):
+            self.selected_file = None
+        if hasattr(self, 'original_image'):
+            self.original_image = None
+        # 清除回调引用，打破循环引用
+        self.on_back = None
+        # 清除 UI 内容
+        self.content = None
+        gc.collect()

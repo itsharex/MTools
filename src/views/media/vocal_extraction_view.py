@@ -1175,3 +1175,32 @@ class VocalExtractionView(ft.Container):
         """返回按钮点击事件。"""
         if self.on_back:
             self.on_back()
+    
+    def cleanup(self) -> None:
+        """清理视图资源，释放内存。
+        
+        在视图被销毁时调用，确保所有资源被正确释放。
+        """
+        import gc
+        
+        try:
+            # 1. 卸载人声分离模型
+            if self.vocal_service:
+                self.vocal_service.unload_model()
+            
+            # 2. 清空文件列表
+            if self.selected_files:
+                self.selected_files.clear()
+            
+            # 3. 清除回调引用，打破循环引用
+            self.on_back = None
+            
+            # 4. 清除 UI 内容
+            self.content = None
+            
+            # 5. 强制垃圾回收
+            gc.collect()
+            
+            logger.info("人声提取视图资源已清理")
+        except Exception as e:
+            logger.warning(f"清理人声提取视图资源时出错: {e}")

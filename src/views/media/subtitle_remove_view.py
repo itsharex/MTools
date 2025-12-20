@@ -1621,3 +1621,35 @@ class SubtitleRemoveView(ft.Container):
                 self.page.update()
         
         threading.Thread(target=process_task, daemon=True).start()
+    
+    def cleanup(self) -> None:
+        """清理视图资源，释放内存。
+        
+        在视图被销毁时调用，确保所有资源被正确释放。
+        """
+        import gc
+        
+        try:
+            # 1. 卸载字幕移除模型
+            if self.subtitle_service:
+                self.subtitle_service.unload_model()
+            
+            # 2. 清空文件路径
+            self.selected_file = None
+            
+            # 3. 清空区域数据
+            if hasattr(self, 'mask_regions'):
+                self.mask_regions.clear()
+            
+            # 4. 清除回调引用，打破循环引用
+            self.on_back = None
+            
+            # 5. 清除 UI 内容
+            self.content = None
+            
+            # 6. 强制垃圾回收
+            gc.collect()
+            
+            logger.info("视频去字幕视图资源已清理")
+        except Exception as e:
+            logger.warning(f"清理视频去字幕视图资源时出错: {e}")

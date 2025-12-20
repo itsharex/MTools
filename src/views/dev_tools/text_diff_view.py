@@ -813,3 +813,12 @@ class TextDiffView(ft.Container):
         """返回按钮点击。"""
         if self.on_back:
             self.on_back()
+    
+    def cleanup(self) -> None:
+        """清理视图资源，释放内存。"""
+        import gc
+        # 清除回调引用，打破循环引用
+        self.on_back = None
+        # 清除 UI 内容
+        self.content = None
+        gc.collect()

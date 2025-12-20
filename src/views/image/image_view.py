@@ -835,6 +835,8 @@ class ImageView(ft.Container):
         Args:
             e: 控件事件对象（可选）
         """
+        import gc
+        
         # 销毁当前子视图（除了压缩视图保留）
         if self.current_sub_view_type:
             view_map = {
@@ -842,6 +844,7 @@ class ImageView(ft.Container):
                 "resize": "resize_view",
                 "format": "format_view",
                 "background": "background_view",
+                "enhance": "enhance_view",
                 "split": "split_view",
                 "merge": "merge_view",
                 "crop": "crop_view",
@@ -852,17 +855,30 @@ class ImageView(ft.Container):
                 "remove_exif": "remove_exif_view",
                 "qrcode": "qrcode_view",
                 "watermark": "watermark_view",
+                "watermark_remove": "watermark_remove_view",
                 "search": "search_view",
                 "ocr": "ocr_view",
                 "image_tools_install": "image_tools_install_view",
             }
             view_attr = view_map.get(self.current_sub_view_type)
             if view_attr:
+                view_instance = getattr(self, view_attr, None)
+                if view_instance:
+                    # 统一调用 cleanup 方法（每个视图自己负责清理资源和卸载模型）
+                    if hasattr(view_instance, 'cleanup'):
+                        try:
+                            view_instance.cleanup()
+                        except Exception as ex:
+                            logger.warning(f"清理视图资源失败: {ex}")
+                # 清空引用
                 setattr(self, view_attr, None)
         
         # 清除子视图状态
         self.current_sub_view = None
         self.current_sub_view_type = None
+        
+        # 强制垃圾回收释放内存
+        gc.collect()
         
         # 先恢复容器内容
         if self.parent_container:

@@ -208,43 +208,28 @@ class MainView(ft.Column):
         # 注册所有工具（需要在创建视图前注册）
         register_all_tools()
         
-        # 创建推荐视图
+        # 创建推荐视图（首页需要立即创建）
         self.recommendations_view = RecommendationsView(
             self.page,
             self.config_service,
             on_tool_click=self._open_tool_by_id,
         )
         
-        # 创建图片视图、媒体视图、开发工具视图和其他工具视图，并传递容器引用
-        self.image_view = ImageView(
-            self.page, 
-            self.config_service, 
-            self.image_service, 
-            self.content_container,
-        )
-        self.media_view = MediaView(
-            self.page, 
-            self.config_service, 
-            self.content_container,
-        )
+        # 懒加载：主视图在需要时才创建，减少启动内存占用
+        # 注意：不再在启动时创建所有视图
         
-        self.dev_tools_view = DevToolsView(
-            self.page, 
-            self.config_service, 
-            self.encoding_service, 
-            self.content_container,
-        )
-        self.others_view = OthersView(
-            self.page, 
-            self.config_service, 
-            self.content_container,
-        )
-        
-        # 设置初始内容（如果显示推荐页则使用推荐页，否则使用图片处理页）
+        # 设置初始内容（如果显示推荐页则使用推荐页，否则按需创建图片处理页）
         show_recommendations = self.config_service.get_config_value("show_recommendations_page", True)
         if show_recommendations:
             self.content_container.content = self.recommendations_view
         else:
+            # 按需创建图片视图
+            self.image_view = ImageView(
+                self.page, 
+                self.config_service, 
+                self.image_service, 
+                self.content_container,
+            )
             self.content_container.content = self.image_view
         
         # 注册键盘快捷键
@@ -279,6 +264,48 @@ class MainView(ft.Column):
         # 我们将在初始化完成后添加
         self.page.floating_action_button = self.fab_search
     
+    def _get_or_create_image_view(self) -> ImageView:
+        """获取或创建图片视图（懒加载）。"""
+        if self.image_view is None:
+            self.image_view = ImageView(
+                self.page, 
+                self.config_service, 
+                self.image_service, 
+                self.content_container,
+            )
+        return self.image_view
+    
+    def _get_or_create_media_view(self) -> MediaView:
+        """获取或创建媒体视图（懒加载）。"""
+        if self.media_view is None:
+            self.media_view = MediaView(
+                self.page, 
+                self.config_service, 
+                self.content_container,
+            )
+        return self.media_view
+    
+    def _get_or_create_dev_tools_view(self) -> DevToolsView:
+        """获取或创建开发工具视图（懒加载）。"""
+        if self.dev_tools_view is None:
+            self.dev_tools_view = DevToolsView(
+                self.page, 
+                self.config_service, 
+                self.encoding_service, 
+                self.content_container,
+            )
+        return self.dev_tools_view
+    
+    def _get_or_create_others_view(self) -> OthersView:
+        """获取或创建其他工具视图（懒加载）。"""
+        if self.others_view is None:
+            self.others_view = OthersView(
+                self.page, 
+                self.config_service, 
+                self.content_container,
+            )
+        return self.others_view
+    
     def _on_navigation_change(self, e: ft.ControlEvent) -> None:
         """导航变更事件处理。
         
@@ -293,7 +320,7 @@ class MainView(ft.Column):
         # 如果没有显示推荐页面，所有索引需要偏移
         offset = 0 if self.show_recommendations else -1
         
-        # 根据选中的索引切换视图
+        # 根据选中的索引切换视图（懒加载：按需创建）
         if selected_index == 0 and self.show_recommendations:
             # 推荐
             view = self.recommendations_view
@@ -304,8 +331,8 @@ class MainView(ft.Column):
             if self.content_container.content != view:
                 self.content_container.content = view
         elif selected_index == 1 + offset:
-            # 图片处理
-            view = self.image_view
+            # 图片处理（懒加载）
+            view = self._get_or_create_image_view()
             # 尝试恢复图片处理页面的状态（如果之前在子视图中）
             if hasattr(view, 'restore_state'):
                 restored = view.restore_state()
@@ -314,8 +341,8 @@ class MainView(ft.Column):
             if not restored:
                 self.content_container.content = view
         elif selected_index == 2 + offset:
-            # 媒体处理（统一视图）
-            view = self.media_view
+            # 媒体处理（懒加载）
+            view = self._get_or_create_media_view()
             # 尝试恢复媒体处理页面的状态
             if hasattr(view, 'restore_state'):
                 restored = view.restore_state()
@@ -323,8 +350,8 @@ class MainView(ft.Column):
             if not restored:
                 self.content_container.content = view
         elif selected_index == 3 + offset:
-            # 开发工具
-            view = self.dev_tools_view
+            # 开发工具（懒加载）
+            view = self._get_or_create_dev_tools_view()
             # 尝试恢复开发工具页面的状态
             if hasattr(view, 'restore_state'):
                 restored = view.restore_state()
@@ -332,8 +359,8 @@ class MainView(ft.Column):
             if not restored:
                 self.content_container.content = view
         elif selected_index == 4 + offset:
-            # 其他工具
-            view = self.others_view
+            # 其他工具（懒加载）
+            view = self._get_or_create_others_view()
             # 尝试恢复其他工具页面的状态
             if hasattr(view, 'restore_state'):
                 restored = view.restore_state()
@@ -376,64 +403,68 @@ class MainView(ft.Column):
         # 计算索引偏移（如果没有推荐页面，索引会减1）
         offset = 0 if self.show_recommendations else -1
         
-        # 先切换到对应的分类
+        # 先切换到对应的分类（使用懒加载获取视图）
         if category == "image":
             self.navigation_rail.selected_index = 1 + offset  # 图片处理
-            self.content_container.content = self.image_view
+            view = self._get_or_create_image_view()
+            self.content_container.content = view
             # 调用图片视图的方法打开子工具
-            if hasattr(self.image_view, 'open_tool'):
-                self.image_view.open_tool(tool_name)
+            if hasattr(view, 'open_tool'):
+                view.open_tool(tool_name)
         elif category == "audio" or category == "video":
             # 音频和视频都属于媒体处理
             self.navigation_rail.selected_index = 2 + offset  # 媒体处理
-            self.content_container.content = self.media_view
+            view = self._get_or_create_media_view()
+            self.content_container.content = view
             # 媒体视图使用 _open_view 方法
-            if hasattr(self.media_view, '_open_view'):
+            if hasattr(view, '_open_view'):
                 # 根据原始分类和工具名转换为媒体视图的view_name
                 if category == "audio":
                     if tool_name == "format":
-                        self.media_view._open_view('audio_format')
+                        view._open_view('audio_format')
                     elif tool_name == "compress":
-                        self.media_view._open_view('audio_compress')
+                        view._open_view('audio_compress')
                     elif tool_name == "speed":
-                        self.media_view._open_view('audio_speed')
+                        view._open_view('audio_speed')
                     elif tool_name == "vocal_extraction":
-                        self.media_view._open_view('vocal_extraction')
+                        view._open_view('vocal_extraction')
                     elif tool_name == "to_text":
-                        self.media_view._open_view('audio_to_text')
+                        view._open_view('audio_to_text')
                 elif category == "video":
                     if tool_name == "compress":
-                        self.media_view._open_view('video_compress')
+                        view._open_view('video_compress')
                     elif tool_name == "convert":
-                        self.media_view._open_view('video_convert')
+                        view._open_view('video_convert')
                     elif tool_name == "extract_audio":
-                        self.media_view._open_view('video_extract_audio')
+                        view._open_view('video_extract_audio')
                     elif tool_name == "repair":
-                        self.media_view._open_view('video_repair')
+                        view._open_view('video_repair')
                     elif tool_name == "speed":
-                        self.media_view._open_view('video_speed')
+                        view._open_view('video_speed')
                     elif tool_name == "vocal_separation":
-                        self.media_view._open_view('video_vocal_separation')
+                        view._open_view('video_vocal_separation')
                     elif tool_name == "watermark":
-                        self.media_view._open_view('video_watermark')
+                        view._open_view('video_watermark')
                     elif tool_name == "enhance":
-                        self.media_view._open_view('video_enhance')
+                        view._open_view('video_enhance')
                     elif tool_name == "interpolation":
-                        self.media_view._open_view('video_interpolation')
+                        view._open_view('video_interpolation')
                     elif tool_name == "subtitle":
-                        self.media_view._open_view('video_subtitle')
+                        view._open_view('video_subtitle')
                     elif tool_name == "subtitle_remove":
-                        self.media_view._open_view('subtitle_remove')
+                        view._open_view('subtitle_remove')
         elif category == "dev":
             self.navigation_rail.selected_index = 3 + offset  # 开发工具
-            self.content_container.content = self.dev_tools_view
-            if hasattr(self.dev_tools_view, 'open_tool'):
-                self.dev_tools_view.open_tool(tool_name)
+            view = self._get_or_create_dev_tools_view()
+            self.content_container.content = view
+            if hasattr(view, 'open_tool'):
+                view.open_tool(tool_name)
         elif category == "others":
             self.navigation_rail.selected_index = 4 + offset  # 其他工具
-            self.content_container.content = self.others_view
-            if hasattr(self.others_view, 'open_tool'):
-                self.others_view.open_tool(tool_name)
+            view = self._get_or_create_others_view()
+            self.content_container.content = view
+            if hasattr(view, 'open_tool'):
+                view.open_tool(tool_name)
         
         # 打开具体工具时隐藏搜索按钮
         self.hide_search_button()
@@ -571,7 +602,8 @@ class MainView(ft.Column):
         else:
             # 隐藏推荐页面
             if not is_in_settings and current_index == 0:
-                self._switch_content_with_animation(self.image_view)
+                # 使用懒加载获取图片视图
+                self._switch_content_with_animation(self._get_or_create_image_view())
     
     def _switch_content_with_animation(self, new_content):
         """带动画切换内容

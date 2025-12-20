@@ -105,6 +105,8 @@ def create_provider_options(
         use_gpu: 是否使用GPU加速（如果提供config_service，会优先读取gpu_acceleration配置）
         gpu_device_id: GPU设备ID
         gpu_memory_limit: GPU内存限制（MB）
+            - 仅对 CUDA Provider 有效
+            - DirectML (Windows) 不支持此参数，显存由系统自动管理
         config_service: 配置服务实例（可选，用于读取gpu_acceleration配置）
         
     Returns:
@@ -132,6 +134,7 @@ def create_provider_options(
                 'do_copy_in_default_stream': True,
             }))
         # 2. DirectML (Windows 通用 GPU)
+        # 注意：DirectML 不支持 gpu_mem_limit 配置，显存由 Windows WDDM 自动管理
         elif 'DmlExecutionProvider' in available_providers:
             providers.append('DmlExecutionProvider')
         # 3. CoreML (macOS Apple Silicon)

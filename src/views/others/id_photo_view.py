@@ -1397,3 +1397,36 @@ class IDPhotoView(ft.Container):
             self.page.update()
         except:
             pass
+    
+    def cleanup(self) -> None:
+        """清理视图资源，释放内存。
+        
+        在视图被销毁时调用，确保所有资源被正确释放。
+        """
+        import gc
+        
+        try:
+            # 1. 卸载所有 AI 模型（背景移除 + 人脸检测）
+            if self.id_photo_service:
+                self.id_photo_service.unload_all_models()
+            
+            # 2. 清空文件列表
+            if self.selected_files:
+                self.selected_files.clear()
+            
+            # 3. 清空处理结果
+            if hasattr(self, 'processed_results'):
+                self.processed_results.clear()
+            
+            # 4. 清除回调引用，打破循环引用
+            self.on_back = None
+            
+            # 5. 清除 UI 内容
+            self.content = None
+            
+            # 6. 强制垃圾回收
+            gc.collect()
+            
+            logger.info("AI证件照视图资源已清理")
+        except Exception as e:
+            logger.warning(f"清理AI证件照视图资源时出错: {e}")

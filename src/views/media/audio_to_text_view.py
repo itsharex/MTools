@@ -1594,7 +1594,16 @@ class AudioToTextView(ft.Container):
             pass
     
     def cleanup(self) -> None:
-        """清理资源。"""
-        if self.speech_service:
-            self.speech_service.cleanup()
-
+        """清理资源，释放内存。"""
+        import gc
+        # 清理文件列表
+        if hasattr(self, 'selected_files'):
+            self.selected_files.clear()
+        # 卸载语音识别模型
+        if hasattr(self, 'speech_service') and self.speech_service:
+            self.speech_service.unload_model()
+        # 清除回调引用，打破循环引用
+        self.on_back = None
+        # 清除 UI 内容
+        self.content = None
+        gc.collect()

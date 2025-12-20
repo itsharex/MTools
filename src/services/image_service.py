@@ -2113,6 +2113,17 @@ class BackgroundRemover:
             # 忽略析构时的任何错误（包括日志管理器错误）
             pass
     
+    def unload_model(self) -> None:
+        """卸载模型并释放内存。"""
+        try:
+            if hasattr(self, 'sess') and self.sess is not None:
+                del self.sess
+                self.sess = None
+            gc.collect()
+            logger.info("BackgroundRemover 模型已卸载")
+        except Exception as e:
+            logger.error(f"卸载 BackgroundRemover 模型失败: {e}")
+    
     def is_using_gpu(self) -> bool:
         """返回是否正在使用GPU加速。
         
@@ -2429,6 +2440,17 @@ class ImageEnhancer:
         except Exception:
             # 忽略析构时的任何错误（包括日志管理器错误）
             pass
+    
+    def unload_model(self) -> None:
+        """卸载模型并释放内存。"""
+        try:
+            if hasattr(self, 'sess') and self.sess is not None:
+                del self.sess
+                self.sess = None
+            gc.collect()
+            logger.info("ImageEnhancer 模型已卸载")
+        except Exception as e:
+            logger.error(f"卸载 ImageEnhancer 模型失败: {e}")
     
     def set_scale(self, scale: float) -> None:
         """设置自定义放大倍率。

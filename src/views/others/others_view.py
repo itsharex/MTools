@@ -311,13 +311,25 @@ class OthersView(ft.Container):
     
     def _restore_main_view(self) -> None:
         """恢复到主视图。"""
-        # 销毁当前子视图（虽然others视图每次都创建新实例，但为了一致性还是清理）
-        # 注意：others视图的子视图没有保存为实例变量，每次都是新创建的
-        # 所以这里主要是清理引用
+        import gc
+        
+        # 销毁当前子视图并清理资源
+        if self.current_sub_view:
+            view_instance = self.current_sub_view
+            
+            # 统一调用 cleanup 方法（每个视图自己负责清理资源和卸载模型）
+            if hasattr(view_instance, 'cleanup'):
+                try:
+                    view_instance.cleanup()
+                except Exception:
+                    pass
         
         # 清除子视图状态
         self.current_sub_view = None
         self.current_sub_view_type = None
+        
+        # 强制垃圾回收释放内存
+        gc.collect()
         
         # 先恢复容器内容
         if self.parent_container:
@@ -362,5 +374,10 @@ class OthersView(ft.Container):
         
         当视图被切换走时调用，释放不需要的资源。
         """
-        # 可以在这里添加资源清理逻辑
-        pass
+        import gc
+        # 清除回调引用，打破循环引用（如果有的话）
+        if hasattr(self, 'on_back'):
+            self.on_back = None
+        # 清除 UI 内容
+        self.content = None
+        gc.collect()

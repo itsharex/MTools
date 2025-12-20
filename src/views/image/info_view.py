@@ -1350,4 +1350,12 @@ class ImageInfoView(ft.Container):
         self.page.overlay.append(snackbar)
         snackbar.open = True
         self.page.update()
-
+    
+    def cleanup(self) -> None:
+        """清理视图资源，释放内存。"""
+        import gc
+        # 清除回调引用，打破循环引用
+        self.on_back = None
+        # 清除 UI 内容
+        self.content = None
+        gc.collect()
