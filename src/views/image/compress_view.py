@@ -494,13 +494,27 @@ class ImageCompressView(ft.Container):
     def add_files(self, files: list) -> None:
         """从拖放添加文件（供外部调用）。
         
+        支持文件和文件夹拖放，文件夹只识别顶级目录下的文件。
+        
         Args:
-            files: Path 对象列表
+            files: Path 对象列表（可包含文件和文件夹）
         """
         added_count = 0
         skipped_count = 0
         
+        # 收集所有待处理的文件
+        all_files = []
         for path in files:
+            if path.is_dir():
+                # 文件夹：只获取顶级目录下的文件（不递归）
+                for item in path.iterdir():
+                    if item.is_file():
+                        all_files.append(item)
+            else:
+                all_files.append(path)
+        
+        # 处理所有文件
+        for path in all_files:
             # 检查格式是否支持
             if path.suffix.lower() not in self.SUPPORTED_EXTENSIONS:
                 skipped_count += 1
@@ -511,9 +525,8 @@ class ImageCompressView(ft.Container):
         
         if added_count > 0:
             self._update_file_list()
-        
-        # 显示不支持格式的提示
-        if skipped_count > 0 and added_count == 0:
+            self._show_message(f"已添加 {added_count} 个文件", ft.Colors.GREEN)
+        elif skipped_count > 0:
             self._show_message("图片压缩工具不支持该格式", ft.Colors.ORANGE)
         
         self.page.update()

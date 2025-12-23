@@ -339,8 +339,18 @@ class ImageView(ft.Container):
             self._show_snackbar(f"「{tool_name}」不支持文件拖放")
             return
         
+        # 展开文件夹（只获取顶级目录下的文件）
+        all_files = []
+        for f in files:
+            if f.is_dir():
+                for item in f.iterdir():
+                    if item.is_file():
+                        all_files.append(item)
+            else:
+                all_files.append(f)
+        
         # 过滤出支持的文件
-        supported_files = [f for f in files if f.suffix.lower() in supported_exts]
+        supported_files = [f for f in all_files if f.suffix.lower() in supported_exts]
         
         if not supported_files:
             self._show_snackbar(f"「{tool_name}」不支持该格式")

@@ -50,6 +50,15 @@ from .onnx_helper import (
     create_onnx_session_config,
     create_onnx_session,
 )
+from .platform_utils import (
+    get_windows_version,
+    is_windows,
+    is_windows_10_or_later,
+    is_windows_11,
+    is_macos,
+    is_linux,
+    supports_file_drop,
+)
 from .windows_drop import WindowsDropHandler, DropInfo
 
 __all__ = [
@@ -90,6 +99,13 @@ __all__ = [
     "create_provider_options",
     "create_onnx_session_config",
     "create_onnx_session",
+    "get_windows_version",
+    "is_windows",
+    "is_windows_10_or_later",
+    "is_windows_11",
+    "is_macos",
+    "is_linux",
+    "supports_file_drop",
     "WindowsDropHandler",
     "DropInfo",
 ]

@@ -105,12 +105,13 @@ class MainView(ft.Column):
         self._init_drop_handler()
     
     def _init_drop_handler(self) -> None:
-        """初始化全局文件拖放支持。"""
-        import sys
-        if sys.platform != "win32":
+        """初始化全局文件拖放支持（仅 Windows 10/11）。"""
+        from utils import supports_file_drop
+        
+        if not supports_file_drop():
             return
         
-        from utils import WindowsDropHandler, DropInfo
+        from utils import WindowsDropHandler
         
         self._drop_handler = WindowsDropHandler(
             page=self.page,
