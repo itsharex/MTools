@@ -2021,8 +2021,15 @@ class GifAdjustmentView(ft.Container):
                 all_files.append(path)
         
         for path in all_files:
-            if path.suffix.lower() in self.SUPPORTED_EXTENSIONS:
-                self._load_file(path)
+            ext = path.suffix.lower()
+            if ext == '.gif':
+                # GIF 文件
+                self._load_gif_file(path)
+                self._show_snackbar(f"已加载: {path.name}", ft.Colors.GREEN)
+                return
+            elif ext in ['.mov', '.mp4', '.jpg', '.jpeg', '.jfif', '.heic', '.heif']:
+                # 可能是实况图
+                self._load_live_photo_file(path)
                 self._show_snackbar(f"已加载: {path.name}", ft.Colors.GREEN)
                 return
         
