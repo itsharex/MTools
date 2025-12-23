@@ -485,6 +485,21 @@ class ImageCompressView(ft.Container):
         self.selected_files.clear()
         self._update_file_list()
     
+    def add_files(self, files: list) -> None:
+        """从拖放添加文件（供外部调用）。
+        
+        Args:
+            files: Path 对象列表
+        """
+        added = False
+        for path in files:
+            if path not in self.selected_files:
+                self.selected_files.append(path)
+                added = True
+        if added:
+            self._update_file_list()
+            self.page.update()
+    
     def _on_quality_change(self, e: ft.ControlEvent) -> None:
         """质量滑块变化事件。"""
         quality = int(e.control.value)

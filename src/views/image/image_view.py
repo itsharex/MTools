@@ -261,6 +261,122 @@ class ImageView(ft.Container):
             expand=True,  # 占满整个容器
             width=float('inf'),  # 占满可用宽度
         )
+        
+        # 初始化工具拖放映射（工具名、支持的格式、打开方法、视图属性名）
+        # 通用图片格式
+        _img_exts = {'.jpg', '.jpeg', '.jfif', '.png', '.gif', '.webp', '.bmp', '.tiff', '.tif', '.ico', '.avif', '.heic', '.heif'}
+        _img_no_gif = {'.jpg', '.jpeg', '.jfif', '.png', '.webp', '.bmp', '.tiff', '.tif', '.ico', '.avif', '.heic', '.heif'}
+        
+        self._drop_tool_map = [
+            ("图片压缩", _img_exts, self._open_compress_dialog, "compress_view"),
+            ("尺寸调整", _img_exts, self._open_resize_dialog, "resize_view"),
+            ("格式转换", _img_exts, self._open_format_dialog, "format_view"),
+            ("背景移除", _img_no_gif, self._open_background_dialog, "background_view"),
+            ("图像增强", _img_no_gif, self._open_enhance_dialog, "enhance_view"),
+            ("单图切分", _img_no_gif, self._open_split_dialog, "split_view"),
+            ("多图拼接", _img_no_gif, self._open_merge_dialog, "merge_view"),
+            ("图片裁剪", _img_no_gif, self._open_crop_dialog, "crop_view"),
+            ("图片信息", _img_exts, self._open_info_dialog, "info_view"),
+            ("GIF/Live Photo 编辑", {'.gif', '.mov', '.mp4'}, self._open_gif_adjustment_dialog, "gif_adjustment_view"),
+            ("图片转Base64", _img_exts, self._open_to_base64_dialog, "to_base64_view"),
+            ("旋转/翻转", _img_exts, self._open_rotate_dialog, "rotate_view"),
+            ("去除EXIF", {'.jpg', '.jpeg', '.png', '.tiff'}, self._open_remove_exif_dialog, "remove_exif_view"),
+            ("二维码生成", set(), None, None),  # 不接受拖放文件
+            ("添加水印", _img_no_gif, self._open_watermark_dialog, "watermark_view"),
+            ("去水印", _img_no_gif, self._open_watermark_remove_dialog, "watermark_remove_view"),
+            ("图片搜索", _img_exts, self._open_search_dialog, "search_view"),
+            ("OCR 文字识别", _img_no_gif, self._open_ocr_dialog, "ocr_view"),
+        ]
+        
+        # 卡片布局参数（需要与 FeatureCard 的实际尺寸匹配）
+        self._card_width = 160
+        self._card_height = 140
+        self._card_gap = PADDING_LARGE
+        self._content_padding = PADDING_MEDIUM
+    
+    def handle_dropped_files_at(self, files: list, x: int, y: int) -> None:
+        """处理拖放到指定位置的文件。
+        
+        Args:
+            files: 文件路径列表（Path 对象）
+            x: 鼠标 X 坐标（相对于窗口客户区）
+            y: 鼠标 Y 坐标（相对于窗口客户区）
+        """
+        # 如果当前显示的是子视图，让子视图处理
+        if self.current_sub_view and hasattr(self.current_sub_view, 'add_files'):
+            self.current_sub_view.add_files(files)
+            return
+        
+        # 计算点击的是哪个工具卡片
+        # 注意：需要考虑导航栏宽度和标题栏高度
+        nav_width = 100  # 导航栏宽度
+        title_height = 40  # 标题栏高度
+        
+        # 调整坐标（减去导航栏和标题栏）
+        local_x = x - nav_width - self._content_padding
+        local_y = y - title_height - self._content_padding
+        
+        if local_x < 0 or local_y < 0:
+            return
+        
+        # 计算行列
+        col = int(local_x // (self._card_width + self._card_gap))
+        row = int(local_y // (self._card_height + self._card_gap))
+        
+        # 假设每行最多 5 个卡片（根据窗口宽度可能不同）
+        cols_per_row = max(1, int((700 - nav_width - self._content_padding * 2) // (self._card_width + self._card_gap)))
+        
+        index = row * cols_per_row + col
+        
+        if index < 0 or index >= len(self._drop_tool_map):
+            return
+        
+        tool_name, supported_exts, open_func, view_attr = self._drop_tool_map[index]
+        
+        if not supported_exts or not open_func:
+            self._show_snackbar(f"「{tool_name}」不支持文件拖放")
+            return
+        
+        # 过滤出支持的文件
+        supported_files = [f for f in files if f.suffix.lower() in supported_exts]
+        
+        if not supported_files:
+            exts_str = ', '.join(sorted(supported_exts)[:5])
+            self._show_snackbar(f"「{tool_name}」仅支持 {exts_str} 格式")
+            return
+        
+        # 保存待处理的文件
+        self._pending_drop_files = supported_files
+        self._pending_view_attr = view_attr
+        
+        # 打开工具
+        open_func(None)
+        
+        # 导入文件到工具
+        self._import_pending_files()
+    
+    def _import_pending_files(self) -> None:
+        """将待处理文件导入到当前工具视图。"""
+        if not hasattr(self, '_pending_drop_files') or not self._pending_drop_files:
+            return
+        
+        view_attr = getattr(self, '_pending_view_attr', None)
+        if view_attr:
+            view = getattr(self, view_attr, None)
+            if view and hasattr(view, 'add_files'):
+                view.add_files(self._pending_drop_files)
+        
+        self._pending_drop_files = []
+        self._pending_view_attr = None
+    
+    def _show_snackbar(self, message: str) -> None:
+        """显示提示消息。"""
+        self._saved_page.snack_bar = ft.SnackBar(
+            content=ft.Text(message),
+            duration=3000,
+        )
+        self._saved_page.snack_bar.open = True
+        self._saved_page.update()
     
     def _open_compress_dialog(self, e: ft.ControlEvent) -> None:
         """切换到图片压缩工具界面。

@@ -50,6 +50,7 @@ from .onnx_helper import (
     create_onnx_session_config,
     create_onnx_session,
 )
+from .windows_drop import WindowsDropHandler, DropInfo
 
 __all__ = [
     "ensure_dir",
@@ -89,5 +90,7 @@ __all__ = [
     "create_provider_options",
     "create_onnx_session_config",
     "create_onnx_session",
+    "WindowsDropHandler",
+    "DropInfo",
 ]
 

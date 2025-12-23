@@ -1631,3 +1631,154 @@ class FFmpegService:
         except Exception as e:
             return False, f"视频修复失败: {str(e)}"
 
+    def list_audio_devices(self) -> list:
+        """获取系统可用的音频输入设备列表。
+        
+        Returns:
+            音频设备列表，每项为 (设备ID, 显示名称)
+        """
+        from utils.logger import logger
+        import re
+        
+        devices = []
+        ffmpeg_path = self.get_ffmpeg_path()
+        
+        if not ffmpeg_path:
+            logger.warning("FFmpeg 路径未找到，无法获取音频设备")
+            return devices
+        
+        system = platform.system()
+        
+        try:
+            if system == 'Windows':
+                # Windows: 使用 dshow 列出设备
+                result = subprocess.run(
+                    [str(ffmpeg_path), '-list_devices', 'true', '-f', 'dshow', '-i', 'dummy'],
+                    capture_output=True,
+                    encoding='utf-8',
+                    errors='replace',
+                    timeout=10,
+                    creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0
+                )
+                output = result.stderr
+                
+                # 直接查找标记为 (audio) 的设备
+                for line in output.split('\n'):
+                    if '(audio)' in line and '"' in line and 'Alternative name' not in line:
+                        match = re.search(r'"([^"]+)"', line)
+                        if match:
+                            device_name = match.group(1)
+                            devices.append((device_name, device_name))
+                            logger.debug(f"找到音频设备: {device_name}")
+                
+            elif system == 'Darwin':
+                # macOS: 使用 avfoundation 列出设备
+                result = subprocess.run(
+                    [str(ffmpeg_path), '-f', 'avfoundation', '-list_devices', 'true', '-i', ''],
+                    capture_output=True,
+                    encoding='utf-8',
+                    errors='replace',
+                    timeout=10,
+                )
+                output = result.stderr
+                
+                in_audio_section = False
+                for line in output.split('\n'):
+                    if 'AVFoundation audio devices' in line:
+                        in_audio_section = True
+                        continue
+                    if in_audio_section:
+                        match = re.search(r'\[(\d+)\]\s+(.+)', line)
+                        if match:
+                            device_id = match.group(1)
+                            device_name = match.group(2).strip()
+                            devices.append((device_id, device_name))
+                            
+            else:
+                # Linux: 使用 pactl 列出设备
+                result = subprocess.run(
+                    ['pactl', 'list', 'sources', 'short'],
+                    capture_output=True,
+                    encoding='utf-8',
+                    errors='replace',
+                    timeout=10,
+                )
+                if result.returncode == 0:
+                    for line in result.stdout.split('\n'):
+                        parts = line.split('\t')
+                        if len(parts) >= 2:
+                            device_id = parts[1]
+                            devices.append((device_id, device_id))
+                            
+        except Exception as ex:
+            logger.warning(f"获取音频设备列表失败: {ex}")
+        
+        logger.info(f"找到 {len(devices)} 个音频设备")
+        return devices
+
+    def list_video_devices(self) -> list:
+        """获取系统可用的视频输入设备列表（摄像头等）。
+        
+        Returns:
+            视频设备列表，每项为 (设备ID, 显示名称)
+        """
+        from utils.logger import logger
+        import re
+        
+        devices = []
+        ffmpeg_path = self.get_ffmpeg_path()
+        
+        if not ffmpeg_path:
+            return devices
+        
+        system = platform.system()
+        
+        try:
+            if system == 'Windows':
+                result = subprocess.run(
+                    [str(ffmpeg_path), '-list_devices', 'true', '-f', 'dshow', '-i', 'dummy'],
+                    capture_output=True,
+                    encoding='utf-8',
+                    errors='replace',
+                    timeout=10,
+                    creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0
+                )
+                output = result.stderr
+                
+                for line in output.split('\n'):
+                    if '(video)' in line and '"' in line and 'Alternative name' not in line:
+                        match = re.search(r'"([^"]+)"', line)
+                        if match:
+                            device_name = match.group(1)
+                            devices.append((device_name, device_name))
+                
+            elif system == 'Darwin':
+                result = subprocess.run(
+                    [str(ffmpeg_path), '-f', 'avfoundation', '-list_devices', 'true', '-i', ''],
+                    capture_output=True,
+                    encoding='utf-8',
+                    errors='replace',
+                    timeout=10,
+                )
+                output = result.stderr
+                
+                in_video_section = False
+                for line in output.split('\n'):
+                    if 'AVFoundation video devices' in line:
+                        in_video_section = True
+                        continue
+                    if 'AVFoundation audio devices' in line:
+                        in_video_section = False
+                        continue
+                    if in_video_section:
+                        match = re.search(r'\[(\d+)\]\s+(.+)', line)
+                        if match:
+                            device_id = match.group(1)
+                            device_name = match.group(2).strip()
+                            devices.append((device_id, device_name))
+                            
+        except Exception as ex:
+            logger.warning(f"获取视频设备列表失败: {ex}")
+        
+        return devices
+

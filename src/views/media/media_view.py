@@ -31,6 +31,7 @@ from views.media.video_vocal_separation_view import VideoVocalSeparationView
 from views.media.video_watermark_view import VideoWatermarkView
 from views.media.subtitle_remove_view import SubtitleRemoveView
 from views.media.video_subtitle_view import VideoSubtitleView
+from views.media.screen_record_view import ScreenRecordView
 
 
 class MediaView(ft.Container):
@@ -97,6 +98,7 @@ class MediaView(ft.Container):
         self.video_watermark_view: Optional[VideoWatermarkView] = None
         self.subtitle_remove_view: Optional[SubtitleRemoveView] = None
         self.video_subtitle_view: Optional[VideoSubtitleView] = None
+        self.screen_record_view: Optional[ScreenRecordView] = None
         
         # FFmpeg安装视图
         self.ffmpeg_install_view: Optional[FFmpegInstallView] = None
@@ -242,6 +244,13 @@ class MediaView(ft.Container):
                 description="修复损坏、卡顿、无法播放的视频",
                 on_click=lambda e: self._open_view('video_repair'),
                 gradient_colors=("#30cfd0", "#330867"),
+            ),
+            FeatureCard(
+                icon=ft.Icons.VIDEOCAM,
+                title="屏幕录制",
+                description="使用 FFmpeg 录制屏幕，支持多种格式",
+                on_click=lambda e: self._open_view('screen_record'),
+                gradient_colors=("#FF416C", "#FF4B2B"),
             ),
             # 工具类
             FeatureCard(
@@ -460,6 +469,16 @@ class MediaView(ft.Container):
                     on_back=self._back_to_main
                 )
             self._switch_to_sub_view(self.video_repair_view, 'video_repair')
+        
+        elif view_name == 'screen_record':
+            if not self.screen_record_view:
+                self.screen_record_view = ScreenRecordView(
+                    self._saved_page,
+                    self.config_service,
+                    self.ffmpeg_service,
+                    on_back=self._back_to_main
+                )
+            self._switch_to_sub_view(self.screen_record_view, 'screen_record')
     
     def _show_ffmpeg_install_view(self) -> None:
         """显示FFmpeg安装提示视图。"""
@@ -532,6 +551,7 @@ class MediaView(ft.Container):
                 "video_speed": "video_speed_view",
                 "video_vocal_separation": "video_vocal_separation_view",
                 "video_watermark": "video_watermark_view",
+                "screen_record": "screen_record_view",
                 "ffmpeg_install": "ffmpeg_install_view",
             }
             view_attr = view_map.get(self.current_sub_view_type)

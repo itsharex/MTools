@@ -100,6 +100,70 @@ class MainView(ft.Column):
         auto_check_update = self.config_service.get_config_value("auto_check_update", True)
         if auto_check_update:
             self._check_update_on_startup()
+        
+        # 初始化全局拖放支持（Windows）
+        self._init_drop_handler()
+    
+    def _init_drop_handler(self) -> None:
+        """初始化全局文件拖放支持。"""
+        import sys
+        if sys.platform != "win32":
+            return
+        
+        from utils import WindowsDropHandler, DropInfo
+        
+        self._drop_handler = WindowsDropHandler(
+            page=self.page,
+            on_drop=self._on_global_files_dropped,
+            auto_enable=True,
+            enable_delay=0.1,  # 初始延迟，重试机制会确保可靠性
+            include_position=True  # 获取鼠标位置
+        )
+    
+    def _on_global_files_dropped(self, info) -> None:
+        """处理全局文件拖放 - 根据鼠标位置分发到对应视图。"""
+        from pathlib import Path
+        
+        if not info.files:
+            return
+        
+        files = [Path(f) for f in info.files]
+        drop_x, drop_y = info.x, info.y
+        
+        def dispatch():
+            # 获取当前显示的视图
+            current_view = self.content_container.content
+            
+            # 1. 如果当前视图直接支持 add_files（工具界面）
+            if hasattr(current_view, 'add_files'):
+                current_view.add_files(files)
+                return
+            
+            # 2. 如果当前视图是分类视图，且有子视图正在显示
+            if hasattr(current_view, 'current_sub_view') and current_view.current_sub_view:
+                sub_view = current_view.current_sub_view
+                if hasattr(sub_view, 'add_files'):
+                    sub_view.add_files(files)
+                    return
+            
+            # 3. 如果当前视图支持根据位置处理拖放（分类界面）
+            if hasattr(current_view, 'handle_dropped_files_at'):
+                current_view.handle_dropped_files_at(files, drop_x, drop_y)
+                return
+            
+            # 备用：显示提示
+            self._show_drop_hint("当前页面不支持文件拖放")
+        
+        self.page.run_thread(dispatch)
+    
+    def _show_drop_hint(self, message: str) -> None:
+        """显示拖放提示。"""
+        self.page.snack_bar = ft.SnackBar(
+            content=ft.Text(message),
+            duration=2000,
+        )
+        self.page.snack_bar.open = True
+        self.page.update()
     
     def _build_ui(self) -> None:
         """构建用户界面。"""

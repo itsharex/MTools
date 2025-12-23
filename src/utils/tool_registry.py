@@ -514,6 +514,21 @@ def register_all_tools():
         gradient_colors=("#4776E6", "#8E54E9"),
     )
     
+    register_tool_manual(
+        name="屏幕录制",
+        description="使用 FFmpeg 录制屏幕，支持多种格式",
+        category="媒体处理",
+        keywords=[
+            "屏幕", "录制", "录屏", "捕获", "截屏",
+            "screen", "record", "capture", "recording", "screencast",
+            "屏幕录像", "录制视频", "全屏录制", "区域录制", "桌面录制",
+            "FFmpeg", "GDI", "X11", "AVFoundation"
+        ],
+        icon="VIDEOCAM",
+        tool_id="video.screen_record",
+        gradient_colors=("#FF416C", "#FF4B2B"),
+    )
+    
     # ==================== 开发工具 ====================
     
     register_tool_manual(
