@@ -18,7 +18,7 @@ from constants import (
     PADDING_XLARGE,
 )
 from services import AudioService, ConfigService, FFmpegService
-from utils import format_file_size, logger
+from utils import format_file_size, logger, get_unique_path
 
 
 class AudioFormatView(ft.Container):
@@ -676,6 +676,10 @@ class AudioFormatView(ft.Container):
                         output_path = output_dir / f"{file_path.stem}.{output_format}"
                     else:
                         output_path = file_path.parent / f"{file_path.stem}_converted.{output_format}"
+                    
+                    # 根据全局设置决定是否添加序号
+                    add_sequence = self.config_service.get_config_value("output_add_sequence", False)
+                    output_path = get_unique_path(output_path, add_sequence=add_sequence)
                     
                     # 转换音频
                     success, message = self.audio_service.convert_audio(

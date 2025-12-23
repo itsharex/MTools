@@ -17,7 +17,7 @@ from constants import (
     PADDING_XLARGE,
 )
 from services import ConfigService, ImageService
-from utils import format_file_size, GifUtils, logger
+from utils import format_file_size, GifUtils, logger, get_unique_path
 
 
 class ImageFormatView(ft.Container):
@@ -828,6 +828,10 @@ class ImageFormatView(ft.Container):
                 output_path: Path = output_dir / f"{input_path.stem}{target_format}"
             else:
                 output_path = input_path.parent / f"{input_path.stem}{target_format}"
+            
+            # 根据全局设置决定是否添加序号
+            add_sequence = self.config_service.get_config_value("output_add_sequence", False)
+            output_path = get_unique_path(output_path, add_sequence=add_sequence)
             
             # 如果目标格式和源格式相同，跳过
             if input_path.suffix.lower() == target_format.lower():

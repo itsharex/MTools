@@ -17,7 +17,7 @@ from constants import (
     PADDING_XLARGE,
 )
 from services import ConfigService, ImageService
-from utils import format_file_size, GifUtils
+from utils import format_file_size, GifUtils, get_unique_path
 from views.image.image_tools_install_view import ImageToolsInstallView
 
 
@@ -563,6 +563,7 @@ class ImageCompressView(ft.Container):
         self.page.update()
         picker.get_directory_path(dialog_title="选择输出目录")
     
+    
     def _on_compress(self, e: ft.ControlEvent) -> None:
         """开始压缩按钮点击事件。"""
         if not self.selected_files:
@@ -618,6 +619,11 @@ class ImageCompressView(ft.Container):
             else:  # custom
                 output_dir = Path(self.custom_output_dir.value)
                 output_path = output_dir / input_path.name
+            
+            # 根据全局设置决定是否添加序号（覆盖模式除外）
+            if output_mode != "overwrite":
+                add_sequence = self.config_service.get_config_value("output_add_sequence", False)
+                output_path = get_unique_path(output_path, add_sequence=add_sequence)
             
             # 执行压缩
             success, message = self.image_service.compress_image(

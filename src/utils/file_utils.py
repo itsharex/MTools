@@ -641,3 +641,47 @@ $Shortcut.Description = "MTools"
         logger.error(f"创建桌面快捷方式失败: {ex}")
         return False, f"创建失败: {str(ex)}"
 
+
+def get_unique_path(path: Path, add_sequence: bool = True) -> Path:
+    """获取唯一的文件路径，避免覆盖已存在的文件。
+    
+    如果文件不存在，直接返回原路径。
+    如果文件存在且 add_sequence=True，则添加序号（如 file_1.txt, file_2.txt）。
+    如果文件存在且 add_sequence=False，直接返回原路径（覆盖模式）。
+    
+    Args:
+        path: 原始文件路径
+        add_sequence: 是否添加序号（True=添加序号，False=覆盖）
+        
+    Returns:
+        唯一的文件路径
+        
+    Examples:
+        >>> get_unique_path(Path("video.mp4"), add_sequence=True)
+        Path("video.mp4")  # 如果不存在
+        
+        >>> get_unique_path(Path("video.mp4"), add_sequence=True)
+        Path("video_1.mp4")  # 如果 video.mp4 已存在
+        
+        >>> get_unique_path(Path("video.mp4"), add_sequence=False)
+        Path("video.mp4")  # 直接覆盖
+    """
+    if not add_sequence or not path.exists():
+        return path
+    
+    # 文件存在，需要添加序号
+    parent = path.parent
+    stem = path.stem
+    suffix = path.suffix
+    
+    counter = 1
+    while True:
+        new_path = parent / f"{stem}_{counter}{suffix}"
+        if not new_path.exists():
+            return new_path
+        counter += 1
+        
+        # 防止无限循环
+        if counter > 9999:
+            logger.warning(f"文件序号超过 9999，直接覆盖: {path}")
+            return path

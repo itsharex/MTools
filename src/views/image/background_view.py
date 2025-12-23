@@ -25,7 +25,7 @@ from constants import (
 )
 from services import ConfigService, ImageService
 from services.image_service import BackgroundRemover
-from utils import format_file_size, GifUtils
+from utils import format_file_size, GifUtils, get_unique_path
 
 
 class ImageBackgroundView(ft.Container):
@@ -1417,6 +1417,10 @@ class ImageBackgroundView(ft.Container):
                     else:
                         output_filename = f"{file_path.stem}_no_bg.png"
                         output_path = output_dir / output_filename
+                    
+                    # 根据全局设置决定是否添加序号
+                    add_sequence = self.config_service.get_config_value("output_add_sequence", False)
+                    output_path = get_unique_path(output_path, add_sequence=add_sequence)
                     
                     # 保存为PNG格式（保留透明通道）
                     result.save(output_path, "PNG", optimize=True)

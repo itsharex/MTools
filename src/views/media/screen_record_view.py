@@ -25,6 +25,7 @@ from constants import (
 )
 from services import ConfigService, FFmpegService
 from utils.logger import logger
+from utils import get_unique_path
 from views.media.ffmpeg_install_view import FFmpegInstallView
 
 

@@ -26,7 +26,7 @@ from constants import (
 from constants.model_config import FrameInterpolationModelInfo
 from services import ConfigService, FFmpegService
 from services.frame_interpolation_service import FrameInterpolationService
-from utils import format_file_size, logger
+from utils import format_file_size, logger, get_unique_path
 from views.media.ffmpeg_install_view import FFmpegInstallView
 
 
@@ -1405,6 +1405,10 @@ class VideoInterpolationView(ft.Container):
                 output_path = output_dir / f"{input_path.stem}_interpolated{input_path.suffix}"
             else:
                 output_path = output_dir / f"{input_path.stem}_interpolated.{output_format}"
+        
+        # 根据全局设置决定是否添加序号
+        add_sequence = self.config_service.get_config_value("output_add_sequence", False)
+        output_path = get_unique_path(output_path, add_sequence=add_sequence)
         
         logger.info(f"  输出: {output_path}")
         

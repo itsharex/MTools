@@ -19,7 +19,7 @@ from constants import (
     PADDING_XLARGE,
 )
 from services import ConfigService, FFmpegService
-from utils import format_file_size, logger
+from utils import format_file_size, logger, get_unique_path
 from views.media.ffmpeg_install_view import FFmpegInstallView
 
 
@@ -559,6 +559,10 @@ class AudioCompressView(ft.Container):
                     output_dir = file_path.parent
                 
                 output_path = output_dir / f"{file_path.stem}_compressed{file_path.suffix}"
+                
+                # 根据全局设置决定是否添加序号
+                add_sequence = self.config_service.get_config_value("output_add_sequence", False)
+                output_path = get_unique_path(output_path, add_sequence=add_sequence)
                 
                 # 构建FFmpeg参数
                 bitrate = int(self.bitrate_slider.value)

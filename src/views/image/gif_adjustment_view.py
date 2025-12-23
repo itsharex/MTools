@@ -19,7 +19,7 @@ from constants import (
 )
 from models import GifAdjustmentOptions
 from services import ConfigService, ImageService, FFmpegService
-from utils import format_file_size, GifUtils, logger
+from utils import format_file_size, GifUtils, logger, get_unique_path
 from views.media.ffmpeg_install_view import FFmpegInstallView
 
 
@@ -1154,6 +1154,10 @@ class GifAdjustmentView(ft.Container):
             output_path = Path(self.custom_output_field.value)
         else:
             output_path = self.selected_file.parent / f"{self.selected_file.stem}_adjusted{file_ext}"
+        
+        # 根据全局设置决定是否添加序号
+        add_sequence = self.config_service.get_config_value("output_add_sequence", False)
+        output_path = get_unique_path(output_path, add_sequence=add_sequence)
         
         # 禁用按钮并显示进度
         button = self.process_button.content

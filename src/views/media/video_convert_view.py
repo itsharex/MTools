@@ -19,7 +19,7 @@ from constants import (
     PADDING_XLARGE,
 )
 from services import ConfigService, FFmpegService
-from utils import format_file_size, logger
+from utils import format_file_size, logger, get_unique_path
 from views.media.ffmpeg_install_view import FFmpegInstallView
 
 
@@ -678,15 +678,9 @@ class VideoConvertView(ft.Container):
                         else:
                             output_path = input_file.parent / f"{input_file.stem}.{output_format}"
                         
-                        # 如果输出文件已存在，添加序号
-                        counter = 1
-                        while output_path.exists():
-                            stem = input_file.stem
-                            if output_dir:
-                                output_path = output_dir / f"{stem}_{counter}.{output_format}"
-                            else:
-                                output_path = input_file.parent / f"{stem}_{counter}.{output_format}"
-                            counter += 1
+                        # 根据全局设置决定是否添加序号
+                        add_sequence = self.config_service.get_config_value("output_add_sequence", False)
+                        output_path = get_unique_path(output_path, add_sequence=add_sequence)
                         
                         # 执行转换
                         def progress_callback(progress: float, speed: str, remaining: str):

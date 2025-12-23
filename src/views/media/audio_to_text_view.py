@@ -27,7 +27,7 @@ from constants import (
     WhisperModelInfo,
 )
 from services import ConfigService, SpeechRecognitionService, FFmpegService, VADService, VocalSeparationService, AISubtitleFixService
-from utils import format_file_size, logger, segments_to_srt, segments_to_vtt, segments_to_txt
+from utils import format_file_size, logger, segments_to_srt, segments_to_vtt, segments_to_txt, get_unique_path
 from views.media.ffmpeg_install_view import FFmpegInstallView
 
 
@@ -1971,6 +1971,10 @@ class AudioToTextView(ft.Container):
                         output_path = output_dir / f"{file_path.stem}.{output_format}"
                     else:  # same
                         output_path = file_path.with_suffix(f".{output_format}")
+                    
+                    # 根据全局设置决定是否添加序号
+                    add_sequence = self.config_service.get_config_value("output_add_sequence", False)
+                    output_path = get_unique_path(output_path, add_sequence=add_sequence)
                     
                     # 保存结果
                     with open(output_path, 'w', encoding='utf-8') as f:

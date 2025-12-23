@@ -9,6 +9,7 @@ from .file_utils import (
     get_file_extension,
     get_file_size,
     get_system_fonts,
+    get_unique_path,
     list_files_by_extension,
     move_file,
 )
@@ -70,6 +71,7 @@ __all__ = [
     "move_file",
     "get_file_extension",
     "get_system_fonts",
+    "get_unique_path",
     "list_files_by_extension",
     "GifUtils",
     "logger",

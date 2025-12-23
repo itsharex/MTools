@@ -27,7 +27,7 @@ from constants import (
     BORDER_RADIUS_SMALL,
 )
 from services import ConfigService, ImageService
-from utils import GifUtils
+from utils import GifUtils, get_unique_path
 
 # 屏蔽 libpng 的 iCCP 警告
 warnings.filterwarnings("ignore", message=".*iCCP.*")

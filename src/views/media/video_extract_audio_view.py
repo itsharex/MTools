@@ -18,7 +18,7 @@ from constants import (
     PADDING_XLARGE,
 )
 from services import ConfigService, FFmpegService
-from utils import format_file_size, logger
+from utils import format_file_size, logger, get_unique_path
 from views.media.ffmpeg_install_view import FFmpegInstallView
 
 
@@ -603,6 +603,10 @@ class VideoExtractAudioView(ft.Container):
                     output_ext = f".{output_format}"
                 
                 output_path = output_dir / f"{file_path.stem}{output_ext}"
+                
+                # 根据全局设置决定是否添加序号
+                add_sequence = self.config_service.get_config_value("output_add_sequence", False)
+                output_path = get_unique_path(output_path, add_sequence=add_sequence)
                 
                 # 构建FFmpeg参数
                 bitrate = int(self.bitrate_slider.value)

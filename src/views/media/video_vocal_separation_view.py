@@ -21,7 +21,7 @@ from constants import (
 )
 from services import ConfigService, VocalSeparationService, FFmpegService
 from views.media.ffmpeg_install_view import FFmpegInstallView
-from utils import format_file_size, logger
+from utils import format_file_size, logger, get_unique_path
 
 
 class VideoVocalSeparationView(ft.Container):
@@ -820,6 +820,7 @@ class VideoVocalSeparationView(ft.Container):
             if audio_mode == "vocals":
                 # 仅保留人声
                 output_path = output_dir / f"{stem}_vocals{ext}"
+                output_path = get_unique_path(output_path, add_sequence=self.config_service.get_config_value("output_add_sequence", False))
                 self._merge_video_audio(
                     video_path,
                     vocals_path,
@@ -830,6 +831,7 @@ class VideoVocalSeparationView(ft.Container):
             elif audio_mode == "instrumental":
                 # 仅保留背景音
                 output_path = output_dir / f"{stem}_instrumental{ext}"
+                output_path = get_unique_path(output_path, add_sequence=self.config_service.get_config_value("output_add_sequence", False))
                 self._merge_video_audio(
                     video_path,
                     instrumental_path,

@@ -18,7 +18,7 @@ from constants import (
     PADDING_XLARGE,
 )
 from services import ConfigService, ImageService
-from utils import format_file_size, GifUtils
+from utils import format_file_size, GifUtils, get_unique_path
 
 
 class ImageResizeView(ft.Container):
@@ -763,6 +763,11 @@ class ImageResizeView(ft.Container):
                 else:  # custom_dir
                     output_dir = Path(self.custom_output_dir.value) if self.custom_output_dir.value else file_path.parent
                     output_path = output_dir / file_path.name
+                
+                # 根据全局设置决定是否添加序号（覆盖模式除外）
+                if output_mode != "overwrite":
+                    add_sequence = self.config_service.get_config_value("output_add_sequence", False)
+                    output_path = get_unique_path(output_path, add_sequence=add_sequence)
                 
                 # 检查是否为 GIF
                 is_gif = str(file_path) in self.gif_info

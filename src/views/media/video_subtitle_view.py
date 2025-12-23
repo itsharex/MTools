@@ -29,7 +29,7 @@ from constants import (
     WhisperModelInfo,
 )
 from services import ConfigService, FFmpegService, SpeechRecognitionService, TranslateService, VADService, VocalSeparationService, AISubtitleFixService, SUPPORTED_LANGUAGES
-from utils import format_file_size, logger, get_system_fonts
+from utils import format_file_size, logger, get_system_fonts, get_unique_path
 from utils.subtitle_utils import segments_to_srt
 from views.media.ffmpeg_install_view import FFmpegInstallView
 
@@ -3699,15 +3699,20 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                             else:
                                 subtitle_dir = file_path.parent
                             
+                            # 根据全局设置决定是否添加序号
+                            add_sequence = self.config_service.get_config_value("output_add_sequence", False)
+                            
                             if subtitle_format == "ass":
                                 # 导出 ASS 格式
                                 subtitle_path = subtitle_dir / f"{file_path.stem}.ass"
+                                subtitle_path = get_unique_path(subtitle_path, add_sequence=add_sequence)
                                 with open(subtitle_path, 'w', encoding='utf-8') as f:
                                     f.write(ass_content)
                                 logger.info(f"已导出 ASS 字幕: {subtitle_path}")
                             else:
                                 # 导出 SRT 格式
                                 subtitle_path = subtitle_dir / f"{file_path.stem}.srt"
+                                subtitle_path = get_unique_path(subtitle_path, add_sequence=add_sequence)
                                 srt_content = self._segments_to_srt(segments)
                                 with open(subtitle_path, 'w', encoding='utf-8') as f:
                                     f.write(srt_content)
@@ -3723,6 +3728,10 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                                 output_path = output_dir / f"{file_path.stem}_subtitled.mp4"
                             else:
                                 output_path = file_path.parent / f"{file_path.stem}_subtitled.mp4"
+                            
+                            # 根据全局设置决定是否添加序号
+                            add_sequence = self.config_service.get_config_value("output_add_sequence", False)
+                            output_path = get_unique_path(output_path, add_sequence=add_sequence)
                             
                             # 获取字体目录（如果使用外部字体）
                             font_dir = None

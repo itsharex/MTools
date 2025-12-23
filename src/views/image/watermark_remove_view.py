@@ -22,7 +22,7 @@ from constants import (
 )
 from services import ConfigService
 from services.subtitle_remove_service import SubtitleRemoveService
-from utils import format_file_size, logger
+from utils import format_file_size, logger, get_unique_path
 
 
 class ImageWatermarkRemoveView(ft.Container):
@@ -1357,6 +1357,10 @@ class ImageWatermarkRemoveView(ft.Container):
                         output_path = output_dir / f"{file_path.stem}_no_watermark{file_path.suffix}"
                     else:
                         output_path = file_path.parent / f"{file_path.stem}_no_watermark{file_path.suffix}"
+                    
+                    # 根据全局设置决定是否添加序号
+                    add_sequence = self.config_service.get_config_value("output_add_sequence", False)
+                    output_path = get_unique_path(output_path, add_sequence=add_sequence)
                     
                     # 保存结果（支持中文路径）
                     if self._save_image_unicode(result, output_path):

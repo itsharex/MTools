@@ -16,7 +16,7 @@ from constants import (
     PADDING_SMALL,
 )
 from services import ConfigService, FFmpegService
-from utils import logger
+from utils import logger, get_unique_path
 
 class VideoWatermarkView(ft.Container):
     
@@ -1019,6 +1019,10 @@ class VideoWatermarkView(ft.Container):
                             output_path = output_dir / file_path.name
                         else:
                             output_path = output_dir / f"{file_path.stem}.{output_format}"
+                    
+                    # 根据全局设置决定是否添加序号
+                    add_sequence = self.config_service.get_config_value("output_add_sequence", False)
+                    output_path = get_unique_path(output_path, add_sequence=add_sequence)
                     
                     # 处理视频
                     success, message = self._process_single_video(file_path, output_path)

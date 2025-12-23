@@ -25,7 +25,7 @@ from constants import (
 from constants.model_config import ImageEnhanceModelInfo
 from services import ConfigService, ImageService
 from services.image_service import ImageEnhancer
-from utils import format_file_size
+from utils import format_file_size, get_unique_path
 
 
 class ImageEnhanceView(ft.Container):
@@ -1376,6 +1376,10 @@ class ImageEnhanceView(ft.Container):
                     else:
                         output_filename = f"{file_path.stem}_enhanced{file_path.suffix}"
                         output_path = output_dir / output_filename
+                    
+                    # 根据全局设置决定是否添加序号
+                    add_sequence = self.config_service.get_config_value("output_add_sequence", False)
+                    output_path = get_unique_path(output_path, add_sequence=add_sequence)
                     
                     # 获取输出质量
                     quality = int(self.quality_slider.value)

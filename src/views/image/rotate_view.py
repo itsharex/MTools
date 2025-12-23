@@ -18,6 +18,7 @@ from constants import (
     PADDING_XLARGE,
 )
 from services import ConfigService, ImageService
+from utils import get_unique_path
 
 
 class ImageRotateView(ft.Container):
@@ -1098,10 +1099,11 @@ class ImageRotateView(ft.Container):
                     else:  # same
                         # 生成新文件名
                         output_path = file_path.parent / f"{file_path.stem}_rotated{ext}"
-                        counter = 1
-                        while output_path.exists():
-                            output_path = file_path.parent / f"{file_path.stem}_rotated_{counter}{ext}"
-                            counter += 1
+                    
+                    # 根据全局设置决定是否添加序号（覆盖模式除外）
+                    if output_mode != "overwrite":
+                        add_sequence = self.config_service.get_config_value("output_add_sequence", False)
+                        output_path = get_unique_path(output_path, add_sequence=add_sequence)
                     
                     # 保存
                     if is_gif and output_format == "GIF":

@@ -197,6 +197,9 @@ class SettingsView(ft.Container):
         # 数据目录设置部分
         data_dir_section: ft.Container = self._build_data_dir_section()
         
+        # 输出文件设置部分
+        output_settings_section: ft.Container = self._build_output_settings_section()
+        
         # 主题模式设置部分
         theme_mode_section: ft.Container = self._build_theme_mode_section()
         
@@ -227,6 +230,8 @@ class SettingsView(ft.Container):
                 title,
                 ft.Container(height=PADDING_LARGE),
                 data_dir_section,
+                ft.Container(height=PADDING_LARGE),
+                output_settings_section,
                 ft.Container(height=PADDING_LARGE),
                 theme_mode_section,
                 ft.Container(height=PADDING_LARGE),
@@ -536,6 +541,64 @@ class SettingsView(ft.Container):
             border=ft.border.all(1, ft.Colors.OUTLINE_VARIANT),
             border_radius=BORDER_RADIUS_MEDIUM,
         )
+    
+    def _build_output_settings_section(self) -> ft.Container:
+        """构建输出文件设置部分。
+        
+        Returns:
+            输出文件设置容器
+        """
+        # 分区标题
+        section_title: ft.Text = ft.Text(
+            "输出文件",
+            size=20,
+            weight=ft.FontWeight.W_600,
+        )
+        
+        # 获取当前设置
+        add_sequence = self.config_service.get_config_value("output_add_sequence", False)
+        
+        # 文件已存在时添加序号选项
+        self.add_sequence_checkbox = ft.Checkbox(
+            label="文件已存在时添加序号（不覆盖原文件）",
+            value=add_sequence,
+            on_change=self._on_add_sequence_change,
+        )
+        
+        # 说明文字
+        info_row = ft.Row(
+            controls=[
+                ft.Icon(ft.Icons.INFO_OUTLINE, size=16, color=ft.Colors.ON_SURFACE_VARIANT),
+                ft.Text(
+                    "启用后，当输出文件已存在时会自动添加序号（如 file_1.mp4），否则直接覆盖原文件。此设置对所有工具生效。",
+                    size=12,
+                    color=ft.Colors.ON_SURFACE_VARIANT,
+                    expand=True,
+                ),
+            ],
+            spacing=PADDING_SMALL,
+        )
+        
+        # 组装输出文件设置部分
+        return ft.Container(
+            content=ft.Column(
+                controls=[
+                    section_title,
+                    ft.Container(height=PADDING_MEDIUM),
+                    self.add_sequence_checkbox,
+                    ft.Container(height=PADDING_SMALL),
+                    info_row,
+                ],
+                spacing=0,
+            ),
+            padding=PADDING_LARGE,
+            border=ft.border.all(1, ft.Colors.OUTLINE_VARIANT),
+            border_radius=BORDER_RADIUS_MEDIUM,
+        )
+    
+    def _on_add_sequence_change(self, e: ft.ControlEvent) -> None:
+        """文件已存在时添加序号选项变更。"""
+        self.config_service.set_config_value("output_add_sequence", e.control.value)
     
     def _get_gpu_device_options(self) -> list:
         """获取可用的GPU设备选项列表。

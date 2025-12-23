@@ -19,7 +19,7 @@ from constants import (
     PADDING_XLARGE,
 )
 from services import ConfigService, FFmpegService
-from utils import format_file_size
+from utils import format_file_size, get_unique_path
 from views.media.ffmpeg_install_view import FFmpegInstallView
 
 
@@ -979,6 +979,10 @@ class VideoCompressView(ft.Container):
                             output_path = output_dir / input_path.name
                         else:
                             output_path = output_dir / f"{input_path.stem}.{output_format}"
+                    
+                    # 根据全局设置决定是否添加序号
+                    add_sequence = self.config_service.get_config_value("output_add_sequence", False)
+                    output_path = get_unique_path(output_path, add_sequence=add_sequence)
                     
                     def progress_handler(progress, speed, remaining_time):
                         # 计算总体进度

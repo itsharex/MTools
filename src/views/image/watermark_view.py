@@ -20,6 +20,7 @@ from constants import (
     PADDING_XLARGE,
 )
 from services import ConfigService, ImageService
+from utils import get_unique_path
 
 
 class ImageWatermarkView(ft.Container):
@@ -1865,10 +1866,11 @@ class ImageWatermarkView(ft.Container):
                     else:  # same
                         # 生成新文件名
                         output_path = file_path.parent / f"{file_path.stem}_watermark{ext}"
-                        counter = 1
-                        while output_path.exists():
-                            output_path = file_path.parent / f"{file_path.stem}_watermark_{counter}{ext}"
-                            counter += 1
+                    
+                    # 根据全局设置决定是否添加序号（覆盖模式除外）
+                    if output_mode != "overwrite":
+                        add_sequence = self.config_service.get_config_value("output_add_sequence", False)
+                        output_path = get_unique_path(output_path, add_sequence=add_sequence)
                     
                     # 处理JPEG格式
                     if output_format == "JPEG" or output_format == "JPG":

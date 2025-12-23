@@ -26,7 +26,7 @@ from constants import (
 from constants.model_config import ImageEnhanceModelInfo
 from services import ConfigService, FFmpegService
 from services.image_service import ImageEnhancer
-from utils import format_file_size
+from utils import format_file_size, get_unique_path
 from views.media.ffmpeg_install_view import FFmpegInstallView
 
 
@@ -1506,6 +1506,10 @@ class VideoEnhanceView(ft.Container):
             else:
                 output_filename = f"{input_path.stem}_enhanced{output_ext}"
                 output_path = output_dir / output_filename
+            
+            # 根据全局设置决定是否添加序号
+            add_sequence = self.config_service.get_config_value("output_add_sequence", False)
+            output_path = get_unique_path(output_path, add_sequence=add_sequence)
             
             # 内存安全检查
             frame_memory_mb = (width * height * 3 + enhanced_width * enhanced_height * 3) / (1024 * 1024)
