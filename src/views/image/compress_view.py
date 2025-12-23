@@ -30,6 +30,12 @@ class ImageCompressView(ft.Container):
     - 质量调整
     - 实时预览
     """
+    
+    # 支持的图片格式
+    SUPPORTED_EXTENSIONS = {
+        '.jpg', '.jpeg', '.jfif', '.png', '.webp', '.bmp', 
+        '.gif', '.tiff', '.tif', '.ico', '.avif', '.heic', '.heif'
+    }
 
     def __init__(
         self,
@@ -491,14 +497,26 @@ class ImageCompressView(ft.Container):
         Args:
             files: Path 对象列表
         """
-        added = False
+        added_count = 0
+        skipped_count = 0
+        
         for path in files:
+            # 检查格式是否支持
+            if path.suffix.lower() not in self.SUPPORTED_EXTENSIONS:
+                skipped_count += 1
+                continue
             if path not in self.selected_files:
                 self.selected_files.append(path)
-                added = True
-        if added:
+                added_count += 1
+        
+        if added_count > 0:
             self._update_file_list()
-            self.page.update()
+        
+        # 显示不支持格式的提示
+        if skipped_count > 0 and added_count == 0:
+            self._show_message("图片压缩工具不支持该格式", ft.Colors.ORANGE)
+        
+        self.page.update()
     
     def _on_quality_change(self, e: ft.ControlEvent) -> None:
         """质量滑块变化事件。"""

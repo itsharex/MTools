@@ -317,6 +317,7 @@ class ImageView(ft.Container):
         local_y = y - title_height - self._content_padding
         
         if local_x < 0 or local_y < 0:
+            self._show_snackbar("请将文件拖放到工具卡片上")
             return
         
         # 计算行列
@@ -329,6 +330,7 @@ class ImageView(ft.Container):
         index = row * cols_per_row + col
         
         if index < 0 or index >= len(self._drop_tool_map):
+            self._show_snackbar("请将文件拖放到工具卡片上")
             return
         
         tool_name, supported_exts, open_func, view_attr = self._drop_tool_map[index]
@@ -341,8 +343,7 @@ class ImageView(ft.Container):
         supported_files = [f for f in files if f.suffix.lower() in supported_exts]
         
         if not supported_files:
-            exts_str = ', '.join(sorted(supported_exts)[:5])
-            self._show_snackbar(f"「{tool_name}」仅支持 {exts_str} 格式")
+            self._show_snackbar(f"「{tool_name}」不支持该格式")
             return
         
         # 保存待处理的文件
@@ -371,11 +372,12 @@ class ImageView(ft.Container):
     
     def _show_snackbar(self, message: str) -> None:
         """显示提示消息。"""
-        self._saved_page.snack_bar = ft.SnackBar(
+        snackbar = ft.SnackBar(
             content=ft.Text(message),
             duration=3000,
         )
-        self._saved_page.snack_bar.open = True
+        self._saved_page.overlay.append(snackbar)
+        snackbar.open = True
         self._saved_page.update()
     
     def _open_compress_dialog(self, e: ft.ControlEvent) -> None:
@@ -953,10 +955,10 @@ class ImageView(ft.Container):
         """
         import gc
         
-        # 销毁当前子视图（除了压缩视图保留）
+        # 销毁当前子视图
         if self.current_sub_view_type:
             view_map = {
-                "compress": None,  # 保留压缩视图
+                "compress": "compress_view",
                 "resize": "resize_view",
                 "format": "format_view",
                 "background": "background_view",
