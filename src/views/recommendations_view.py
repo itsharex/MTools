@@ -4,7 +4,8 @@
 基于用户使用历史智能推荐工具。
 """
 
-from typing import Optional
+from pathlib import Path
+from typing import Optional, List
 
 import flet as ft
 
@@ -41,7 +42,8 @@ class RecommendationsView(ft.Container):
             on_tool_click: 工具点击回调
         """
         super().__init__()
-        self.page: ft.Page = page
+        # 使用 _saved_page 保存传入的 page，避免与 Flet 控件的 page 属性冲突
+        self._saved_page: ft.Page = page
         self.config_service: ConfigService = config_service if config_service else ConfigService()
         self.on_tool_click_handler: Optional[callable] = on_tool_click
         
@@ -213,9 +215,110 @@ class RecommendationsView(ft.Container):
                     
                     # 更新页面
                     try:
-                        if self.page:
-                            self.page.update()
+                        if self._saved_page:
+                            self._saved_page.update()
                     except Exception:
                         # 如果更新失败，静默处理
                         pass
-
+    
+    def handle_dropped_files_at(self, files: list, x: int, y: int) -> None:
+        """处理拖放到推荐视图的文件。
+        
+        根据拖放位置找到对应的工具卡片，跳转到对应分类视图处理。
+        
+        Args:
+            files: 文件路径列表（Path 对象）
+            x: 鼠标 X 坐标
+            y: 鼠标 Y 坐标
+        """
+        if not files or not self.on_tool_click_handler or not self._saved_page:
+            return
+        
+        # 获取当前推荐的工具ID列表
+        tool_ids = self._get_current_tool_ids()
+        if not tool_ids:
+            self._show_snackbar("暂无推荐工具")
+            return
+        
+        # 计算点击的是哪个工具卡片
+        nav_width = 100  # 导航栏宽度
+        title_height = 32  # 系统标题栏高度
+        
+        # 调整坐标
+        local_x = x - nav_width - PADDING_MEDIUM
+        local_y = y - title_height - PADDING_MEDIUM
+        
+        if local_x < 0 or local_y < 0:
+            self._show_snackbar("请将文件拖放到工具卡片上")
+            return
+        
+        # 卡片布局参数
+        card_margin_left = 5
+        card_margin_top = 5
+        card_margin_bottom = 10
+        card_width = 280
+        card_height = 220
+        card_step_x = card_margin_left + card_width + 0 + PADDING_LARGE
+        card_step_y = card_margin_top + card_height + card_margin_bottom + PADDING_LARGE
+        
+        # 计算行列
+        col = int(local_x // card_step_x)
+        row = int(local_y // card_step_y)
+        
+        # 根据窗口宽度计算每行卡片数
+        window_width = getattr(self._saved_page.window, 'width', None) or 1000
+        content_width = window_width - nav_width - PADDING_MEDIUM * 2
+        cols_per_row = max(1, int(content_width // card_step_x))
+        
+        index = row * cols_per_row + col
+        
+        if index < 0 or index >= len(tool_ids):
+            self._show_snackbar("请将文件拖放到工具卡片上")
+            return
+        
+        tool_id = tool_ids[index]
+        
+        # 保存待处理的文件到 page 属性（供分类视图使用）
+        self._saved_page._pending_drop_files = files
+        self._saved_page._pending_tool_id = tool_id
+        
+        # 跳转到对应工具
+        self.on_tool_click_handler(tool_id)
+    
+    def _get_current_tool_ids(self) -> List[str]:
+        """获取当前推荐的工具ID列表。"""
+        tool_usage_count = self.config_service.get_config_value("tool_usage_count", {})
+        
+        if tool_usage_count:
+            sorted_tools = sorted(tool_usage_count.items(), key=lambda x: x[1], reverse=True)
+            recommended_tool_names = [name for name, count in sorted_tools[:8]]
+            
+            all_tools_meta = get_all_tools()
+            tool_ids = []
+            for tool_meta in all_tools_meta:
+                if tool_meta.name in recommended_tool_names:
+                    tool_ids.append(tool_meta.tool_id)
+            return tool_ids
+        else:
+            return [
+                "image.compress",
+                "video.compress",
+                "video.convert",
+                "audio.format",
+                "dev.json_viewer",
+                "dev.encoding",
+                "image.format",
+                "video.speed",
+            ]
+    
+    def _show_snackbar(self, message: str) -> None:
+        """显示提示消息。"""
+        if not self._saved_page:
+            return
+        snackbar = ft.SnackBar(
+            content=ft.Text(message),
+            duration=3000,
+        )
+        self._saved_page.overlay.append(snackbar)
+        snackbar.open = True
+        self._saved_page.update()

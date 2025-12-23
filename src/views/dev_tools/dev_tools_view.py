@@ -276,7 +276,51 @@ class DevToolsView(ft.Container):
             alignment=ft.MainAxisAlignment.START,
             expand=True,
             width=float('inf'),  # 占满可用宽度
+            on_scroll=self._on_scroll,
         )
+        
+        # 拖放工具映射：(工具名, 支持的扩展名集合, 打开方法, 视图属性名)
+        # 顺序必须与上面 feature_cards 中的卡片顺序一致
+        _text_exts = {'.txt', '.log', '.ini', '.cfg', '.conf', '.properties'}
+        _json_exts = {'.json'}
+        _md_exts = {'.md', '.markdown', '.mdown', '.mkd'}
+        _data_exts = {'.json', '.yaml', '.yml', '.xml', '.toml'}
+        _sql_exts = {'.sql'}
+        _base64_exts = {'.txt', '.base64', '.b64', '.text'}
+        _any_file = set()  # 空集合表示接受任意文件类型（编码转换）
+        
+        self._drop_tool_map = [
+            ("编码转换", _any_file, self._open_encoding_convert, "encoding_convert_view", True),  # True 表示接受任意文件
+            ("JSON 查看器", _json_exts, self._open_json_viewer, "json_viewer_view", False),
+            ("Base64转图片", _base64_exts, self._open_base64_to_image, "base64_to_image_view", False),
+            ("HTTP 客户端", set(), None, None, False),
+            ("WebSocket 客户端", set(), None, None, False),
+            ("编码/解码", set(), None, None, False),
+            ("正则表达式测试器", set(), None, None, False),
+            ("时间工具", set(), None, None, False),
+            ("JWT 工具", set(), None, None, False),
+            ("UUID/随机数生成器", set(), None, None, False),
+            ("颜色工具", set(), None, None, False),
+            ("Markdown 预览器", _md_exts, self._open_markdown_viewer, "markdown_viewer_view", False),
+            ("DNS 查询", set(), None, None, False),
+            ("端口扫描", set(), None, None, False),
+            ("数据格式转换", _data_exts, self._open_format_convert, "format_convert_view", False),
+            ("文本对比", _text_exts | _json_exts | _md_exts | _data_exts | _sql_exts, self._open_text_diff, "text_diff_view", False),
+            ("加解密工具", set(), None, None, False),
+            ("SQL 格式化", _sql_exts, self._open_sql_formatter, "sql_formatter_view", False),
+            ("Cron 表达式", set(), None, None, False),
+        ]
+        
+        # 卡片布局参数
+        self._card_margin_left = 5
+        self._card_margin_top = 5
+        self._card_margin_bottom = 10
+        self._card_width = 280
+        self._card_height = 220
+        self._card_step_x = self._card_margin_left + self._card_width + 0 + PADDING_LARGE
+        self._card_step_y = self._card_margin_top + self._card_height + self._card_margin_bottom + PADDING_LARGE
+        self._content_padding = PADDING_MEDIUM
+        self._scroll_offset_y = 0
     
     def _open_encoding_convert(self, e: ft.ControlEvent) -> None:
         """打开编码转换。"""
@@ -726,4 +770,116 @@ class DevToolsView(ft.Container):
         # 查找并调用对应的方法
         if tool_name in tool_map:
             tool_map[tool_name](None)  # 传递 None 作为事件参数
-
+            
+            # 处理从推荐视图传递的待处理文件
+            if hasattr(self._saved_page, '_pending_drop_files') and self._saved_page._pending_drop_files:
+                pending_files = self._saved_page._pending_drop_files
+                self._saved_page._pending_drop_files = None
+                self._saved_page._pending_tool_id = None
+                
+                # 让当前子视图处理文件
+                if self.current_sub_view and hasattr(self.current_sub_view, 'add_files'):
+                    self.current_sub_view.add_files(pending_files)
+    
+    def _on_scroll(self, e: ft.OnScrollEvent) -> None:
+        """跟踪滚动位置。"""
+        self._scroll_offset_y = e.pixels
+    
+    def _show_snackbar(self, message: str) -> None:
+        """显示提示消息。"""
+        snackbar = ft.SnackBar(
+            content=ft.Text(message),
+            duration=3000,
+        )
+        self._saved_page.overlay.append(snackbar)
+        snackbar.open = True
+        self._saved_page.update()
+    
+    def handle_dropped_files_at(self, files: list, x: int, y: int) -> None:
+        """处理拖放到指定位置的文件。
+        
+        Args:
+            files: 文件路径列表（Path 对象）
+            x: 鼠标 X 坐标（相对于窗口客户区）
+            y: 鼠标 Y 坐标（相对于窗口客户区）
+        """
+        # 如果当前显示的是子视图，让子视图处理
+        if self.current_sub_view and hasattr(self.current_sub_view, 'add_files'):
+            self.current_sub_view.add_files(files)
+            return
+        
+        # 计算点击的是哪个工具卡片
+        nav_width = 100  # 导航栏宽度
+        title_height = 32  # 系统标题栏高度
+        category_header_height = 60  # 分类标题区域高度
+        
+        # 调整坐标
+        local_x = x - nav_width - self._content_padding
+        local_y = y - title_height - category_header_height - self._content_padding + self._scroll_offset_y
+        
+        if local_x < 0 or local_y < 0:
+            self._show_snackbar("请将文件拖放到工具卡片上")
+            return
+        
+        # 计算行列
+        col = int(local_x // self._card_step_x)
+        row = int(local_y // self._card_step_y)
+        
+        # 根据实际窗口宽度计算每行卡片数
+        window_width = self._saved_page.window.width or 1000
+        content_width = window_width - nav_width - self._content_padding * 2
+        cols_per_row = max(1, int(content_width // self._card_step_x))
+        
+        index = row * cols_per_row + col
+        
+        if index < 0 or index >= len(self._drop_tool_map):
+            self._show_snackbar("请将文件拖放到工具卡片上")
+            return
+        
+        tool_name, supported_exts, open_func, view_attr, accept_any = self._drop_tool_map[index]
+        
+        if not open_func:
+            self._show_snackbar(f"「{tool_name}」不支持文件拖放")
+            return
+        
+        # 展开文件夹
+        all_files = []
+        for f in files:
+            if f.is_dir():
+                for item in f.iterdir():
+                    if item.is_file():
+                        all_files.append(item)
+            else:
+                all_files.append(f)
+        
+        # 过滤文件（如果 accept_any 为 True，则接受所有文件）
+        if accept_any:
+            supported_files = all_files
+        else:
+            supported_files = [f for f in all_files if f.suffix.lower() in supported_exts]
+        
+        if not supported_files:
+            self._show_snackbar(f"「{tool_name}」不支持该格式")
+            return
+        
+        # 保存待处理的文件
+        self._pending_drop_files = supported_files
+        self._pending_view_attr = view_attr
+        
+        # 打开工具
+        open_func(None)
+        
+        # 导入文件到工具
+        self._import_pending_files()
+    
+    def _import_pending_files(self) -> None:
+        """将待处理文件导入到当前工具视图。"""
+        if not hasattr(self, '_pending_drop_files') or not self._pending_drop_files:
+            return
+        
+        # 直接使用 current_sub_view，因为有些视图（如 JSON 查看器）没有保存到类属性
+        if self.current_sub_view and hasattr(self.current_sub_view, 'add_files'):
+            self.current_sub_view.add_files(self._pending_drop_files)
+        
+        self._pending_drop_files = []
+        self._pending_view_attr = None

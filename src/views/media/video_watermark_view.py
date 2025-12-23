@@ -19,6 +19,8 @@ from services import ConfigService, FFmpegService
 from utils import logger
 
 class VideoWatermarkView(ft.Container):
+    
+    SUPPORTED_EXTENSIONS = {'.mp4', '.avi', '.mkv', '.mov', '.wmv', '.flv', '.webm', '.m4v'}
     """视频添加水印视图类。
     
     提供视频添加水印功能，包括：
@@ -1069,6 +1071,34 @@ class VideoWatermarkView(ft.Container):
         )
         self.page.overlay.append(snackbar)
         snackbar.open = True
+        self.page.update()
+    
+    def add_files(self, files: list) -> None:
+        """从拖放添加文件。"""
+        added_count = 0
+        skipped_count = 0
+        all_files = []
+        for path in files:
+            if path.is_dir():
+                for item in path.iterdir():
+                    if item.is_file():
+                        all_files.append(item)
+            else:
+                all_files.append(path)
+        
+        for path in all_files:
+            if path.suffix.lower() not in self.SUPPORTED_EXTENSIONS:
+                skipped_count += 1
+                continue
+            if path not in self.selected_files:
+                self.selected_files.append(path)
+                added_count += 1
+        
+        if added_count > 0:
+            self._update_file_list()
+            self._show_message(f"已添加 {added_count} 个文件", ft.Colors.GREEN)
+        elif skipped_count > 0:
+            self._show_message("视频水印不支持该格式", ft.Colors.ORANGE)
         self.page.update()
     
     def cleanup(self) -> None:

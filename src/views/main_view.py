@@ -537,6 +537,8 @@ class MainView(ft.Column):
         # 使用page.update()而不是单独更新控件
         if self.page:
             self.page.update()
+        
+        # 注意：从推荐视图传递的待处理文件由各分类视图的 open_tool 方法处理
     
     def _open_search(self, e: ft.ControlEvent = None) -> None:
         """打开搜索对话框。"""

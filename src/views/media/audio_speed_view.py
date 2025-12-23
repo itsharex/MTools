@@ -24,7 +24,11 @@ from views.media.ffmpeg_install_view import FFmpegInstallView
 class AudioSpeedView(ft.Container):
     """音频倍速调整视图类。
     
-    提供音频播放速度调整功能，包括：
+    提供音频播放速度调整功能，包括："""
+    
+    SUPPORTED_EXTENSIONS = {'.mp3', '.wav', '.flac', '.aac', '.ogg', '.m4a', '.wma', '.aiff', '.ape', '.opus'}
+    
+    """
     - 单文件和批量处理
     - 0.1x-10x倍速调整
     - 多种音频格式支持
@@ -663,6 +667,34 @@ class AudioSpeedView(ft.Container):
         )
         self.page.overlay.append(snackbar)
         snackbar.open = True
+        self.page.update()
+    
+    def add_files(self, files: list) -> None:
+        """从拖放添加文件。"""
+        added_count = 0
+        skipped_count = 0
+        all_files = []
+        for path in files:
+            if path.is_dir():
+                for item in path.iterdir():
+                    if item.is_file():
+                        all_files.append(item)
+            else:
+                all_files.append(path)
+        
+        for path in all_files:
+            if path.suffix.lower() not in self.SUPPORTED_EXTENSIONS:
+                skipped_count += 1
+                continue
+            if path not in self.selected_files:
+                self.selected_files.append(path)
+                added_count += 1
+        
+        if added_count > 0:
+            self._update_file_list()
+            self._show_message(f"已添加 {added_count} 个文件", ft.Colors.GREEN)
+        elif skipped_count > 0:
+            self._show_message("音频倍速不支持该格式", ft.Colors.ORANGE)
         self.page.update()
     
     def cleanup(self) -> None:

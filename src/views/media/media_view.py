@@ -262,6 +262,9 @@ class MediaView(ft.Container):
             ),
         ]
         
+        # 初始化拖放工具映射
+        self._init_drop_tool_map()
+        
         # 统一展示所有功能卡片
         self.content = ft.Column(
             controls=[
@@ -278,6 +281,7 @@ class MediaView(ft.Container):
             alignment=ft.MainAxisAlignment.START,
             expand=True,
             width=float('inf'),  # 占满可用宽度
+            on_scroll=self._on_scroll,  # 跟踪滚动位置
         )
 
     def _open_view(self, view_name: str) -> None:
@@ -520,6 +524,16 @@ class MediaView(ft.Container):
         # 切换视图
         self.parent_container.content = view
         self._safe_page_update()
+        
+        # 处理从推荐视图传递的待处理文件
+        if hasattr(self._saved_page, '_pending_drop_files') and self._saved_page._pending_drop_files:
+            pending_files = self._saved_page._pending_drop_files
+            self._saved_page._pending_drop_files = None
+            self._saved_page._pending_tool_id = None
+            
+            # 让当前子视图处理文件
+            if view and hasattr(view, 'add_files'):
+                view.add_files(pending_files)
     
     def _back_to_main(self, e=None) -> None:
         """返回主视图。
@@ -673,3 +687,144 @@ cd /d "{work_dir}"
             self._switch_to_sub_view(self.current_sub_view, self.current_sub_view_type)
             return True
         return False
+    
+    def _init_drop_tool_map(self) -> None:
+        """初始化拖放工具映射。"""
+        # 音频格式
+        _audio_exts = {'.mp3', '.wav', '.flac', '.aac', '.ogg', '.m4a', '.wma', '.aiff', '.ape'}
+        # 视频格式
+        _video_exts = {'.mp4', '.avi', '.mkv', '.mov', '.wmv', '.flv', '.webm', '.m4v', '.mpeg', '.mpg', '.3gp'}
+        # 音视频混合
+        _media_exts = _audio_exts | _video_exts
+        
+        self._drop_tool_map = [
+            # 音频工具
+            ("音频格式转换", _audio_exts, 'audio_format', "audio_format_view"),
+            ("音频压缩", _audio_exts, 'audio_compress', "audio_compress_view"),
+            ("音频倍速调整", _audio_exts, 'audio_speed', "audio_speed_view"),
+            ("人声提取", _audio_exts, 'vocal_extraction', "vocal_extraction_view"),
+            ("音视频转文字", _media_exts, 'audio_to_text', "audio_to_text_view"),
+            # 视频工具
+            ("视频增强", _video_exts, 'video_enhance', "video_enhance_view"),
+            ("视频插帧", _video_exts, 'video_interpolation', "video_interpolation_view"),
+            ("视频去字幕/水印", _video_exts, 'subtitle_remove', "subtitle_remove_view"),
+            ("视频配字幕", _video_exts, 'video_subtitle', "video_subtitle_view"),
+            ("视频压缩", _video_exts, 'video_compress', "video_compress_view"),
+            ("视频格式转换", _video_exts, 'video_convert', "video_convert_view"),
+            ("视频提取音频", _video_exts, 'video_extract_audio', "video_extract_audio_view"),
+            ("视频倍速调整", _video_exts, 'video_speed', "video_speed_view"),
+            ("视频人声分离", _video_exts, 'video_vocal_separation', "video_vocal_separation_view"),
+            ("视频添加水印", _video_exts, 'video_watermark', "video_watermark_view"),
+            ("视频修复", _video_exts, 'video_repair', "video_repair_view"),
+            ("屏幕录制", set(), None, None),  # 不接受拖放
+            ("FFmpeg 终端", set(), None, None),  # 不接受拖放
+        ]
+        
+        # 卡片布局参数（与 FeatureCard 一致）
+        self._card_margin_left = 5
+        self._card_margin_top = 5
+        self._card_margin_bottom = 10
+        self._card_width = 280
+        self._card_height = 220
+        self._card_step_x = self._card_margin_left + self._card_width + 0 + PADDING_LARGE
+        self._card_step_y = self._card_margin_top + self._card_height + self._card_margin_bottom + PADDING_LARGE
+        self._content_padding = PADDING_MEDIUM
+        self._scroll_offset_y = 0.0
+    
+    def _on_scroll(self, e: ft.OnScrollEvent) -> None:
+        """跟踪滚动位置。"""
+        self._scroll_offset_y = e.pixels
+    
+    def handle_dropped_files_at(self, files: list, x: int, y: int) -> None:
+        """处理拖放到指定位置的文件。"""
+        from pathlib import Path
+        
+        # 如果当前显示的是子视图，让子视图处理
+        if self.current_sub_view and hasattr(self.current_sub_view, 'add_files'):
+            self.current_sub_view.add_files(files)
+            return
+        
+        # 初始化工具映射（如果还没初始化）
+        if not hasattr(self, '_drop_tool_map'):
+            self._init_drop_tool_map()
+        
+        # 计算点击的是哪个工具卡片
+        nav_width = 100
+        title_height = 32
+        
+        local_x = x - nav_width - self._content_padding
+        local_y = y - title_height - self._content_padding + self._scroll_offset_y
+        
+        if local_x < 0 or local_y < 0:
+            self._show_snackbar("请将文件拖放到工具卡片上")
+            return
+        
+        col = int(local_x // self._card_step_x)
+        row = int(local_y // self._card_step_y)
+        
+        window_width = self.page.window.width or 1000
+        content_width = window_width - nav_width - self._content_padding * 2
+        cols_per_row = max(1, int(content_width // self._card_step_x))
+        
+        index = row * cols_per_row + col
+        
+        if index < 0 or index >= len(self._drop_tool_map):
+            self._show_snackbar("请将文件拖放到工具卡片上")
+            return
+        
+        tool_name, supported_exts, view_name, view_attr = self._drop_tool_map[index]
+        
+        if not supported_exts or not view_name:
+            self._show_snackbar(f"「{tool_name}」不支持文件拖放")
+            return
+        
+        # 展开文件夹
+        all_files = []
+        for f in files:
+            if f.is_dir():
+                for item in f.iterdir():
+                    if item.is_file():
+                        all_files.append(item)
+            else:
+                all_files.append(f)
+        
+        # 过滤支持的文件
+        supported_files = [f for f in all_files if f.suffix.lower() in supported_exts]
+        
+        if not supported_files:
+            self._show_snackbar(f"「{tool_name}」不支持该格式")
+            return
+        
+        # 保存待导入的文件
+        self._pending_drop_files = supported_files
+        self._pending_view_attr = view_attr
+        
+        # 打开工具
+        self._open_view(view_name)
+        
+        # 导入文件
+        self._import_pending_files()
+    
+    def _import_pending_files(self) -> None:
+        """导入待处理的拖放文件。"""
+        if not hasattr(self, '_pending_drop_files') or not self._pending_drop_files:
+            return
+        
+        view_attr = getattr(self, '_pending_view_attr', None)
+        if view_attr:
+            view = getattr(self, view_attr, None)
+            if view and hasattr(view, 'add_files'):
+                view.add_files(self._pending_drop_files)
+        
+        self._pending_drop_files = []
+        self._pending_view_attr = None
+    
+    def _show_snackbar(self, message: str) -> None:
+        """显示提示消息。"""
+        snackbar = ft.SnackBar(
+            content=ft.Text(message),
+            duration=3000,
+        )
+        self._saved_page.overlay.append(snackbar)
+        snackbar.open = True
+        self._saved_page.update()

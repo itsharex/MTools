@@ -814,6 +814,58 @@ class TextDiffView(ft.Container):
         if self.on_back:
             self.on_back()
     
+    def add_files(self, files: list) -> None:
+        """从拖放添加文件，加载到左右两个文本框。
+        
+        第一个文件加载到左侧，第二个文件加载到右侧。
+        
+        Args:
+            files: 文件路径列表（Path 对象）
+        """
+        # 过滤出有效的文本文件
+        valid_files = [f for f in files if f.is_file()]
+        
+        if not valid_files:
+            return
+        
+        def read_file_content(path) -> str:
+            """读取文件内容，自动处理编码。"""
+            try:
+                return path.read_text(encoding='utf-8')
+            except UnicodeDecodeError:
+                try:
+                    return path.read_text(encoding='gbk')
+                except:
+                    return path.read_text(encoding='latin-1')
+        
+        # 加载第一个文件到左侧
+        if len(valid_files) >= 1:
+            try:
+                content = read_file_content(valid_files[0])
+                if self.left_input.current:
+                    self.left_input.current.value = content
+            except Exception as e:
+                self._show_snack(f"读取左侧文件失败: {e}", error=True)
+                return
+        
+        # 加载第二个文件到右侧
+        if len(valid_files) >= 2:
+            try:
+                content = read_file_content(valid_files[1])
+                if self.right_input.current:
+                    self.right_input.current.value = content
+            except Exception as e:
+                self._show_snack(f"读取右侧文件失败: {e}", error=True)
+                return
+        
+        # 显示加载结果
+        if len(valid_files) == 1:
+            self._show_snack(f"已加载到左侧: {valid_files[0].name}")
+        else:
+            self._show_snack(f"已加载: {valid_files[0].name} (左) 和 {valid_files[1].name} (右)")
+        
+        self.page.update()
+    
     def cleanup(self) -> None:
         """清理视图资源，释放内存。"""
         import gc

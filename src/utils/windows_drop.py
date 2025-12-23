@@ -28,6 +28,7 @@ import sys
 import time
 import threading
 from dataclasses import dataclass
+from tkinter import W
 from utils.logger import logger
 from typing import Callable, List, Optional, Union
 
@@ -224,12 +225,17 @@ class WindowsDropHandler:
         time.sleep(self._enable_delay)
         
         # 尝试多次，因为窗口可能还在初始化
-        max_retries = 50
-        for i in range(max_retries):
-            if self.enable():
-                return
-            logger.debug(f"WindowsDropHandler 重试 {i + 1}/{max_retries}...")
-            time.sleep(0.5)
+        # max_retries = 50
+        # for i in range(max_retries):
+        #     if self.enable():
+        #         return
+        #     logger.debug(f"WindowsDropHandler 重试 {i + 1}/{max_retries}...")
+        #     time.sleep(0.1)
+        # 重试直到成功
+        while not self.enable():
+            time.sleep(0.1)
+            # logger.debug("WindowsDropHandler 重试...")
+        logger.debug("WindowsDropHandler 启用成功")
     
     def enable(self) -> bool:
         """启用拖放支持。

@@ -489,6 +489,59 @@ skills = ["Python", "JavaScript"]
         self.page.snack_bar.open = True
         self.page.update()
     
+    def add_files(self, files: list) -> None:
+        """从拖放添加文件，加载第一个数据文件内容并自动检测格式。
+        
+        Args:
+            files: 文件路径列表（Path 对象）
+        """
+        # 文件扩展名到格式的映射
+        ext_to_format = {
+            '.json': 'JSON',
+            '.yaml': 'YAML',
+            '.yml': 'YAML',
+            '.xml': 'XML',
+            '.toml': 'TOML',
+        }
+        
+        # 找到第一个支持的文件
+        data_file = None
+        detected_format = None
+        for f in files:
+            ext = f.suffix.lower()
+            if ext in ext_to_format and f.is_file():
+                data_file = f
+                detected_format = ext_to_format[ext]
+                break
+        
+        if not data_file:
+            return
+        
+        try:
+            content = data_file.read_text(encoding='utf-8')
+            if self.input_text.current:
+                self.input_text.current.value = content
+            
+            # 自动设置源格式
+            if self.source_format.current and detected_format:
+                self.source_format.current.value = detected_format
+            
+            self._show_snack(f"已加载: {data_file.name} (检测为 {detected_format})")
+            self.page.update()
+        except UnicodeDecodeError:
+            try:
+                content = data_file.read_text(encoding='gbk')
+                if self.input_text.current:
+                    self.input_text.current.value = content
+                if self.source_format.current and detected_format:
+                    self.source_format.current.value = detected_format
+                self._show_snack(f"已加载: {data_file.name} (检测为 {detected_format})")
+                self.page.update()
+            except Exception as e:
+                self._show_snack(f"读取文件失败: {e}", error=True)
+        except Exception as e:
+            self._show_snack(f"读取文件失败: {e}", error=True)
+    
     def cleanup(self) -> None:
         """清理视图资源，释放内存。"""
         import gc

@@ -415,6 +415,40 @@ WHERE u.status = 1
         self.page.snack_bar.open = True
         self.page.update()
     
+    def add_files(self, files: list) -> None:
+        """从拖放添加文件，加载第一个 SQL 文件内容。
+        
+        Args:
+            files: 文件路径列表（Path 对象）
+        """
+        # 只处理第一个 SQL 文件
+        sql_file = None
+        for f in files:
+            if f.suffix.lower() == '.sql' and f.is_file():
+                sql_file = f
+                break
+        
+        if not sql_file:
+            return
+        
+        try:
+            content = sql_file.read_text(encoding='utf-8')
+            if self.input_text.current:
+                self.input_text.current.value = content
+            self._show_snack(f"已加载: {sql_file.name}")
+            self.page.update()
+        except UnicodeDecodeError:
+            try:
+                content = sql_file.read_text(encoding='gbk')
+                if self.input_text.current:
+                    self.input_text.current.value = content
+                self._show_snack(f"已加载: {sql_file.name}")
+                self.page.update()
+            except Exception as e:
+                self._show_snack(f"读取文件失败: {e}", error=True)
+        except Exception as e:
+            self._show_snack(f"读取文件失败: {e}", error=True)
+    
     def cleanup(self) -> None:
         """清理视图资源，释放内存。"""
         import gc

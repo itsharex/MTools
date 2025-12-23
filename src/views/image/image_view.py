@@ -1112,3 +1112,13 @@ class ImageView(ft.Container):
         # 查找并调用对应的方法
         if tool_name in tool_map:
             tool_map[tool_name](None)  # 传递 None 作为事件参数
+            
+            # 处理从推荐视图传递的待处理文件
+            if hasattr(self._saved_page, '_pending_drop_files') and self._saved_page._pending_drop_files:
+                pending_files = self._saved_page._pending_drop_files
+                self._saved_page._pending_drop_files = None
+                self._saved_page._pending_tool_id = None
+                
+                # 让当前子视图处理文件
+                if self.current_sub_view and hasattr(self.current_sub_view, 'add_files'):
+                    self.current_sub_view.add_files(pending_files)

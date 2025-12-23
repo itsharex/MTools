@@ -70,6 +70,8 @@ def hex_to_rgb(hex_color: str) -> Tuple[int, int, int]:
 
 class IDPhotoView(ft.Container):
     """AI证件照视图类。"""
+    
+    SUPPORTED_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.webp', '.bmp', '.tiff', '.tif', '.heic', '.heif'}
 
     def __init__(
         self,
@@ -107,6 +109,10 @@ class IDPhotoView(ft.Container):
         )
         
         self._ui_built: bool = False
+        
+        # 待处理的拖放文件（UI构建完成前收到的文件）
+        self._pending_files: List[Path] = []
+        
         self._build_loading_ui()
         threading.Thread(target=self._build_ui_async, daemon=True).start()
     
@@ -135,6 +141,11 @@ class IDPhotoView(ft.Container):
             self.update()
         except:
             pass
+        
+        # 处理UI构建前收到的待处理文件
+        if self._pending_files and hasattr(self, 'file_list_view'):
+            self._process_pending_files()
+        
         threading.Thread(target=self._check_model_status_async, daemon=True).start()
     
     def _get_model_path(self, model_type: str, model_key: str = None) -> Path:
@@ -1393,6 +1404,72 @@ class IDPhotoView(ft.Container):
         snackbar = ft.SnackBar(content=ft.Text(message), bgcolor=color, duration=3000)
         self.page.overlay.append(snackbar)
         snackbar.open = True
+        try:
+            self.page.update()
+        except:
+            pass
+    
+    def add_files(self, files: list) -> None:
+        """从拖放添加文件。"""
+        # 如果UI尚未构建完成，保存文件待后续处理
+        if not self._ui_built or not hasattr(self, 'file_list_view'):
+            self._pending_files.extend(files)
+            return
+        
+        added_count = 0
+        all_files = []
+        for path in files:
+            if path.is_dir():
+                for item in path.iterdir():
+                    if item.is_file():
+                        all_files.append(item)
+            else:
+                all_files.append(path)
+        
+        for path in all_files:
+            if path.suffix.lower() in self.SUPPORTED_EXTENSIONS:
+                if path not in self.selected_files:
+                    self.selected_files.append(path)
+                    added_count += 1
+        
+        if added_count > 0:
+            self._update_file_list()
+            self._update_generate_button()
+            snackbar = ft.SnackBar(content=ft.Text(f"已添加 {added_count} 个文件"), bgcolor=ft.Colors.GREEN)
+            self.page.overlay.append(snackbar)
+            snackbar.open = True
+        self.page.update()
+    
+    def _process_pending_files(self) -> None:
+        """处理UI构建完成前收到的待处理文件。"""
+        if not self._pending_files:
+            return
+        
+        pending = self._pending_files.copy()
+        self._pending_files.clear()
+        
+        added_count = 0
+        all_files = []
+        for path in pending:
+            if path.is_dir():
+                for item in path.iterdir():
+                    if item.is_file():
+                        all_files.append(item)
+            else:
+                all_files.append(path)
+        
+        for path in all_files:
+            if path.suffix.lower() in self.SUPPORTED_EXTENSIONS:
+                if path not in self.selected_files:
+                    self.selected_files.append(path)
+                    added_count += 1
+        
+        if added_count > 0:
+            self._update_file_list()
+            self._update_generate_button()
+            snackbar = ft.SnackBar(content=ft.Text(f"已添加 {added_count} 个文件"), bgcolor=ft.Colors.GREEN)
+            self.page.overlay.append(snackbar)
+            snackbar.open = True
         try:
             self.page.update()
         except:

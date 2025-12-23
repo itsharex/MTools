@@ -28,6 +28,8 @@ from utils import format_file_size, logger
 
 
 class SubtitleRemoveView(ft.Container):
+    
+    SUPPORTED_EXTENSIONS = {'.mp4', '.avi', '.mkv', '.mov', '.wmv', '.flv', '.webm', '.m4v'}
     """视频字幕/水印移除视图类。
     
     提供视频字幕/水印移除功能，包括：
@@ -1621,6 +1623,38 @@ class SubtitleRemoveView(ft.Container):
                 self.page.update()
         
         threading.Thread(target=process_task, daemon=True).start()
+    
+    def add_files(self, files: list) -> None:
+        """从拖放添加文件。"""
+        added_count = 0
+        skipped_count = 0
+        all_files = []
+        for path in files:
+            if path.is_dir():
+                for item in path.iterdir():
+                    if item.is_file():
+                        all_files.append(item)
+            else:
+                all_files.append(path)
+        
+        for path in all_files:
+            if path.suffix.lower() not in self.SUPPORTED_EXTENSIONS:
+                skipped_count += 1
+                continue
+            if path not in self.selected_files:
+                self.selected_files.append(path)
+                added_count += 1
+        
+        if added_count > 0:
+            self._update_file_list()
+            snackbar = ft.SnackBar(content=ft.Text(f"已添加 {added_count} 个文件"), bgcolor=ft.Colors.GREEN)
+            self.page.overlay.append(snackbar)
+            snackbar.open = True
+        elif skipped_count > 0:
+            snackbar = ft.SnackBar(content=ft.Text("字幕去除不支持该格式"), bgcolor=ft.Colors.ORANGE)
+            self.page.overlay.append(snackbar)
+            snackbar.open = True
+        self.page.update()
     
     def cleanup(self) -> None:
         """清理视图资源，释放内存。

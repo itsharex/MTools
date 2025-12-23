@@ -369,6 +369,36 @@ class OthersView(ft.Container):
             return True
         return False
     
+    def handle_dropped_files_at(self, files: list, x: int, y: int) -> None:
+        """处理拖放到指定位置的文件。"""
+        # 如果当前显示的是子视图，让子视图处理
+        if self.current_sub_view and hasattr(self.current_sub_view, 'add_files'):
+            self.current_sub_view.add_files(files)
+            return
+        
+        # 在主界面，只有 AI 证件照支持图片拖放
+        # 检查是否有支持的图片文件
+        _img_exts = {'.jpg', '.jpeg', '.png', '.webp', '.bmp', '.tiff', '.tif', '.heic', '.heif'}
+        
+        all_files = []
+        for f in files:
+            if f.is_dir():
+                for item in f.iterdir():
+                    if item.is_file():
+                        all_files.append(item)
+            else:
+                all_files.append(f)
+        
+        supported_files = [f for f in all_files if f.suffix.lower() in _img_exts]
+        
+        if supported_files:
+            # 有图片文件，打开 AI 证件照并导入
+            self._open_id_photo_view()
+            if self.current_sub_view and hasattr(self.current_sub_view, 'add_files'):
+                self.current_sub_view.add_files(supported_files)
+        else:
+            self._show_message("请拖放图片文件到 AI 证件照工具")
+    
     def cleanup(self) -> None:
         """清理视图资源。
         

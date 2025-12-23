@@ -386,6 +386,46 @@ class Base64ToImageView(ft.Container):
         self.page.snack_bar.open = True
         self.page.update()
     
+    def add_files(self, files: list) -> None:
+        """从拖放添加文件，读取文件内容作为 Base64 输入。
+        
+        Args:
+            files: 文件路径列表（Path 对象）
+        """
+        # 只处理第一个文本文件
+        text_file = None
+        text_exts = {'.txt', '.base64', '.b64', '.text'}
+        for f in files:
+            if f.is_file() and (f.suffix.lower() in text_exts or f.suffix == ''):
+                text_file = f
+                break
+        
+        if not text_file:
+            # 尝试读取任意文件
+            for f in files:
+                if f.is_file():
+                    text_file = f
+                    break
+        
+        if not text_file:
+            return
+        
+        try:
+            content = text_file.read_text(encoding='utf-8').strip()
+            self.base64_input.value = content
+            self._on_convert(None)  # 自动触发转换
+            self._show_message(f"已加载: {text_file.name}", ft.Colors.GREEN)
+        except UnicodeDecodeError:
+            try:
+                content = text_file.read_text(encoding='latin-1').strip()
+                self.base64_input.value = content
+                self._on_convert(None)
+                self._show_message(f"已加载: {text_file.name}", ft.Colors.GREEN)
+            except Exception as e:
+                self._show_message(f"读取文件失败: {e}", ft.Colors.RED)
+        except Exception as e:
+            self._show_message(f"读取文件失败: {e}", ft.Colors.RED)
+    
     def cleanup(self) -> None:
         """清理视图资源，释放内存。"""
         import gc

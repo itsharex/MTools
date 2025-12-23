@@ -587,6 +587,32 @@ class EncodingConvertView(ft.Container):
         snackbar.open = True
         self.page.update()
     
+    def add_files(self, files: list) -> None:
+        """从拖放添加文件。
+        
+        Args:
+            files: 文件路径列表（Path 对象）
+        """
+        added_count = 0
+        all_files = []
+        for path in files:
+            if path.is_dir():
+                for item in path.iterdir():
+                    if item.is_file():
+                        all_files.append(item)
+            else:
+                all_files.append(path)
+        
+        for path in all_files:
+            if path not in self.selected_files:
+                self.selected_files.append(path)
+                added_count += 1
+        
+        if added_count > 0:
+            self._update_file_list()
+            self._show_message(f"已添加 {added_count} 个文件", ft.Colors.GREEN)
+        self.page.update()
+    
     def cleanup(self) -> None:
         """清理视图资源，释放内存。"""
         import gc

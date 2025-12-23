@@ -1728,6 +1728,51 @@ class JsonViewerView(ft.Container):
             self.error_container.current.visible = True
         self.update()
     
+    def add_files(self, files: list) -> None:
+        """从拖放添加文件，加载第一个 JSON 文件内容。
+        
+        Args:
+            files: 文件路径列表（Path 对象）
+        """
+        # 只处理第一个 JSON 文件
+        json_file = None
+        for f in files:
+            if f.suffix.lower() == '.json' and f.is_file():
+                json_file = f
+                break
+        
+        if not json_file:
+            return
+        
+        try:
+            content = json_file.read_text(encoding='utf-8')
+            if self.input_text.current:
+                self.input_text.current.value = content
+                self._on_format_click(None)  # 触发解析并构建树形视图
+            self._show_snackbar(f"已加载: {json_file.name}")
+        except UnicodeDecodeError:
+            # 尝试其他编码
+            try:
+                content = json_file.read_text(encoding='gbk')
+                if self.input_text.current:
+                    self.input_text.current.value = content
+                    self._on_format_click(None)
+                self._show_snackbar(f"已加载: {json_file.name}")
+            except Exception as e:
+                self._show_snackbar(f"读取文件失败: {e}")
+        except Exception as e:
+            self._show_snackbar(f"读取文件失败: {e}")
+    
+    def _show_snackbar(self, message: str) -> None:
+        """显示提示消息。"""
+        snackbar = ft.SnackBar(
+            content=ft.Text(message),
+            duration=3000,
+        )
+        self.page.overlay.append(snackbar)
+        snackbar.open = True
+        self.page.update()
+    
     def cleanup(self) -> None:
         """清理视图资源，释放内存。"""
         import gc
