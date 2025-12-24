@@ -877,3 +877,18 @@ def register_all_tools():
         tool_id="others.id_photo",
         gradient_colors=("#667EEA", "#764BA2"),
     )
+    
+    register_tool_manual(
+        name="文本翻译",
+        description="支持 AI 翻译和 Bing 翻译，多语言互译",
+        category="其他工具",
+        keywords=[
+            "翻译", "translate", "英语", "日语", "韩语", "中文",
+            "英文", "日文", "韩文", "法语", "德语", "西班牙语",
+            "AI翻译", "Bing翻译", "机器翻译", "多语言", "互译",
+            "translation", "language", "chinese", "english", "japanese"
+        ],
+        icon="TRANSLATE",
+        tool_id="others.translate",
+        gradient_colors=("#00C9FF", "#92FE9D"),
+    )

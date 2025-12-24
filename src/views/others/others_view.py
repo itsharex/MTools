@@ -112,6 +112,13 @@ class OthersView(ft.Container):
                     gradient_colors=("#667EEA", "#764BA2"),
                     on_click=lambda _: self._open_id_photo_view(),
                 ),
+                FeatureCard(
+                    icon=ft.Icons.TRANSLATE,
+                    title="文本翻译",
+                    description="支持 AI 翻译和 Bing 翻译，多语言互译",
+                    gradient_colors=("#00C9FF", "#92FE9D"),
+                    on_click=lambda _: self._open_translate_view(),
+                ),
             ],
             wrap=True,
             spacing=PADDING_LARGE,
@@ -290,6 +297,38 @@ class OthersView(ft.Container):
         self.parent_container.content = id_photo_view
         self._safe_page_update()
     
+    def _open_translate_view(self) -> None:
+        """打开文本翻译视图。"""
+        # 记录工具使用次数
+        from utils import get_tool
+        tool_meta = get_tool("others.translate")
+        if tool_meta:
+            self.config_service.record_tool_usage(tool_meta.name)
+        
+        # 隐藏搜索按钮
+        self._hide_search_button()
+        
+        from views.others import TranslateView
+        
+        if not self.parent_container:
+            self._show_message("无法打开视图")
+            return
+        
+        # 创建翻译视图
+        translate_view = TranslateView(
+            page=self._saved_page,
+            config_service=self.config_service,
+            on_back=lambda: self._restore_main_view(),
+        )
+        
+        # 保存当前子视图
+        self.current_sub_view = translate_view
+        self.current_sub_view_type = "translate"
+        
+        # 切换到子视图
+        self.parent_container.content = translate_view
+        self._safe_page_update()
+    
     def open_tool(self, tool_name: str) -> None:
         """根据工具名称打开对应的工具。
         
@@ -303,6 +342,7 @@ class OthersView(ft.Container):
             "file_to_url": self._open_file_to_url_view,
             "icp_query": self._open_icp_query_view,
             "id_photo": self._open_id_photo_view,
+            "translate": self._open_translate_view,
         }
         
         # 查找并调用对应的方法

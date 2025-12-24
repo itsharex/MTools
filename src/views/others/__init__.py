@@ -7,5 +7,6 @@ from .image_to_url_view import ImageToUrlView
 from .file_to_url_view import FileToUrlView
 from .icp_query_view import ICPQueryView
 from .id_photo_view import IDPhotoView
+from .translate_view import TranslateView
 
-__all__ = ["OthersView", "WindowsUpdateView", "ImageToUrlView", "FileToUrlView", "ICPQueryView", "IDPhotoView"]
+__all__ = ["OthersView", "WindowsUpdateView", "ImageToUrlView", "FileToUrlView", "ICPQueryView", "IDPhotoView", "TranslateView"]
