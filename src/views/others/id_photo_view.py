@@ -26,7 +26,7 @@ from constants import (
     PADDING_SMALL,
 )
 from services import IDPhotoService, IDPhotoParams, IDPhotoResult
-from utils import logger, format_file_size
+from utils import logger, format_file_size, get_unique_path
 
 if TYPE_CHECKING:
     from services.config_service import ConfigService
@@ -1252,12 +1252,16 @@ class IDPhotoView(ft.Container):
         
         if output_mode == "same":
             # 输出到同目录
-            return input_file.parent / f"{input_file.stem}_id{suffix}.png"
+            output_path = input_file.parent / f"{input_file.stem}_id{suffix}.png"
         else:
             # 自定义输出目录
             output_dir = Path(self.custom_output_dir.value)
             output_dir.mkdir(parents=True, exist_ok=True)
-            return output_dir / f"{input_file.stem}_id{suffix}.png"
+            output_path = output_dir / f"{input_file.stem}_id{suffix}.png"
+        
+        # 根据全局设置决定是否添加序号
+        add_sequence = self.config_service.get_config_value("output_add_sequence", False) if self.config_service else False
+        return get_unique_path(output_path, add_sequence=add_sequence)
     
     def _on_generate_click(self, e: ft.ControlEvent) -> None:
         """批量生成证件照。"""
@@ -1342,7 +1346,11 @@ class IDPhotoView(ft.Container):
                             target_kb = 48
                         
                         standard_compressed = self.id_photo_service.compress_image_to_kb(result.standard, target_kb=target_kb)
-                        with open(standard_path.with_suffix('.jpg'), 'wb') as f:
+                        # 对 JPG 路径也应用序号设置
+                        jpg_path = standard_path.with_suffix('.jpg')
+                        add_sequence = self.config_service.get_config_value("output_add_sequence", False) if self.config_service else False
+                        jpg_path = get_unique_path(jpg_path, add_sequence=add_sequence)
+                        with open(jpg_path, 'wb') as f:
                             f.write(standard_compressed)
                     else:
                         # 不限制KB，保存为PNG

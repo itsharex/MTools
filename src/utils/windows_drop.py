@@ -124,6 +124,15 @@ if sys.platform == "win32":
     user32.MoveWindow.argtypes = [wintypes.HWND, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, wintypes.BOOL]
     user32.MoveWindow.restype = wintypes.BOOL
     
+    user32.GetForegroundWindow.argtypes = []
+    user32.GetForegroundWindow.restype = wintypes.HWND
+    
+    user32.WindowFromPoint.argtypes = [wintypes.POINT]
+    user32.WindowFromPoint.restype = wintypes.HWND
+    
+    user32.GetAncestor.argtypes = [wintypes.HWND, wintypes.UINT]
+    user32.GetAncestor.restype = wintypes.HWND
+    
     # SetWindowPos 标志
     SWP_NOMOVE = 0x0002
     SWP_NOSIZE = 0x0001
@@ -412,12 +421,19 @@ class WindowsDropHandler:
     def _start_drag_detector(self):
         """检测拖放操作，动态切换透明状态
         
-        简化策略：左键按下且鼠标在扩展区域内时变为不透明
-        标题栏保护：检测鼠标是否在标题栏区域，如果是则不改变透明状态
+        改进策略：综合多个条件判断是否是文件拖放操作
+        1. 拖放必须从窗口外部开始
+        2. 当前焦点必须不在我们的应用上（用户在操作其他软件）
+        3. 鼠标位置不能被其他窗口遮挡
         """
         def detect():
             is_transparent = True
             restore_delay = 0
+            
+            # 记录拖放起始状态
+            drag_started_outside = False  # 拖放是否从窗口外部开始
+            drag_started_other_app = False  # 拖放开始时焦点是否在其他应用
+            was_button_down = False  # 上一帧左键是否按下
             
             while not WindowsDropHandler._stop_event.is_set():
                 time.sleep(0.016)
@@ -428,24 +444,71 @@ class WindowsDropHandler:
                 # 检查鼠标左键状态
                 lbutton_down = (user32.GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0
                 
-                # 获取鼠标位置和窗口区域
+                # 获取鼠标位置
                 pt = wintypes.POINT()
                 user32.GetCursorPos(ctypes.byref(pt))
                 
+                # 获取窗口区域
                 rect = wintypes.RECT()
                 user32.GetWindowRect(self._overlay_hwnd, ctypes.byref(rect))
                 
-                # 扩展区域（窗口外围）
+                # 检测鼠标是否在窗口内部
+                in_window = user32.PtInRect(ctypes.byref(rect), pt)
+                
+                # 扩展区域（窗口外围，用于检测拖入）
                 expanded_rect = wintypes.RECT()
-                expanded_rect.left = rect.left - 50
-                expanded_rect.top = rect.top - 50
-                expanded_rect.right = rect.right + 50
-                expanded_rect.bottom = rect.bottom + 50
+                expanded_rect.left = rect.left - 100
+                expanded_rect.top = rect.top - 100
+                expanded_rect.right = rect.right + 100
+                expanded_rect.bottom = rect.bottom + 100
                 
                 in_expanded = user32.PtInRect(ctypes.byref(expanded_rect), pt)
                 
-                # 左键按下且在扩展区域内时变为不透明
-                should_be_opaque = lbutton_down and in_expanded
+                # 检测左键按下的瞬间（从未按下变为按下）
+                button_just_pressed = lbutton_down and not was_button_down
+                
+                if button_just_pressed:
+                    # 左键刚按下，记录起始状态
+                    
+                    # 检查焦点是否在我们的应用上
+                    foreground_hwnd = user32.GetForegroundWindow()
+                    drag_started_other_app = (foreground_hwnd != self._parent_hwnd)
+                    
+                    # 检测起始位置是否被遮挡
+                    start_is_occluded = False
+                    top_hwnd = user32.WindowFromPoint(pt)
+                    if top_hwnd and top_hwnd != self._parent_hwnd and top_hwnd != self._overlay_hwnd:
+                        parent_of_top = user32.GetAncestor(top_hwnd, 2)  # GA_ROOT = 2
+                        if parent_of_top != self._parent_hwnd:
+                            start_is_occluded = True
+                    
+                    # 判断是否从窗口外部开始：
+                    # 1. 不在窗口内 OR
+                    # 2. 在窗口内但被其他窗口遮挡（用户实际在操作上层窗口）
+                    drag_started_outside = (not in_window) or start_is_occluded
+                
+                # 左键释放时重置状态
+                if not lbutton_down:
+                    drag_started_outside = False
+                    drag_started_other_app = False
+                
+                was_button_down = lbutton_down
+                
+                # 综合判断：只有满足所有条件才变为不透明
+                # 1. 左键按下
+                # 2. 在扩展区域内
+                # 3. 拖放从窗口外部开始（包括被遮挡的区域）
+                # 4. 拖放开始时焦点在其他应用
+                # 
+                # 注意：不再持续检测遮挡，因为：
+                # - 如果拖放从其他应用开始，用户的意图就是拖文件到我们的程序
+                # - 拖放过程中经过被遮挡区域是正常的
+                should_be_opaque = (
+                    lbutton_down and 
+                    in_expanded and 
+                    drag_started_outside and 
+                    drag_started_other_app
+                )
                 
                 if should_be_opaque and is_transparent:
                     style = user32.GetWindowLongW(self._overlay_hwnd, GWL_EXSTYLE)

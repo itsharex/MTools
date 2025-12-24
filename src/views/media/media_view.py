@@ -514,6 +514,14 @@ class MediaView(ft.Container):
         if not self.parent_container:
             return
         
+        # 如果当前已经是该视图，直接返回，避免重复切换
+        if self.current_sub_view_type == view_type and self.current_sub_view == view:
+            # 确保视图显示在容器中
+            if self.parent_container.content != view:
+                self.parent_container.content = view
+                self._safe_page_update()
+            return
+        
         # 记录当前子视图
         self.current_sub_view = view
         self.current_sub_view_type = view_type

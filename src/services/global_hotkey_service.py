@@ -53,6 +53,8 @@ class GlobalHotkeyService:
         
         # OCR 服务（延迟初始化）
         self._ocr_service = None
+        self._ocr_unload_timer: Optional[threading.Timer] = None
+        self._ocr_unload_delay = 300  # 5 分钟后自动卸载模型
     
     def set_page(self, page) -> None:
         """设置页面对象。"""
@@ -236,6 +238,22 @@ class GlobalHotkeyService:
     
     def stop(self) -> None:
         """停止全局热键监听。"""
+        # 取消 OCR 卸载定时器
+        if self._ocr_unload_timer is not None:
+            try:
+                self._ocr_unload_timer.cancel()
+            except Exception:
+                pass
+            self._ocr_unload_timer = None
+        
+        # 卸载 OCR 模型
+        if self._ocr_service is not None:
+            try:
+                self._ocr_service.unload_model()
+            except Exception:
+                pass
+            self._ocr_service = None
+        
         if not self._hotkey_thread:
             return
         
@@ -614,6 +632,20 @@ class GlobalHotkeyService:
                     pass
             
             logger.debug(f"区域选择完成，结果: {result['rect']}")
+            
+            # 显式清理图像资源，释放内存
+            try:
+                del darkened_tk
+                del screenshot_tk
+                if state.get("hover_image"):
+                    del state["hover_image"]
+                del darkened
+                del screenshot
+                import gc
+                gc.collect()
+            except Exception:
+                pass
+            
             return result["rect"]
             
         except Exception as ex:
@@ -627,10 +659,16 @@ class GlobalHotkeyService:
         
         def do_ocr():
             logger.info("OCR 线程开始执行")
+            selected = None
+            img_array = None
+            img_bgr = None
+            should_unload = False
+            
             try:
                 from PIL import ImageGrab
                 import cv2
                 import numpy as np
+                import gc
                 
                 logger.info("开始区域选择...")
                 # 使用完整的区域选择器
@@ -652,6 +690,17 @@ class GlobalHotkeyService:
                 selected = ImageGrab.grab(bbox=(x, y, x + w, y + h), all_screens=True)
                 img_array = np.array(selected)
                 img_bgr = cv2.cvtColor(img_array, cv2.COLOR_RGB2BGR)
+                
+                # 立即释放不再需要的图像数据
+                del selected
+                selected = None
+                del img_array
+                img_array = None
+                
+                # 检查是否预加载模式（预加载模式下不卸载模型）
+                preload_ocr = self.config_service.get_config_value("preload_ocr_model", False)
+                # 非预加载模式，使用后应该卸载模型释放内存
+                should_unload = not preload_ocr
                 
                 # 初始化 OCR 服务
                 if self._ocr_service is None:
@@ -675,6 +724,10 @@ class GlobalHotkeyService:
                 
                 # 执行识别
                 success, results = self._ocr_service.ocr_image(img_bgr)
+                
+                # 释放图像数据
+                del img_bgr
+                img_bgr = None
                 
                 if success and results:
                     sorted_results = sorted(
@@ -724,9 +777,70 @@ class GlobalHotkeyService:
             except Exception as ex:
                 logger.error(f"OCR 截图识别失败: {ex}", exc_info=True)
                 self._show_notification(f"识别失败: {str(ex)}")
+            finally:
+                # 清理资源
+                try:
+                    if selected is not None:
+                        del selected
+                    if img_array is not None:
+                        del img_array
+                    if img_bgr is not None:
+                        del img_bgr
+                except Exception:
+                    pass
+                
+                # 如果非预加载模式，启动延迟卸载定时器
+                if should_unload and self._ocr_service is not None:
+                    self._schedule_ocr_unload()
+                
+                # 强制垃圾回收
+                try:
+                    import gc
+                    gc.collect()
+                except Exception:
+                    pass
         
         thread = threading.Thread(target=do_ocr, daemon=True)
         thread.start()
+    
+    def _schedule_ocr_unload(self) -> None:
+        """安排 OCR 模型延迟卸载。
+        
+        如果已有定时器在运行，会先取消再重新安排。
+        这样连续使用时会不断重置定时器，只有空闲一段时间后才会卸载。
+        """
+        # 取消已有的定时器
+        if self._ocr_unload_timer is not None:
+            try:
+                self._ocr_unload_timer.cancel()
+            except Exception:
+                pass
+            self._ocr_unload_timer = None
+        
+        # 启动新的延迟卸载定时器
+        self._ocr_unload_timer = threading.Timer(
+            self._ocr_unload_delay,
+            self._do_ocr_unload
+        )
+        self._ocr_unload_timer.daemon = True
+        self._ocr_unload_timer.start()
+        logger.debug(f"OCR 模型将在 {self._ocr_unload_delay} 秒后自动卸载")
+    
+    def _do_ocr_unload(self) -> None:
+        """执行 OCR 模型卸载。"""
+        try:
+            if self._ocr_service is not None:
+                self._ocr_service.unload_model()
+                self._ocr_service = None
+                logger.info("OCR 模型已自动卸载，内存已释放")
+            
+            # 强制垃圾回收
+            import gc
+            gc.collect()
+        except Exception as e:
+            logger.warning(f"自动卸载 OCR 模型失败: {e}")
+        finally:
+            self._ocr_unload_timer = None
     
     def _trigger_screen_record(self) -> None:
         """触发屏幕录制 - 直接框选区域并开始录制。"""
@@ -921,6 +1035,11 @@ class GlobalHotkeyService:
                     self._recording_process = None
                 
                 self._is_recording = False
+                
+                # 清理 stderr 输出列表，释放内存
+                if hasattr(self, '_stderr_output'):
+                    self._stderr_output.clear()
+                    self._stderr_output = None
                 
                 if hasattr(self, '_recording_output_file') and self._recording_output_file:
                     output_file = self._recording_output_file

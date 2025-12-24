@@ -9,6 +9,7 @@
 [![Flet](https://img.shields.io/badge/Flet-0.28.3-brightgreen.svg)](https://flet.dev/)
 [![License](https://img.shields.io/badge/License-MIT-orange.svg)](./LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)]()
+[![Downloads](https://img.shields.io/github/downloads/HG-ha/MTools/total?style=flat-square)](https://github.com/HG-ha/MTools/releases)
 
 
 

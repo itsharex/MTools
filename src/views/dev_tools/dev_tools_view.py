@@ -737,6 +737,20 @@ class DevToolsView(ft.Container):
         Args:
             tool_name: 工具名称，如 "encoding", "json_viewer", "base64_to_image", "http_client", "websocket_client" 等
         """
+        # tool_name 到 current_sub_view_type 的映射（处理不一致的命名）
+        tool_to_view_type = {
+            "encoding": "encoding_convert",
+        }
+        expected_view_type = tool_to_view_type.get(tool_name, tool_name)
+        
+        # 如果当前已经打开了该工具，直接返回现有视图，不创建新实例
+        if self.current_sub_view_type == expected_view_type and self.current_sub_view is not None:
+            # 确保当前视图显示在容器中
+            if self.parent_container and self.parent_container.content != self.current_sub_view:
+                self.parent_container.content = self.current_sub_view
+                self._safe_page_update()
+            return
+        
         # 记录工具使用次数
         from utils import get_tool
         tool_id = f"dev.{tool_name}"

@@ -24,7 +24,7 @@ from constants import (
     PADDING_SMALL,
 )
 from services import ConfigService, OCRService
-from utils import format_file_size, logger
+from utils import format_file_size, logger, get_unique_path
 
 
 class OCRView(ft.Container):
@@ -1134,7 +1134,11 @@ class OCRView(ft.Container):
         
         # 生成输出文件名
         output_name = f"{input_file.stem}{suffix}.{output_format}"
-        return output_dir / output_name
+        output_path = output_dir / output_name
+        
+        # 根据全局设置决定是否添加序号
+        add_sequence = self.config_service.get_config_value("output_add_sequence", False)
+        return get_unique_path(output_path, add_sequence=add_sequence)
     
     def _save_single_result(self, input_file: Path, results: List[Tuple[List, str, float]]) -> bool:
         """保存单个文件的识别结果（根据用户选择的格式）。

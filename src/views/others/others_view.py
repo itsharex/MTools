@@ -367,6 +367,14 @@ class OthersView(ft.Container):
         Args:
             tool_name: 工具名称，如 "windows_update", "image_to_url", "file_to_url", "icp_query", "id_photo" 等
         """
+        # 如果当前已经打开了该工具，直接返回现有视图，不创建新实例
+        if self.current_sub_view_type == tool_name and self.current_sub_view is not None:
+            # 确保当前视图显示在容器中
+            if self.parent_container and self.parent_container.content != self.current_sub_view:
+                self.parent_container.content = self.current_sub_view
+                self._safe_page_update()
+            return
+        
         # 工具名称到方法的映射
         tool_map = {
             "windows_update": self._open_windows_update_view,
