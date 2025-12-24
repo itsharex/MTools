@@ -665,12 +665,12 @@ class SettingsView(ft.Container):
                 ft.Icon(
                     ft.Icons.INFO_OUTLINE if is_windows else ft.Icons.WARNING_AMBER,
                     size=14,
-                    color=ft.Colors.ON_SURFACE_VARIANT if is_windows else ft.Colors.WARNING,
+                    color=ft.Colors.ON_SURFACE_VARIANT if is_windows else ft.Colors.ORANGE,
                 ),
                 ft.Text(
                     "快捷键在全局生效，可在任意应用中使用。" if is_windows else "全局快捷键功能仅支持 Windows 系统。",
                     size=11,
-                    color=ft.Colors.ON_SURFACE_VARIANT if is_windows else ft.Colors.WARNING,
+                    color=ft.Colors.ON_SURFACE_VARIANT if is_windows else ft.Colors.ORANGE,
                 ),
             ],
             spacing=6,
@@ -1740,6 +1740,24 @@ class SettingsView(ft.Container):
             color=ft.Colors.ON_SURFACE_VARIANT,
         )
         
+        # 开机自启动（仅编译后生效）
+        auto_start = self.config_service.get_config_value("auto_start", False)
+        is_compiled = self._is_compiled()
+        
+        self.auto_start_switch = ft.Switch(
+            label="开机自启动",
+            value=auto_start if is_compiled else False,
+            on_change=self._on_auto_start_switch_change,
+            disabled=not is_compiled,
+        )
+        
+        # 开机自启动说明文字
+        auto_start_info = ft.Text(
+            "开启后，系统启动时自动运行并最小化到托盘" if is_compiled else "此功能仅在编译后的版本中可用",
+            size=12,
+            color=ft.Colors.ON_SURFACE_VARIANT if is_compiled else ft.Colors.ORANGE,
+        )
+        
         return ft.Container(
             content=ft.Column(
                 controls=[
@@ -1766,6 +1784,12 @@ class SettingsView(ft.Container):
                     self.minimize_to_tray_switch,
                     ft.Container(height=PADDING_SMALL),
                     tray_info_text,
+                    ft.Container(height=PADDING_MEDIUM),
+                    ft.Divider(),
+                    ft.Container(height=PADDING_MEDIUM),
+                    self.auto_start_switch,
+                    ft.Container(height=PADDING_SMALL),
+                    auto_start_info,
                 ],
                 spacing=0,
             ),
@@ -1828,6 +1852,84 @@ class SettingsView(ft.Container):
             self._show_snackbar(f"最小化到系统托盘{status}", ft.Colors.GREEN)
         else:
             self._show_snackbar("设置更新失败", ft.Colors.RED)
+    
+    def _is_compiled(self) -> bool:
+        """检查是否为编译后的版本。"""
+        from pathlib import Path
+        return Path(sys.argv[0]).suffix.lower() == '.exe'
+    
+    def _on_auto_start_switch_change(self, e: ft.ControlEvent) -> None:
+        """开机自启动开关改变事件。"""
+        enabled = e.control.value
+        
+        if not self._is_compiled():
+            self._show_snackbar("此功能仅在编译后的版本中可用", ft.Colors.ORANGE)
+            e.control.value = False
+            e.control.update()
+            return
+        
+        # 设置注册表
+        success = self._set_auto_start(enabled)
+        
+        if success:
+            self.config_service.set_config_value("auto_start", enabled)
+            status = "已启用" if enabled else "已禁用"
+            self._show_snackbar(f"开机自启动{status}", ft.Colors.GREEN)
+        else:
+            self._show_snackbar("设置开机自启动失败，请检查权限", ft.Colors.RED)
+            e.control.value = not enabled
+            e.control.update()
+    
+    def _set_auto_start(self, enable: bool) -> bool:
+        """设置开机自启动（注册表方式）。
+        
+        Args:
+            enable: 是否启用
+            
+        Returns:
+            是否成功
+        """
+        if sys.platform != 'win32':
+            return False
+        
+        try:
+            import winreg
+            from pathlib import Path
+            
+            app_name = "MTools"
+            key_path = r"Software\Microsoft\Windows\CurrentVersion\Run"
+            
+            key = winreg.OpenKey(
+                winreg.HKEY_CURRENT_USER,
+                key_path,
+                0,
+                winreg.KEY_SET_VALUE | winreg.KEY_READ
+            )
+            
+            if enable:
+                # 获取可执行文件路径，添加 --minimized 参数
+                exe_path = sys.argv[0]
+                if Path(exe_path).suffix.lower() == '.exe':
+                    # 使用 --minimized 参数启动时最小化到托盘
+                    startup_cmd = f'"{exe_path}" --minimized'
+                    winreg.SetValueEx(key, app_name, 0, winreg.REG_SZ, startup_cmd)
+                    logger.info(f"开机自启动已设置: {startup_cmd}")
+                else:
+                    winreg.CloseKey(key)
+                    return False
+            else:
+                try:
+                    winreg.DeleteValue(key, app_name)
+                    logger.info("开机自启动已移除")
+                except FileNotFoundError:
+                    pass  # 不存在也视为成功
+            
+            winreg.CloseKey(key)
+            return True
+            
+        except Exception as e:
+            logger.error(f"设置开机自启动失败: {e}")
+            return False
     
     def _build_gpu_acceleration_section(self) -> ft.Container:
         """构建GPU加速设置部分，包括高级参数配置。"""
