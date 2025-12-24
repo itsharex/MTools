@@ -55,6 +55,9 @@ class GlobalHotkeyService:
         self._ocr_service = None
         self._ocr_unload_timer: Optional[threading.Timer] = None
         self._ocr_unload_delay = 300  # 5 分钟后自动卸载模型
+        
+        # OCR 区域选择锁，防止同时运行多个
+        self._ocr_selecting = False
     
     def set_page(self, page) -> None:
         """设置页面对象。"""
@@ -635,12 +638,35 @@ class GlobalHotkeyService:
             
             # 显式清理图像资源，释放内存
             try:
+                # 清理 canvas 上的所有图像引用
+                canvas.delete("all")
+                
+                # 清理 PhotoImage 对象
+                darkened_tk.__del__() if hasattr(darkened_tk, '__del__') else None
+                screenshot_tk.__del__() if hasattr(screenshot_tk, '__del__') else None
                 del darkened_tk
                 del screenshot_tk
+                
+                # 清理 hover_image（可能有多个历史引用）
                 if state.get("hover_image"):
+                    try:
+                        state["hover_image"].__del__() if hasattr(state["hover_image"], '__del__') else None
+                    except Exception:
+                        pass
                     del state["hover_image"]
+                
+                # 清理 PIL Image
+                darkened.close()
+                screenshot.close()
                 del darkened
                 del screenshot
+                
+                # 清理其他变量
+                state.clear()
+                window_rects.clear()
+                monitors.clear()
+                
+                # 强制垃圾回收
                 import gc
                 gc.collect()
             except Exception:
@@ -657,6 +683,11 @@ class GlobalHotkeyService:
         """触发 OCR 截图识别。"""
         logger.info("OCR 快捷键触发")
         
+        # 检查是否正在进行区域选择，防止重复触发
+        if self._ocr_selecting:
+            logger.warning("OCR 区域选择正在进行中，忽略此次触发")
+            return
+        
         def do_ocr():
             logger.info("OCR 线程开始执行")
             selected = None
@@ -671,11 +702,17 @@ class GlobalHotkeyService:
                 import gc
                 
                 logger.info("开始区域选择...")
-                # 使用完整的区域选择器
-                region = self._select_region_interactive(
-                    hint_text_main="🔤 点击选择窗口  |  拖拽框选区域",
-                    hint_text_sub="按 F 识别当前屏幕  |  ESC 取消"
-                )
+                # 设置区域选择锁
+                self._ocr_selecting = True
+                try:
+                    # 使用完整的区域选择器
+                    region = self._select_region_interactive(
+                        hint_text_main="🔤 点击选择窗口  |  拖拽框选区域",
+                        hint_text_sub="按 F 识别当前屏幕  |  ESC 取消"
+                    )
+                finally:
+                    # 释放区域选择锁
+                    self._ocr_selecting = False
                 logger.info(f"区域选择结果: {region}")
                 
                 if region is None:
@@ -729,13 +766,25 @@ class GlobalHotkeyService:
                 del img_bgr
                 img_bgr = None
                 
+                # 用于跟踪需要清理的变量
+                sorted_results = None
+                text_lines = None
+                full_text = None
+                line_count = 0
+                
                 if success and results:
                     sorted_results = sorted(
                         results,
                         key=lambda x: (min(pt[1] for pt in x[0]), min(pt[0] for pt in x[0]))
                     )
                     text_lines = [text for _, text, _ in sorted_results]
+                    line_count = len(text_lines)
                     full_text = "\n".join(text_lines)
+                    
+                    # 清理 results（包含大量坐标数据）
+                    results.clear() if hasattr(results, 'clear') else None
+                    del results
+                    results = None
                     
                     # 复制到剪切板（使用 Windows 原生 API）
                     clipboard_success = False
@@ -744,9 +793,19 @@ class GlobalHotkeyService:
                     except Exception as e:
                         logger.warning(f"Windows API 剪切板失败: {e}")
                     
+                    # 清理中间变量
+                    if sorted_results:
+                        sorted_results.clear() if hasattr(sorted_results, 'clear') else None
+                        del sorted_results
+                        sorted_results = None
+                    if text_lines:
+                        text_lines.clear() if hasattr(text_lines, 'clear') else None
+                        del text_lines
+                        text_lines = None
+                    
                     if clipboard_success:
-                        self._show_notification(f"已识别 {len(text_lines)} 行文字并复制到剪切板")
-                        logger.info(f"OCR 识别完成，已复制 {len(text_lines)} 行文字")
+                        self._show_notification(f"已识别 {line_count} 行文字并复制到剪切板")
+                        logger.info(f"OCR 识别完成，已复制 {line_count} 行文字")
                     else:
                         # 尝试备用方法（确保 tkinter 正确清理）
                         temp_root = None
@@ -757,8 +816,8 @@ class GlobalHotkeyService:
                             temp_root.clipboard_clear()
                             temp_root.clipboard_append(full_text)
                             temp_root.update()
-                            self._show_notification(f"已识别 {len(text_lines)} 行文字并复制到剪切板")
-                            logger.info(f"OCR 识别完成，已通过 tkinter 复制 {len(text_lines)} 行文字")
+                            self._show_notification(f"已识别 {line_count} 行文字并复制到剪切板")
+                            logger.info(f"OCR 识别完成，已通过 tkinter 复制 {line_count} 行文字")
                             clipboard_success = True
                         except Exception as e:
                             logger.warning(f"备用剪切板方法失败: {e}")
@@ -770,8 +829,17 @@ class GlobalHotkeyService:
                                     pass
                         
                         if not clipboard_success:
-                            self._show_notification(f"已识别 {len(text_lines)} 行，但复制到剪切板失败")
+                            self._show_notification(f"已识别 {line_count} 行，但复制到剪切板失败")
+                    
+                    # 清理 full_text
+                    del full_text
+                    full_text = None
                 else:
+                    # 清理 results
+                    if results:
+                        results.clear() if hasattr(results, 'clear') else None
+                        del results
+                        results = None
                     self._show_notification("未识别到文字")
                     
             except Exception as ex:
@@ -831,11 +899,14 @@ class GlobalHotkeyService:
         try:
             if self._ocr_service is not None:
                 self._ocr_service.unload_model()
+                del self._ocr_service
                 self._ocr_service = None
                 logger.info("OCR 模型已自动卸载，内存已释放")
             
-            # 强制垃圾回收
+            # 强制多次垃圾回收（确保循环引用被清理）
             import gc
+            gc.collect()
+            gc.collect()
             gc.collect()
         except Exception as e:
             logger.warning(f"自动卸载 OCR 模型失败: {e}")

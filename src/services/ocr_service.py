@@ -312,19 +312,37 @@ class OCRService:
     def unload_model(self) -> None:
         """卸载模型，释放资源。"""
         try:
+            # 释放 ONNX session（需要显式调用内部方法）
             if self.det_session:
+                try:
+                    # 尝试释放 ONNX Runtime 的内部资源
+                    if hasattr(self.det_session, '_sess'):
+                        del self.det_session._sess
+                except Exception:
+                    pass
                 del self.det_session
                 self.det_session = None
             
             if self.cls_session:
+                try:
+                    if hasattr(self.cls_session, '_sess'):
+                        del self.cls_session._sess
+                except Exception:
+                    pass
                 del self.cls_session
                 self.cls_session = None
             
             if self.rec_session:
+                try:
+                    if hasattr(self.rec_session, '_sess'):
+                        del self.rec_session._sess
+                except Exception:
+                    pass
                 del self.rec_session
                 self.rec_session = None
             
             if self.char_dict:
+                self.char_dict.clear() if hasattr(self.char_dict, 'clear') else None
                 del self.char_dict
                 self.char_dict = None
             
@@ -332,8 +350,21 @@ class OCRService:
             self.rec_image_height = 32  # 重置为默认值
             self.use_angle_cls = True  # 重置为默认值
             
-            # 强制垃圾回收
+            # 强制多次垃圾回收（确保循环引用被清理）
             gc.collect()
+            gc.collect()
+            gc.collect()
+            
+            # 额外释放 ONNX Runtime 全局线程池，缓解内存水位上涨
+            try:
+                import onnxruntime as ort  # type: ignore
+                if hasattr(ort, "capi") and hasattr(ort.capi, "_pybind_state"):
+                    clear_pool = getattr(ort.capi._pybind_state, "clear_global_thread_pools", None)
+                    if callable(clear_pool):
+                        clear_pool()
+            except Exception:
+                # 安全失败，不影响主流程
+                pass
             
             logger.info("OCR模型已卸载")
         except Exception as e:

@@ -136,6 +136,19 @@ if sys.platform == "win32":
     # SetWindowPos 标志
     SWP_NOMOVE = 0x0002
     SWP_NOSIZE = 0x0001
+    
+    # ShowWindow 常量
+    SW_HIDE = 0
+    SW_SHOW = 5
+    
+    user32.IsWindowVisible.argtypes = [wintypes.HWND]
+    user32.IsWindowVisible.restype = wintypes.BOOL
+    
+    user32.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
+    user32.ShowWindow.restype = wintypes.BOOL
+    
+    user32.IsIconic.argtypes = [wintypes.HWND]
+    user32.IsIconic.restype = wintypes.BOOL
 
     WNDPROC = ctypes.WINFUNCTYPE(LRESULT, wintypes.HWND, wintypes.UINT, WPARAM, LPARAM)
 
@@ -386,15 +399,34 @@ class WindowsDropHandler:
                 time.sleep(0.01)
     
     def _start_position_tracker(self):
-        """跟踪父窗口位置和大小"""
+        """跟踪父窗口位置和大小，并根据父窗口可见性显示/隐藏覆盖窗口"""
         def track():
             last_rect = None
+            last_visible = True
             while not WindowsDropHandler._stop_event.is_set():
                 time.sleep(0.016)  # ~60 FPS，更快响应窗口大小变化
                 if not user32.IsWindow(self._parent_hwnd):
                     break
                 if not user32.IsWindow(self._overlay_hwnd):
                     break
+                
+                # 检测父窗口是否可见（包括最小化和隐藏到托盘的情况）
+                is_visible = user32.IsWindowVisible(self._parent_hwnd)
+                is_minimized = user32.IsIconic(self._parent_hwnd)
+                should_show = is_visible and not is_minimized
+                
+                # 可见性变化时，显示或隐藏覆盖窗口
+                if should_show != last_visible:
+                    if should_show:
+                        user32.ShowWindow(self._overlay_hwnd, SW_SHOW)
+                    else:
+                        user32.ShowWindow(self._overlay_hwnd, SW_HIDE)
+                    last_visible = should_show
+                
+                # 如果不可见，跳过位置更新
+                if not should_show:
+                    continue
+                
                 rect = wintypes.RECT()
                 user32.GetWindowRect(self._parent_hwnd, ctypes.byref(rect))
                 # 仅在位置或大小变化时更新，减少不必要的调用
