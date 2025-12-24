@@ -465,17 +465,13 @@ class TranslateView(ft.Container):
     
     def _show_message(self, message: str, is_error: bool = False) -> None:
         """显示消息提示。"""
-        # 清除旧的 SnackBar
-        if self.page.snack_bar:
-            self.page.snack_bar.open = False
-        
-        snack_bar = ft.SnackBar(
+        snackbar = ft.SnackBar(
             content=ft.Text(message),
             bgcolor=ft.Colors.ERROR if is_error else None,
             duration=3000,
         )
-        self.page.snack_bar = snack_bar
-        snack_bar.open = True
+        self.page.overlay.append(snackbar)
+        snackbar.open = True
         self.page.update()
     
     def _safe_update(self) -> None:
@@ -488,4 +484,79 @@ class TranslateView(ft.Container):
     def cleanup(self) -> None:
         """清理资源。"""
         pass
+    
+    def add_files(self, files: list) -> None:
+        """处理拖放的文件。
+        
+        支持文本文件：.txt, .md, .json, .xml, .html, .csv, .log 等
+        
+        Args:
+            files: 文件路径列表
+        """
+        from pathlib import Path
+        
+        # 支持的文本文件扩展名
+        text_exts = {
+            '.txt', '.md', '.markdown', '.json', '.xml', '.html', '.htm',
+            '.csv', '.log', '.ini', '.cfg', '.conf', '.yaml', '.yml',
+            '.srt', '.vtt', '.ass', '.lrc',  # 字幕文件
+            '.py', '.js', '.ts', '.java', '.c', '.cpp', '.h', '.cs',  # 代码文件
+            '.css', '.sql', '.sh', '.bat', '.ps1',
+        }
+        
+        # 收集所有文件
+        all_files = []
+        for f in files:
+            path = Path(f) if not isinstance(f, Path) else f
+            if path.is_dir():
+                for item in path.iterdir():
+                    if item.is_file():
+                        all_files.append(item)
+            else:
+                all_files.append(path)
+        
+        # 过滤支持的文件
+        supported_files = [f for f in all_files if f.suffix.lower() in text_exts]
+        
+        if not supported_files:
+            self._show_message("请拖放文本文件（.txt, .md 等）", is_error=True)
+            return
+        
+        # 只处理第一个文件
+        file_path = supported_files[0]
+        
+        try:
+            # 尝试多种编码读取文件
+            content = None
+            encodings = ['utf-8', 'gbk', 'gb2312', 'utf-16', 'latin-1']
+            
+            for encoding in encodings:
+                try:
+                    with open(file_path, 'r', encoding=encoding) as f:
+                        content = f.read()
+                    break
+                except (UnicodeDecodeError, UnicodeError):
+                    continue
+            
+            if content is None:
+                self._show_message(f"无法读取文件：编码不支持", is_error=True)
+                return
+            
+            # 限制文本长度（避免翻译过长文本）
+            max_chars = 10000
+            if len(content) > max_chars:
+                content = content[:max_chars]
+                self._show_message(f"文件内容过长，已截取前 {max_chars} 字符")
+            
+            # 设置到输入框
+            self.input_text.value = content
+            self._update_char_count()
+            self.translate_btn.disabled = False
+            self._safe_update()
+            
+            self._show_message(f"已导入: {file_path.name}")
+            
+        except Exception as e:
+            logger.error(f"读取文件失败: {e}")
+            self._show_message(f"读取文件失败: {e}", is_error=True)
 

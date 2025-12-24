@@ -53,6 +53,33 @@ class OthersView(ft.Container):
         # 记录当前子视图的类型（用于销毁）
         self.current_sub_view_type: Optional[str] = None
         
+        # 滚动偏移量（用于拖放位置计算）
+        self._scroll_offset_y: float = 0
+        
+        # 卡片布局参数（与 FeatureCard 的尺寸匹配）
+        # FeatureCard: width=280, height=220, margin=only(left=5, right=0, top=5, bottom=10)
+        # Row: spacing=PADDING_LARGE(24), run_spacing=PADDING_LARGE(24)
+        self._card_margin_left = 5
+        self._card_margin_top = 5
+        self._card_margin_bottom = 10
+        self._card_width = 280
+        self._card_height = 220
+        # 卡片间的实际步进距离：margin_left + width + margin_right + spacing
+        self._card_step_x = self._card_margin_left + self._card_width + 0 + PADDING_LARGE  # 5+280+0+24=309
+        self._card_step_y = self._card_margin_top + self._card_height + self._card_margin_bottom + PADDING_LARGE  # 5+220+10+24=259
+        self._content_padding = PADDING_MEDIUM
+        
+        # 工具拖放映射表：(工具名称, 支持的扩展名, 打开方法, 视图属性名)
+        # None 表示不支持文件拖放
+        self._drop_tool_map = [
+            ("Windows更新管理", None, None, None),
+            ("图片转URL", {'.jpg', '.jpeg', '.png', '.webp', '.bmp', '.gif'}, self._open_image_to_url_view, "image_to_url"),
+            ("文件转URL", True, self._open_file_to_url_view, "file_to_url"),  # True 表示接受任何文件
+            ("ICP备案查询", None, None, None),
+            ("AI证件照", {'.jpg', '.jpeg', '.png', '.webp', '.bmp', '.tiff', '.tif', '.heic', '.heif'}, self._open_id_photo_view, "id_photo"),
+            ("文本翻译", {'.txt', '.md', '.markdown', '.json', '.xml', '.html', '.htm', '.csv', '.log', '.ini', '.cfg', '.conf', '.yaml', '.yml', '.srt', '.vtt', '.ass', '.lrc', '.py', '.js', '.ts', '.java', '.c', '.cpp', '.h', '.cs', '.css', '.sql', '.sh', '.bat', '.ps1'}, self._open_translate_view, "translate"),
+        ]
+        
         # 创建UI组件
         self._build_ui()
     
@@ -138,7 +165,12 @@ class OthersView(ft.Container):
             alignment=ft.MainAxisAlignment.START,
             expand=True,
             width=float('inf'),  # 占满可用宽度
+            on_scroll=self._on_scroll,
         )
+    
+    def _on_scroll(self, e: ft.OnScrollEvent) -> None:
+        """跟踪滚动位置。"""
+        self._scroll_offset_y = e.pixels
     
     def _open_windows_update_view(self) -> None:
         """打开Windows更新管理视图。"""
@@ -386,13 +418,13 @@ class OthersView(ft.Container):
         Args:
             message: 消息内容
         """
-        snack_bar = ft.SnackBar(
+        snackbar = ft.SnackBar(
             content=ft.Text(message),
-            duration=2000,
+            duration=3000,
         )
-        self.page.snack_bar = snack_bar
-        snack_bar.open = True
-        self.page.update()
+        self._saved_page.overlay.append(snackbar)
+        snackbar.open = True
+        self._saved_page.update()
     
     def restore_state(self) -> bool:
         """恢复视图状态。
@@ -410,16 +442,52 @@ class OthersView(ft.Container):
         return False
     
     def handle_dropped_files_at(self, files: list, x: int, y: int) -> None:
-        """处理拖放到指定位置的文件。"""
+        """处理拖放到指定位置的文件。
+        
+        Args:
+            files: 文件路径列表（Path 对象）
+            x: 鼠标 X 坐标（相对于窗口客户区）
+            y: 鼠标 Y 坐标（相对于窗口客户区）
+        """
         # 如果当前显示的是子视图，让子视图处理
         if self.current_sub_view and hasattr(self.current_sub_view, 'add_files'):
             self.current_sub_view.add_files(files)
             return
         
-        # 在主界面，只有 AI 证件照支持图片拖放
-        # 检查是否有支持的图片文件
-        _img_exts = {'.jpg', '.jpeg', '.png', '.webp', '.bmp', '.tiff', '.tif', '.heic', '.heif'}
+        # 计算点击的是哪个工具卡片
+        nav_width = 100  # 导航栏宽度
+        title_height = 32  # 系统标题栏高度
         
+        # 调整坐标（减去导航栏、标题栏，加上滚动偏移量）
+        local_x = x - nav_width - self._content_padding
+        local_y = y - title_height - self._content_padding + self._scroll_offset_y
+        
+        if local_x < 0 or local_y < 0:
+            self._show_message("请将文件拖放到工具卡片上")
+            return
+        
+        # 计算行列
+        col = int(local_x // self._card_step_x)
+        row = int(local_y // self._card_step_y)
+        
+        # 根据实际窗口宽度计算每行卡片数
+        window_width = self._saved_page.window.width or 1000
+        content_width = window_width - nav_width - self._content_padding * 2
+        cols_per_row = max(1, int(content_width // self._card_step_x))
+        
+        index = row * cols_per_row + col
+        
+        if index < 0 or index >= len(self._drop_tool_map):
+            self._show_message("请将文件拖放到工具卡片上")
+            return
+        
+        tool_name, supported_exts, open_func, view_attr = self._drop_tool_map[index]
+        
+        if not open_func:
+            self._show_message(f"「{tool_name}」不支持文件拖放")
+            return
+        
+        # 展开文件夹
         all_files = []
         for f in files:
             if f.is_dir():
@@ -429,15 +497,26 @@ class OthersView(ft.Container):
             else:
                 all_files.append(f)
         
-        supported_files = [f for f in all_files if f.suffix.lower() in _img_exts]
+        if not all_files:
+            self._show_message("未检测到有效文件")
+            return
         
-        if supported_files:
-            # 有图片文件，打开 AI 证件照并导入
-            self._open_id_photo_view()
-            if self.current_sub_view and hasattr(self.current_sub_view, 'add_files'):
-                self.current_sub_view.add_files(supported_files)
+        # 检查文件类型
+        if supported_exts is True:
+            # 接受任何文件
+            valid_files = all_files
         else:
-            self._show_message("请拖放图片文件到 AI 证件照工具")
+            valid_files = [f for f in all_files if f.suffix.lower() in supported_exts]
+        
+        if not valid_files:
+            ext = all_files[0].suffix.lower() if all_files else ""
+            self._show_message(f"「{tool_name}」不支持 {ext} 类型的文件")
+            return
+        
+        # 打开对应工具并导入文件
+        open_func()
+        if self.current_sub_view and hasattr(self.current_sub_view, 'add_files'):
+            self.current_sub_view.add_files(valid_files)
     
     def cleanup(self) -> None:
         """清理视图资源。

@@ -723,6 +723,46 @@ class FileToUrlView(ft.Container):
         snackbar.open = True
         self.page.update()
     
+    def add_files(self, files: list) -> None:
+        """从拖放添加文件。
+        
+        Args:
+            files: 文件路径列表（Path 对象）
+        """
+        added_count = 0
+        forbidden_count = 0
+        all_files = []
+        
+        for path in files:
+            if path.is_dir():
+                for item in path.iterdir():
+                    if item.is_file():
+                        all_files.append(item)
+            else:
+                all_files.append(path)
+        
+        for path in all_files:
+            ext_lower = path.suffix.lower()
+            if ext_lower in FORBIDDEN_EXTENSIONS:
+                forbidden_count += 1
+                continue
+            if path not in self.selected_files:
+                self.selected_files.append(path)
+                added_count += 1
+        
+        if added_count > 0:
+            self._update_file_list()
+            msg = f"已添加 {added_count} 个文件"
+            if forbidden_count > 0:
+                msg += f"（跳过 {forbidden_count} 个禁止类型）"
+            self._show_message(msg, ft.Colors.GREEN)
+        elif forbidden_count > 0:
+            self._show_message(f"跳过 {forbidden_count} 个禁止上传的文件类型", ft.Colors.ORANGE)
+        else:
+            self._show_message("未找到有效文件", ft.Colors.ORANGE)
+        
+        self.page.update()
+    
     def cleanup(self) -> None:
         """清理视图资源，释放内存。"""
         import gc
